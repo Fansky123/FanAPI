@@ -1,0 +1,24 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  full_bin = "./tmp/server"
+  include_ext = ["go", "yaml", "toml"]
+  exclude_dir = ["tmp", "vendor", "web", "scripts"]
+  delay = 1000
+  send_interrupt = true
+  kill_delay = "0.1s"
+
+[log]
+  time = true
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

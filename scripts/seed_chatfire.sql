@@ -10,7 +10,7 @@
 INSERT INTO channels (
     name, model, type, base_url, method, headers, timeout_ms,
     request_script, response_script,
-    billing_type, billing_config, enabled
+    billing_type, billing_config, is_active
 ) VALUES (
     'ChatFire - Claude 3.5 Sonnet',
     'claude-3-5-sonnet-20241022',
@@ -54,7 +54,7 @@ INSERT INTO channels (
 INSERT INTO channels (
     name, model, type, base_url, method, headers, timeout_ms,
     request_script, response_script,
-    billing_type, billing_config, enabled
+    billing_type, billing_config, is_active
 ) VALUES (
     'ChatFire - Nano Banana Pro',
     'nano-banana-pro',

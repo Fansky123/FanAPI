@@ -46,6 +46,9 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
+	// API 文档页面（无需认证）
+	r.GET("/docs", handler.APIDocs)
+
 	// Public auth routes
 	auth := r.Group("/auth")
 	{
