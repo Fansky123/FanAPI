@@ -1,0 +1,27 @@
+server:
+  port: 8080
+  jwt_secret: "change-me-in-production"
+  jwt_expire_hours: 24
+
+db:
+  host: localhost
+  port: 5433
+  user: postgres
+  password: ww123456
+  dbname: fanapi
+  sslmode: disable
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+nats:
+  url: nats://localhost:4222
+
+smtp:
+  host: smtp.example.com
+  port: 465
+  user: no-reply@example.com
+  password: ""
+  from: "FanAPI <no-reply@example.com>"

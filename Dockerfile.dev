@@ -1,0 +1,20 @@
+# ─────────────────────────────────────────────────────────────
+# 开发镜像：Go + air 热重载
+# 使用方式：docker compose up
+# ─────────────────────────────────────────────────────────────
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26
+
+RUN apt-get update && apt-get install -y ca-certificates tzdata git && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Shanghai \
+	GOPROXY=https://goproxy.cn,direct \
+	GOSUMDB=sum.golang.google.cn
+
+# 安装 air 热重载工具
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /app
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]
