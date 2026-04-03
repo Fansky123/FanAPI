@@ -46,6 +46,9 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
+	// 健康检查（无需认证）
+	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+
 	// API 文档页面（无需认证）
 	r.GET("/docs", handler.APIDocs)
 

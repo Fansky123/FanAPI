@@ -84,8 +84,9 @@ func handleTask(msg *nats.Msg) {
 	}
 
 	// Map response：执行 response_script 将 vendor 原始响应转换为平台标准格式
-	// 标准格式：{"code":200, "url":"...", "status":2, "msg":""}
-	// 若未配置 response_script，则原始响应直接存入 result（可能缺少标准字段）
+	// 标准格式（同步）：{"code":200, "url":"...", "status":2, "msg":""}
+	// 标准格式（异步）：{"upstream_task_id":"xxx"} —— 表示第三方为异步接口，
+	//   worker 只保存 upstream_task_id，由 poller 定期轮询最终状态
 	if ch.ResponseScript != "" {
 		mapped, scriptErr := RunMapResponse(ch.ResponseScript, respData)
 		if scriptErr != nil {
@@ -95,7 +96,25 @@ func handleTask(msg *nats.Msg) {
 		respData = mapped
 	}
 
-	// 将标准格式结果写入 task.result，handler 查询时直接返回
+	// 判断是否为异步渠道：渠道配置了 QueryURL 或响应中含 upstream_task_id
+	upstreamTaskID, _ := respData["upstream_task_id"].(string)
+	if upstreamTaskID == "" {
+		if v, ok := respData["id"].(string); ok && ch.QueryURL != "" {
+			upstreamTaskID = v
+		}
+	}
+
+	if upstreamTaskID != "" {
+		// 异步模式：保存第三方任务 ID，等待 poller 轮询
+		db.Engine.Where("id = ?", task.ID).Update(&model.Task{
+			Status:         "processing",
+			UpstreamTaskID: upstreamTaskID,
+		})
+		log.Printf("[worker] task %d is async, upstream_task_id=%s", task.ID, upstreamTaskID)
+		return
+	}
+
+	// 同步模式：将标准格式结果写入 task.result
 	result := model.JSON{}
 	for k, v := range respData {
 		result[k] = v

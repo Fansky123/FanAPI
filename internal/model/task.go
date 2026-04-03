@@ -12,7 +12,8 @@ type Task struct {
 	Status         string    `xorm:"notnull default('pending') 'status'" json:"status"`
 	Progress       int       `xorm:"notnull default(0) 'progress'" json:"progress"`
 	Request        JSON      `xorm:"jsonb 'request'" json:"request"`
-	Result         JSON      `xorm:"jsonb 'result'" json:"result"` // 经 response_script 映射后的标准格式
+	Result         JSON      `xorm:"jsonb 'result'" json:"result"`                                     // 经 response_script / query_script 映射后的标准格式
+	UpstreamTaskID string    `xorm:"default('') 'upstream_task_id'" json:"upstream_task_id,omitempty"` // 异步渠道：第三方返回的任务 ID，用于轮询
 	ErrorMsg       string    `xorm:"text 'error_msg'" json:"error_msg,omitempty"`
 	CreditsCharged int64     `xorm:"notnull default(0) 'credits_charged'" json:"credits_charged"`
 	CreatedAt      time.Time `xorm:"created 'created_at'" json:"created_at"`

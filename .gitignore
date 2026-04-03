@@ -1,0 +1,23 @@
+# Node
+node_modules/
+web/admin/node_modules/
+web/user/node_modules/
+web/admin/dist/
+web/user/dist/
+
+# Go build outputs
+/tmp/fanapi-server
+/tmp/fanapi-script
+*.exe
+
+# Env / secrets
+.env
+.env.*
+config.local.yaml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
