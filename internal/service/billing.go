@@ -10,6 +10,13 @@ import (
 
 // WriteTx writes a billing transaction and syncs the user's DB balance.
 // cost 为支付给上游的进价成本（若暂不记录可传 0）。
+//
+// DB 余额权威笪略：
+//   - "hold"    ：仅插入流水记录，不动 DB（Redis 已原子扣款，不要重复扣 DB）
+//   - "settle"  ：将实际费用写入 DB（Redis 已由 Charge+Refund 组合处理好）
+//   - "charge"  ：直接一次性扣费（图片/视频/音频），DB 同步扣款
+//   - "refund"  ：退款加回 DB
+//   - "recharge"：充値加到 DB
 func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txType string, credits, cost int64, metrics model.JSON) error {
 	tx := &model.BillingTransaction{
 		UserID:    userID,
@@ -26,13 +33,19 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txT
 		return err
 	}
 
-	// Sync DB balance: deduct for charge/hold/settle, add for refund/recharge.
+	// 仅以下类型同步 DB 余额：
+	// - hold    不动 DB（避免与 settle 重复扣）
+	// - settle  扣除实际费用
+	// - charge  直接扣除（图片/视频/音频）
+	// - refund  恢复刭不应扣除的金额
+	// - recharge 充値
 	var delta int64
 	switch txType {
-	case "charge", "hold", "settle":
+	case "charge", "settle":
 		delta = -credits
 	case "refund", "recharge":
 		delta = credits
+		// "hold" 不动 DB
 	}
 	if delta != 0 {
 		_, err = db.Engine.Exec(
@@ -57,14 +70,8 @@ func GetBalance(ctx context.Context, userID int64) (int64, error) {
 }
 
 // Recharge adds credits to a user's balance (admin operation).
+// Balance update is handled inside WriteTx; do NOT update here separately.
 func Recharge(ctx context.Context, userID, adminID, credits int64) error {
-	_, err := db.Engine.Exec(
-		"UPDATE users SET balance = balance + $1 WHERE id = $2",
-		credits, userID,
-	)
-	if err != nil {
-		return err
-	}
 	return WriteTx(ctx, userID, 0, 0, "", "recharge", credits, 0, nil)
 }
 
@@ -76,4 +83,10 @@ func ListTransactions(ctx context.Context, userID int64, page, pageSize int) ([]
 		Limit(pageSize, (page-1)*pageSize).
 		Find(&txs)
 	return txs, err
+}
+
+// CountTransactions returns the total number of billing records for a user.
+func CountTransactions(ctx context.Context, userID int64) (int64, error) {
+	count, err := db.Engine.Where("user_id = ?", userID).Count(&model.BillingTransaction{})
+	return count, err
 }

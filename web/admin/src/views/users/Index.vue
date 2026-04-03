@@ -1,5 +1,20 @@
 <template>
-  <div>
+  <div class="users-page">
+    <el-card class="hero-card">
+      <div class="hero-row">
+        <div>
+          <div class="eyebrow">Users</div>
+          <h3>用户与余额管理</h3>
+          <p>查看用户注册状态、余额和手动充值情况，用于日常运营支持。</p>
+        </div>
+        <div class="hero-metric">
+          <strong>{{ total }}</strong>
+          <span>总用户数</span>
+        </div>
+      </div>
+    </el-card>
+
+    <el-card>
     <el-table :data="users" stripe border>
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="email" label="邮箱" />
@@ -28,6 +43,7 @@
       style="margin-top:16px"
       @current-change="fetchUsers"
     />
+    </el-card>
 
     <!-- 充值弹窗 -->
     <el-dialog v-model="showRecharge" title="手动充值" width="360px">
@@ -81,3 +97,16 @@ function fmtTime(row, col, val) {
   return val ? new Date(val).toLocaleString('zh-CN') : '-'
 }
 </script>
+
+<style scoped>
+.users-page { max-width: 1320px; }
+.hero-card { margin-bottom: 16px; }
+.hero-row { display:flex;align-items:center;justify-content:space-between;gap:16px; }
+.eyebrow { color:#1e66ff;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em; }
+.hero-row h3 { margin:8px 0 10px;font-size:1.55rem; }
+.hero-row p { margin:0;color:#617086; }
+.hero-metric { min-width:120px;padding:16px;border-radius:16px;background:linear-gradient(180deg,#f7fbff,#eef5ff);border:1px solid #d8e6ff; }
+.hero-metric strong { display:block;font-size:1.4rem;color:#0f172a; }
+.hero-metric span { color:#72829a;font-size:.82rem; }
+@media (max-width: 900px) { .hero-row { flex-direction:column;align-items:flex-start; } }
+</style>

@@ -1,14 +1,18 @@
 <template>
-  <div>
-    <el-card style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:24px">
+  <div class="billing-page">
+    <el-card class="hero-card">
+      <div class="hero-row">
         <div>
-          <div style="color:#909399;font-size:.85rem">当前余额</div>
-          <div style="font-size:2rem;font-weight:700">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
-          <div style="color:#c0c4cc;font-size:.8rem">{{ store.balance.toLocaleString() }} credits</div>
+          <div class="eyebrow">Wallet & Billing</div>
+          <h3>余额与消费流水</h3>
+          <p>余额不过期，所有充值、预扣、结算与退款记录都可以在这里统一查看。</p>
         </div>
-        <el-divider direction="vertical" style="height:60px" />
-        <el-button type="primary" size="large" @click="showRecharge = true">充值</el-button>
+        <div class="balance-box">
+          <span>当前余额</span>
+          <strong>¥{{ (store.balance / 1e6).toFixed(4) }}</strong>
+          <small>{{ store.balance.toLocaleString() }} credits</small>
+          <el-button type="primary" @click="showRecharge = true">充值</el-button>
+        </div>
       </div>
     </el-card>
 
@@ -26,7 +30,7 @@
         <el-table-column label="金额" width="140">
           <template #default="{ row }">
             <span :style="{ color: row.type === 'charge' ? '#f56c6c' : '#67c23a' }">
-              {{ row.type === 'charge' ? '-' : '+' }}{{ (Math.abs(row.amount) / 1e6).toFixed(6) }} ¥
+              {{ row.type === 'charge' ? '-' : '+' }}{{ (Math.abs(row.credits) / 1e6).toFixed(6) }} ¥
             </span>
           </template>
         </el-table-column>
@@ -81,3 +85,57 @@ function fmtTime(row, col, val) {
   return val ? new Date(val).toLocaleString('zh-CN') : '-'
 }
 </script>
+
+<style scoped>
+.billing-page {
+  max-width: 1320px;
+}
+.hero-card {
+  margin-bottom: 20px;
+}
+.hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.eyebrow {
+  color: #1e66ff;
+  font-size: .82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.hero-row h3 {
+  margin: 8px 0 10px;
+  font-size: 1.55rem;
+}
+.hero-row p {
+  margin: 0;
+  color: #617086;
+}
+.balance-box {
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #dce7fb;
+  background: linear-gradient(180deg, #f7fbff, #eef6ff);
+}
+.balance-box span,
+.balance-box small {
+  color: #69809e;
+}
+.balance-box strong {
+  font-size: 1.9rem;
+}
+
+@media (max-width: 900px) {
+  .hero-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+</style>

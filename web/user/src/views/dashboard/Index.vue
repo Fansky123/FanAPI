@@ -1,22 +1,22 @@
 <template>
-  <div>
-    <el-row :gutter="16" style="margin-bottom:24px">
+  <div class="dash-page">
+    <el-row :gutter="16" style="margin-bottom:18px">
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="hover" class="stat-card">
           <div class="stat-label">账户余额</div>
           <div class="stat-value">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
           <div class="stat-sub">{{ store.balance.toLocaleString() }} credits</div>
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="hover" class="stat-card">
           <div class="stat-label">可用渠道</div>
           <div class="stat-value">{{ channelCount }}</div>
           <div class="stat-sub">个渠道</div>
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card shadow="hover">
+        <el-card shadow="hover" class="stat-card">
           <div class="stat-label">API 密钥</div>
           <div class="stat-value">{{ keyCount }}</div>
           <div class="stat-sub">个密钥</div>
@@ -24,8 +24,10 @@
       </el-col>
     </el-row>
 
-    <el-card>
-      <template #header>快速入门</template>
+    <el-card class="guide-card">
+      <template #header>
+        <div class="guide-title">快速入门</div>
+      </template>
       <div class="quick-start">
         <p>1. 在 <router-link to="/keys">API 密钥</router-link> 页面创建你的密钥</p>
         <p>2. 在 <router-link to="/channels">渠道列表</router-link> 页面选择合适的渠道（可按价格筛选）</p>
@@ -62,17 +64,53 @@ const apiEndpoints = [
 onMounted(async () => {
   const [ch, keys] = await Promise.all([
     userApi.listChannels().catch(() => ({ channels: [] })),
-    userApi.listAPIKeys().catch(() => ({ keys: [] })),
+    userApi.listAPIKeys().catch(() => ({ api_keys: [] })),
   ])
   channelCount.value = ch.channels?.length ?? 0
-  keyCount.value = keys.keys?.length ?? 0
+  keyCount.value = keys.api_keys?.length ?? 0
 })
 </script>
 
 <style scoped>
-.stat-label { color: #909399; font-size: .85rem; margin-bottom: 8px; }
-.stat-value { font-size: 2rem; font-weight: 700; color: #303133; }
-.stat-sub { color: #c0c4cc; font-size: .8rem; margin-top: 4px; }
-.quick-start p { margin: 8px 0; color: #606266; }
-code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-size: .85rem; }
+.dash-page {
+  max-width: 1320px;
+}
+.stat-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(247, 251, 255, .94));
+}
+.stat-label {
+  color: #72829a;
+  font-size: .84rem;
+  margin-bottom: 8px;
+}
+.stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #101828;
+  letter-spacing: .01em;
+}
+.stat-sub {
+  color: #97a3b6;
+  font-size: .8rem;
+  margin-top: 4px;
+}
+.guide-card {
+  overflow: hidden;
+}
+.guide-title {
+  font-weight: 700;
+  color: #1a2b45;
+}
+.quick-start p {
+  margin: 8px 0;
+  color: #52627a;
+}
+code {
+  background: #f1f5fb;
+  border: 1px solid #dce6f7;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: .85rem;
+}
 </style>

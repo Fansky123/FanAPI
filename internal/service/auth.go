@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -61,8 +64,56 @@ func Login(ctx context.Context, email, password string, cfg *config.ServerConfig
 	return signed, user, err
 }
 
-// GenerateAPIKey creates a new API key, returns the raw key (shown once).
-func GenerateAPIKey(ctx context.Context, userID int64, name string) (string, error) {
+func encryptAPIKey(rawKey, secret string) (string, error) {
+	key := sha256.Sum256([]byte(secret + ":fanapi:apikey"))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(rawKey), nil)
+	buf := append(nonce, sealed...)
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+func DecryptAPIKey(cipherText, secret string) (string, error) {
+	if cipherText == "" {
+		return "", fmt.Errorf("empty cipher text")
+	}
+	key := sha256.Sum256([]byte(secret + ":fanapi:apikey"))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	raw, err := base64.StdEncoding.DecodeString(cipherText)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < gcm.NonceSize() {
+		return "", fmt.Errorf("invalid cipher text")
+	}
+	nonce := raw[:gcm.NonceSize()]
+	data := raw[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, data, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+// GenerateAPIKey creates a new API key and stores an encrypted copy for later viewing.
+func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -70,12 +121,17 @@ func GenerateAPIKey(ctx context.Context, userID int64, name string) (string, err
 	rawHex := hex.EncodeToString(raw)
 	h := sha256.Sum256([]byte(rawHex))
 	keyHash := hex.EncodeToString(h[:])
+	rawKeyEnc, err := encryptAPIKey(rawHex, secret)
+	if err != nil {
+		return "", err
+	}
 
 	apiKey := &model.APIKey{
-		UserID:   userID,
-		KeyHash:  keyHash,
-		Name:     name,
-		IsActive: true,
+		UserID:    userID,
+		KeyHash:   keyHash,
+		RawKeyEnc: rawKeyEnc,
+		Name:      name,
+		IsActive:  true,
 	}
 	if _, err := db.Engine.Insert(apiKey); err != nil {
 		return "", err

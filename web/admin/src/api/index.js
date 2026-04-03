@@ -17,5 +17,10 @@ export const userApi = {
 }
 
 export const txApi = {
-  list: (page = 1, size = 20) => http.get('/admin/transactions', { params: { page, size } }),
+  list: (params = {}) => http.get('/admin/transactions', { params }),
+}
+
+export const taskApi = {
+  list: (params = {}) => http.get('/admin/tasks', { params }),
+  get: (id) => http.get(`/admin/tasks/${id}`),
 }

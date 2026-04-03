@@ -1,11 +1,19 @@
 <template>
-  <div>
-    <div style="margin-bottom:16px;display:flex;justify-content:flex-end">
-      <el-button type="primary" @click="openDialog()">
-        <el-icon><Plus /></el-icon> 新增渠道
-      </el-button>
-    </div>
+  <div class="channels-page">
+    <el-card class="hero-card">
+      <div class="hero-row">
+        <div>
+          <div class="eyebrow">Channels</div>
+          <h3>渠道与定价管理</h3>
+          <p>统一管理上游渠道、模型映射、售价/进价和异步轮询策略。</p>
+        </div>
+        <el-button type="primary" @click="openDialog()">
+          <el-icon><Plus /></el-icon> 新增渠道
+        </el-button>
+      </div>
+    </el-card>
 
+    <el-card>
     <el-table :data="channels" stripe border>
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="name" label="渠道名称" />
@@ -42,6 +50,8 @@
         </template>
       </el-table-column>
     </el-table>
+
+    </el-card>
 
     <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="editRow ? '编辑渠道' : '新增渠道'" width="760px" top="5vh">
@@ -339,3 +349,13 @@ function formatCost(row) {
   return '—'
 }
 </script>
+
+<style scoped>
+.channels-page { max-width: 1320px; }
+.hero-card { margin-bottom: 16px; }
+.hero-row { display:flex;align-items:center;justify-content:space-between;gap:16px; }
+.eyebrow { color:#1e66ff;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em; }
+.hero-row h3 { margin:8px 0 10px;font-size:1.55rem; }
+.hero-row p { margin:0;color:#617086; }
+@media (max-width: 900px) { .hero-row { flex-direction:column;align-items:flex-start; } }
+</style>

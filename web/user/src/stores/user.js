@@ -18,7 +18,7 @@ export const useUserStore = defineStore('user', () => {
 
   async function fetchBalance() {
     const res = await userApi.getBalance()
-    balance.value = res.balance ?? 0
+    balance.value = res.balance_credits ?? 0
   }
 
   return { token, balance, setToken, logout, fetchBalance }

@@ -83,6 +83,19 @@ func handleTask(msg *nats.Msg) {
 		return
 	}
 
+	upstreamReq := model.JSON{}
+	for k, v := range payload {
+		upstreamReq[k] = v
+	}
+	upstreamResp := model.JSON{}
+	for k, v := range respData {
+		upstreamResp[k] = v
+	}
+	db.Engine.Where("id = ?", task.ID).Cols("upstream_request", "upstream_response").Update(&model.Task{
+		UpstreamRequest:  upstreamReq,
+		UpstreamResponse: upstreamResp,
+	})
+
 	// Map response：执行 response_script 将 vendor 原始响应转换为平台标准格式
 	// 标准格式（同步）：{"code":200, "url":"...", "status":2, "msg":""}
 	// 标准格式（异步）：{"upstream_task_id":"xxx"} —— 表示第三方为异步接口，
@@ -106,9 +119,11 @@ func handleTask(msg *nats.Msg) {
 
 	if upstreamTaskID != "" {
 		// 异步模式：保存第三方任务 ID，等待 poller 轮询
-		db.Engine.Where("id = ?", task.ID).Update(&model.Task{
-			Status:         "processing",
-			UpstreamTaskID: upstreamTaskID,
+		db.Engine.Where("id = ?", task.ID).Cols("status", "upstream_task_id", "upstream_request", "upstream_response").Update(&model.Task{
+			Status:           "processing",
+			UpstreamTaskID:   upstreamTaskID,
+			UpstreamRequest:  upstreamReq,
+			UpstreamResponse: upstreamResp,
 		})
 		log.Printf("[worker] task %d is async, upstream_task_id=%s", task.ID, upstreamTaskID)
 		return
@@ -119,10 +134,12 @@ func handleTask(msg *nats.Msg) {
 	for k, v := range respData {
 		result[k] = v
 	}
-	db.Engine.Where("id = ?", task.ID).Update(&model.Task{
-		Status:   "done",
-		Progress: 100,
-		Result:   result,
+	db.Engine.Where("id = ?", task.ID).Cols("status", "progress", "result", "upstream_request", "upstream_response").Update(&model.Task{
+		Status:           "done",
+		Progress:         100,
+		Result:           result,
+		UpstreamRequest:  upstreamReq,
+		UpstreamResponse: upstreamResp,
 	})
 }
 

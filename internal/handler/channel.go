@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"fanapi/internal/db"
 	"fanapi/internal/model"
@@ -10,6 +11,22 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func parseDateTime(value string, endOfDay bool) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	layouts := []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, value); err == nil {
+			if layout == "2006-01-02" && endOfDay {
+				return t.Add(24*time.Hour - time.Nanosecond), nil
+			}
+			return t, nil
+		}
+	}
+	return time.Time{}, strconv.ErrSyntax
+}
 
 // POST /admin/channels
 func CreateChannel(c *gin.Context) {
@@ -121,12 +138,73 @@ func ListAllTransactions(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
+	startAt, err := parseDateTime(c.Query("start_at"), false)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_at"})
+		return
+	}
+	endAt, err := parseDateTime(c.Query("end_at"), true)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_at"})
+		return
+	}
 
 	var txs []model.BillingTransaction
-	total, err := db.Engine.Desc("id").Limit(size, (page-1)*size).FindAndCount(&txs)
+	query := db.Engine.Desc("id")
+	if !startAt.IsZero() {
+		query = query.Where("created_at >= ?", startAt)
+	}
+	if !endAt.IsZero() {
+		query = query.And("created_at <= ?", endAt)
+	}
+	total, err := query.Limit(size, (page-1)*size).FindAndCount(&txs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"transactions": txs, "total": total})
+
+	type summaryRow struct {
+		Revenue int64 `xorm:"'revenue'"`
+		Cost    int64 `xorm:"'cost'"`
+		Profit  int64 `xorm:"'profit'"`
+		Count   int64 `xorm:"'count'"`
+	}
+	where := "WHERE 1=1"
+	args := make([]interface{}, 0, 2)
+	if !startAt.IsZero() {
+		where += " AND created_at >= ?"
+		args = append(args, startAt)
+	}
+	if !endAt.IsZero() {
+		where += " AND created_at <= ?"
+		args = append(args, endAt)
+	}
+	summary := summaryRow{}
+	sql := `SELECT
+		COALESCE(SUM(CASE
+			WHEN type IN ('charge','settle') THEN credits
+			WHEN type = 'refund' THEN -credits
+			ELSE 0 END), 0) AS revenue,
+		COALESCE(SUM(CASE WHEN type IN ('charge','settle') THEN cost ELSE 0 END), 0) AS cost,
+		COALESCE(SUM(CASE
+			WHEN type IN ('charge','settle') THEN credits - cost
+			WHEN type = 'refund' THEN -credits
+			ELSE 0 END), 0) AS profit,
+		COUNT(*) AS count
+	FROM billing_transactions ` + where
+	if _, err := db.Engine.SQL(sql, args...).Get(&summary); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions": txs,
+		"total":        total,
+		"summary": gin.H{
+			"revenue":           summary.Revenue,
+			"cost":              summary.Cost,
+			"profit":            summary.Profit,
+			"transaction_count": summary.Count,
+		},
+	})
 }

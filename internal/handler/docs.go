@@ -45,8 +45,14 @@ th{text-align:left;padding:7px 10px;background:#13151f;color:#718096;font-weight
 td{padding:7px 10px;border-top:1px solid #1e2232;vertical-align:top}
 .req{color:#f6ad55;font-size:11px}.opt{color:#4a5568;font-size:11px}
 code{background:#13151f;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:12px;color:#f6e05e}
-pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:auto;line-height:1.6;color:#a0c4ff;margin-top:4px}
+pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;overflow-x:auto;line-height:1.6;color:#a0c4ff;margin-top:0}
 .note{background:#1a2233;border-left:3px solid #63b3ed;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:#a0c4ff;margin-top:8px}
+.code-tabs{border:1px solid #2d3748;border-radius:6px;margin-top:4px;overflow:hidden}
+.tab-bar{display:flex;background:#13151f;border-bottom:1px solid #2d3748;gap:0}
+.tab{background:none;border:none;color:#718096;padding:7px 14px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:#e2e8f0}
+.tab.active{color:#63b3ed;border-bottom-color:#63b3ed}
+.code-pane{border-radius:0;border:none;margin-top:0}
 </style>
 </head>
 <body>
@@ -76,10 +82,108 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
           <tr><td>max_tokens</td><td>int</td><td><span class="opt">可选</span></td><td>最大输出 token 数</td></tr>
         </table>
         <h4>示例</h4>
-        <pre>curl -X POST "http://localhost:8080/v1/llm?channel_id=1" \
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/llm?channel_id=1" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":"你好"}],"stream":true,"max_tokens":500}'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/llm",
+    params={"channel_id": 1},
+    headers={"X-API-Key": "YOUR_SK"},
+    json={
+        "model": "claude-3-5-sonnet-20241022",
+        "messages": [{"role": "user", "content": "你好"}],
+        "stream": False,
+        "max_tokens": 500
+    }
+)
+print(resp.json())
+
+# 流式（stream=True）
+# resp = requests.post(..., json={..., "stream": True}, stream=True)
+# for line in resp.iter_lines():
+#     if line and line != b"data: [DONE]":
+#         print(line.decode())</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"model":      "claude-3-5-sonnet-20241022",
+		"messages":   []map[string]string{{"role": "user", "content": "你好"}},
+		"stream":     false,
+		"max_tokens": 500,
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/llm?channel_id=1",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data))
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"model":"claude-3-5-sonnet-20241022",
+             "messages":[{"role":"user","content":"你好"}],
+             "stream":false,"max_tokens":500}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/llm?channel_id=1"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/llm?channel_id=1", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "claude-3-5-sonnet-20241022",
+    messages: [{ role: "user", content: "你好" }],
+    stream: false,
+    max_tokens: 500
+  })
+});
+const data = await resp.json();
+console.log(data);
+
+// 流式（stream: true）
+// const resp = await fetch(..., { body: JSON.stringify({...stream:true}) });
+// const reader = resp.body.getReader();
+// while (true) {
+//   const { done, value } = await reader.read();
+//   if (done) break;
+//   console.log(new TextDecoder().decode(value));
+// }</pre>
+        </div>
         <div class="note">流式响应为 SSE 格式，每行 <code>data: {...}</code>，最后一行 <code>data: [DONE]</code></div>
       </div>
     </div>
@@ -115,10 +219,93 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
           <tr><td>4k</td><td>4096×2304</td><td>2304×4096</td><td>4096×4096</td><td>4096×3072</td></tr>
         </table>
         <h4>示例</h4>
-        <pre>curl -X POST "http://localhost:8080/v1/image?channel_id=2" \
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/image?channel_id=2" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
   -d '{"model":"nano-banana-pro","prompt":"赛博朋克猫","size":"4k","aspect_ratio":"9:16"}'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/image",
+    params={"channel_id": 2},
+    headers={"X-API-Key": "YOUR_SK"},
+    json={
+        "model": "nano-banana-pro",
+        "prompt": "赛博朋克猫",
+        "size": "4k",
+        "aspect_ratio": "9:16"
+    }
+)
+task_id = resp.json()["task_id"]
+print("Task ID:", task_id)</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"model":        "nano-banana-pro",
+		"prompt":       "赛博朋克猫",
+		"size":         "4k",
+		"aspect_ratio": "9:16",
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/image?channel_id=2",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data)) // {"task_id":1}
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"model":"nano-banana-pro","prompt":"赛博朋克猫",
+             "size":"4k","aspect_ratio":"9:16"}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/image?channel_id=2"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body()); // {"task_id":1}
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/image?channel_id=2", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "nano-banana-pro",
+    prompt: "赛博朋克猫",
+    size: "4k",
+    aspect_ratio: "9:16"
+  })
+});
+const { task_id } = await resp.json();
+console.log("Task ID:", task_id);</pre>
+        </div>
         <h4>Response</h4>
         <pre>{"task_id": 1}</pre>
       </div>
@@ -145,6 +332,97 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
           <tr><td>duration</td><td>int</td><td><span class="opt">可选</span></td><td>时长（秒）</td></tr>
           <tr><td>refer_images</td><td>[]string</td><td><span class="opt">可选</span></td><td>参考图（首帧/尾帧）</td></tr>
         </table>
+        <h4>示例</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/video?channel_id=3" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"video-gen-pro","prompt":"海浪拍打礁石","size":"1080p","aspect_ratio":"16:9","duration":5}'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/video",
+    params={"channel_id": 3},
+    headers={"X-API-Key": "YOUR_SK"},
+    json={
+        "model": "video-gen-pro",
+        "prompt": "海浪拍打礁石",
+        "size": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": 5
+    }
+)
+task_id = resp.json()["task_id"]
+print("Task ID:", task_id)</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"model":        "video-gen-pro",
+		"prompt":       "海浪拍打礁石",
+		"size":         "1080p",
+		"aspect_ratio": "16:9",
+		"duration":     5,
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/video?channel_id=3",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data))
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"model":"video-gen-pro","prompt":"海浪拍打礁石",
+             "size":"1080p","aspect_ratio":"16:9","duration":5}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/video?channel_id=3"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/video?channel_id=3", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "video-gen-pro",
+    prompt: "海浪拍打礁石",
+    size: "1080p",
+    aspect_ratio: "16:9",
+    duration: 5
+  })
+});
+const { task_id } = await resp.json();
+console.log("Task ID:", task_id);</pre>
+        </div>
         <h4>Response</h4>
         <pre>{"task_id": 5}</pre>
       </div>
@@ -169,6 +447,94 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
           <tr><td>style</td><td>string</td><td><span class="opt">可选</span></td><td>风格描述</td></tr>
           <tr><td>duration</td><td>int</td><td><span class="opt">可选</span></td><td>时长（秒）</td></tr>
         </table>
+        <h4>示例</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/audio?channel_id=4" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"music-gen","prompt":"一首轻快的爵士乐","style":"jazz","duration":30}'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/audio",
+    params={"channel_id": 4},
+    headers={"X-API-Key": "YOUR_SK"},
+    json={
+        "model": "music-gen",
+        "prompt": "一首轻快的爵士乐",
+        "style": "jazz",
+        "duration": 30
+    }
+)
+task_id = resp.json()["task_id"]
+print("Task ID:", task_id)</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"model":    "music-gen",
+		"prompt":   "一首轻快的爵士乐",
+		"style":    "jazz",
+		"duration": 30,
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/audio?channel_id=4",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data))
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"model":"music-gen","prompt":"一首轻快的爵士乐",
+             "style":"jazz","duration":30}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/audio?channel_id=4"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/audio?channel_id=4", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "music-gen",
+    prompt: "一首轻快的爵士乐",
+    style: "jazz",
+    duration: 30
+  })
+});
+const { task_id } = await resp.json();
+console.log("Task ID:", task_id);</pre>
+        </div>
         <h4>Response</h4>
         <pre>{"task_id": 10}</pre>
       </div>
@@ -201,8 +567,134 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
 
 // 失败
 {"code":500,"url":"","status":3,"msg":"upstream error"}</pre>
-        <h4>示例（每 3 秒轮询）</h4>
-        <pre>curl "http://localhost:8080/v1/tasks/1" -H "X-API-Key: YOUR_SK"</pre>
+        <h4>示例（轮询）</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl "http://localhost:8080/v1/tasks/1" -H "X-API-Key: YOUR_SK"</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests, time
+
+def poll_task(task_id, api_key, timeout=300):
+    url = f"http://localhost:8080/v1/tasks/{task_id}"
+    headers = {"X-API-Key": api_key}
+    deadline = time.time() + timeout
+    interval = 2
+    while time.time() < deadline:
+        r = requests.get(url, headers=headers).json()
+        if r["code"] == 200:
+            return r["url"]          # 成功，返回结果 URL
+        if r["code"] == 500:
+            raise Exception(r["msg"]) # 失败
+        time.sleep(interval)
+        interval = min(interval + 1, 5)  # 逐步增加间隔，最大 5s
+    raise TimeoutError("task timeout")
+
+url = poll_task(1, "YOUR_SK")
+print("Result:", url)</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+type TaskResp struct {
+	Code   int    ` + "`" + `json:"code"` + "`" + `
+	URL    string ` + "`" + `json:"url"` + "`" + `
+	Status int    ` + "`" + `json:"status"` + "`" + `
+	Msg    string ` + "`" + `json:"msg"` + "`" + `
+}
+
+func pollTask(taskID int, apiKey string) (string, error) {
+	url := fmt.Sprintf("http://localhost:8080/v1/tasks/%d", taskID)
+	interval := 2 * time.Second
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("X-API-Key", apiKey)
+		resp, _ := http.DefaultClient.Do(req)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var t TaskResp
+		json.Unmarshal(body, &t)
+		if t.Code == 200 {
+			return t.URL, nil
+		}
+		if t.Code == 500 {
+			return "", fmt.Errorf(t.Msg)
+		}
+		time.Sleep(interval)
+		if interval < 5*time.Second {
+			interval += time.Second
+		}
+	}
+	return "", fmt.Errorf("timeout")
+}
+
+func main() {
+	url, err := pollTask(1, "YOUR_SK")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Result:", url)
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        int taskId = 1;
+        String apiKey = "YOUR_SK";
+        HttpClient client = HttpClient.newHttpClient();
+        int interval = 2000;
+        long deadline = System.currentTimeMillis() + 300_000;
+        while (System.currentTimeMillis() < deadline) {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8080/v1/tasks/" + taskId))
+                .header("X-API-Key", apiKey)
+                .GET().build();
+            var resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+            String body = resp.body();
+            if (body.contains("\"code\":200")) {
+                System.out.println("Done: " + body);
+                return;
+            }
+            if (body.contains("\"code\":500")) {
+                System.err.println("Failed: " + body);
+                return;
+            }
+            Thread.sleep(interval);
+            if (interval < 5000) interval += 1000;
+        }
+        System.err.println("Timeout");
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>async function pollTask(taskId, apiKey, timeout = 300000) {
+  const url = ` + "`" + `http://localhost:8080/v1/tasks/${taskId}` + "`" + `;
+  const headers = { "X-API-Key": apiKey };
+  const deadline = Date.now() + timeout;
+  let interval = 2000;
+  while (Date.now() < deadline) {
+    const r = await fetch(url, { headers }).then(res => res.json());
+    if (r.code === 200) return r.url;
+    if (r.code === 500) throw new Error(r.msg);
+    await new Promise(res => setTimeout(res, interval));
+    if (interval < 5000) interval += 1000;
+  }
+  throw new Error("timeout");
+}
+
+const resultUrl = await pollTask(1, "YOUR_SK");
+console.log("Result:", resultUrl);</pre>
+        </div>
         <div class="note">建议轮询策略：前 10s 每 2s 一次，之后每 5s 一次，5 分钟未完成视为超时。</div>
       </div>
     </div>
@@ -213,6 +705,13 @@ pre{background:#13151f;padding:14px;border-radius:6px;font-size:12px;overflow-x:
 function toggle(el){
   var b=el.nextElementSibling;
   b.classList.toggle('open');
+}
+function switchLang(btn, lang) {
+  var box = btn.closest('.code-tabs');
+  box.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  box.querySelectorAll('.code-pane').forEach(function(p){ p.hidden = true; });
+  btn.classList.add('active');
+  box.querySelector('.code-pane[data-lang="' + lang + '"]').hidden = false;
 }
 </script>
 </body>

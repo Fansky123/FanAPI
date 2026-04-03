@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+
+:root {
+  --cf-bg: #f4f7fb;
+  --cf-panel: #ffffff;
+  --cf-panel-soft: #f7fafd;
+  --cf-text: #0f172a;
+  --cf-subtext: #5f6b7c;
+  --cf-border: #e7edf5;
+  --cf-primary: #1e66ff;
+  --cf-primary-2: #0ec5ff;
+  --cf-success: #12b76a;
+  --cf-danger: #f04438;
+  --cf-radius-lg: 18px;
+  --cf-radius-md: 12px;
+  --cf-shadow: 0 14px 44px rgba(11, 33, 79, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 420px at -8% -25%, rgba(30, 102, 255, 0.12), transparent 55%),
+    radial-gradient(960px 360px at 108% -18%, rgba(14, 197, 255, 0.14), transparent 54%),
+    var(--cf-bg);
+  color: var(--cf-text);
+  font-family: 'Plus Jakarta Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.el-card {
+  border: 1px solid var(--cf-border);
+  border-radius: var(--cf-radius-lg);
+  box-shadow: var(--cf-shadow);
+}
+
+.el-button--primary {
+  border: none;
+  background: linear-gradient(90deg, var(--cf-primary), var(--cf-primary-2));
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  border-radius: 10px;
+}
+
+.el-table {
+  border-radius: 12px;
+  overflow: hidden;
+}

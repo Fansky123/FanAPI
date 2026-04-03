@@ -7,6 +7,12 @@ export const authApi = {
   login: (data) => http.post('/auth/login', data),
 }
 
+// 任务相关（需 API Key）
+export const taskApi = {
+  list: (params) => http.get('/v1/tasks', { params }),
+  get: (id) => http.get(`/v1/tasks/${id}`),
+}
+
 // 用户相关（需 JWT）
 export const userApi = {
   getBalance: () => http.get('/user/balance'),

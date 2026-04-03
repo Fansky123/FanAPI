@@ -135,16 +135,21 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 
 	// 标准格式中 status 字段：2=成功 3=失败，其他值=仍在进行中
 	statusVal, _ := mappedResp["status"].(float64)
+	upstreamResp := model.JSON{}
+	for k, v := range rawResp {
+		upstreamResp[k] = v
+	}
 	switch int(statusVal) {
 	case 2: // 成功
 		result := model.JSON{}
 		for k, v := range mappedResp {
 			result[k] = v
 		}
-		db.Engine.Where("id = ?", task.ID).Update(&model.Task{
-			Status:   "done",
-			Progress: 100,
-			Result:   result,
+		db.Engine.Where("id = ?", task.ID).Cols("status", "progress", "result", "upstream_response").Update(&model.Task{
+			Status:           "done",
+			Progress:         100,
+			Result:           result,
+			UpstreamResponse: upstreamResp,
 		})
 		log.Printf("[poller] task %d done", task.ID)
 
@@ -153,6 +158,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		failTask(task.ID, "upstream failed: "+msg)
 
 	default:
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_response").Update(&model.Task{UpstreamResponse: upstreamResp})
 		// 仍在处理中，更新进度（如果上游返回了 progress 字段）
 		if progress, ok := mappedResp["progress"].(float64); ok {
 			db.Engine.Exec(

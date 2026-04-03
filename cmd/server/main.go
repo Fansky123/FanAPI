@@ -85,6 +85,8 @@ func main() {
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)
 			admin.GET("/transactions", handler.ListAllTransactions)
+			admin.GET("/tasks", handler.ListTasks)
+			admin.GET("/tasks/:id", handler.GetAdminTask)
 		}
 
 		// Public API (API Key required)
@@ -95,6 +97,7 @@ func main() {
 			v1.POST("/image", handler.CreateImageTask)
 			v1.POST("/video", handler.CreateVideoTask)
 			v1.POST("/audio", handler.CreateAudioTask)
+			v1.GET("/tasks", handler.ListUserTasks)
 			v1.GET("/tasks/:id", handler.GetTask)
 		}
 	}

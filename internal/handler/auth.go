@@ -8,6 +8,7 @@ import (
 	"fanapi/pkg/mailer"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -89,7 +90,7 @@ func (h *AuthHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 	userID := c.MustGet("user_id").(int64)
-	rawKey, err := service.GenerateAPIKey(c.Request.Context(), userID, req.Name)
+	rawKey, err := service.GenerateAPIKey(c.Request.Context(), userID, req.Name, h.cfg.JWTSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -114,12 +115,25 @@ func (h *AuthHandler) GetBalance(c *gin.Context) {
 // GET /user/transactions
 func (h *AuthHandler) GetTransactions(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
-	txs, err := service.ListTransactions(c.Request.Context(), userID, 1, 50)
+	page := 1
+	size := 20
+	if p := c.Query("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if s := c.Query("size"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 100 {
+			size = n
+		}
+	}
+	txs, err := service.ListTransactions(c.Request.Context(), userID, page, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"transactions": txs})
+	total, _ := service.CountTransactions(c.Request.Context(), userID)
+	c.JSON(http.StatusOK, gin.H{"transactions": txs, "total": total})
 }
 
 // GET /user/channels — 返回所有启用渠道的公开信息（含简化价格），
@@ -212,12 +226,54 @@ func buildPriceDisplay(billingType string, cfg model.JSON) string {
 func (h *AuthHandler) ListAPIKeys(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	var keys []model.APIKey
-	if err := db.Engine.Where("user_id = ? AND is_active = true", userID).
-		Cols("id", "name", "last_used_at", "created_at").Find(&keys); err != nil {
+	if err := db.Engine.Where("user_id = ?", userID).
+		Cols("id", "name", "key_hash", "raw_key_enc", "is_active", "last_used_at", "created_at").
+		Desc("id").
+		Find(&keys); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"api_keys": keys})
+
+	type apiKeyItem struct {
+		ID         int64       `json:"id"`
+		Name       string      `json:"name"`
+		KeyPrefix  string      `json:"key_prefix"`
+		RawKey     string      `json:"raw_key"`
+		Viewable   bool        `json:"viewable"`
+		IsActive   bool        `json:"is_active"`
+		LastUsedAt interface{} `json:"last_used_at"`
+		CreatedAt  interface{} `json:"created_at"`
+	}
+
+	items := make([]apiKeyItem, 0, len(keys))
+	for _, k := range keys {
+		rawKey := ""
+		viewable := false
+		if k.RawKeyEnc != "" {
+			if decrypted, err := service.DecryptAPIKey(k.RawKeyEnc, h.cfg.JWTSecret); err == nil {
+				rawKey = decrypted
+				viewable = true
+			}
+		}
+		prefix := ""
+		if len(k.KeyHash) >= 12 {
+			prefix = k.KeyHash[:12]
+		} else {
+			prefix = k.KeyHash
+		}
+		items = append(items, apiKeyItem{
+			ID:         k.ID,
+			Name:       k.Name,
+			KeyPrefix:  prefix,
+			RawKey:     rawKey,
+			Viewable:   viewable,
+			IsActive:   k.IsActive,
+			LastUsedAt: k.LastUsedAt,
+			CreatedAt:  k.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"api_keys": items})
 }
 
 // DELETE /user/apikeys/:id
@@ -226,10 +282,15 @@ func (h *AuthHandler) DeleteAPIKey(c *gin.Context) {
 	keyID := c.Param("id")
 	// Sanitize keyID
 	keyID = strings.TrimSpace(keyID)
-	_, err := db.Engine.Where("id = ? AND user_id = ?", keyID, userID).
+	affected, err := db.Engine.Where("id = ? AND user_id = ?", keyID, userID).
+		Cols("is_active").
 		Update(&model.APIKey{IsActive: false})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "api key revoked"})

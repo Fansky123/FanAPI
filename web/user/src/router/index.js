@@ -24,6 +24,8 @@ const routes = [
       { path: 'billing', name: 'Billing', component: () => import('@/views/billing/Index.vue') },
       { path: 'playground', name: 'Playground', component: () => import('@/views/playground/Index.vue') },
       { path: 'channels', name: 'Channels', component: () => import('@/views/dashboard/Channels.vue') },
+      { path: 'docs', name: 'Docs', component: () => import('@/views/docs/Index.vue') },
+      { path: 'tasks', name: 'Tasks', component: () => import('@/views/tasks/Index.vue') },
     ]
   },
   { path: '/:pathMatch(.*)*', redirect: '/' }
