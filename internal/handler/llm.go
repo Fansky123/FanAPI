@@ -80,6 +80,9 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 	totalHold := inputHold + outputHold
+	// 计算上游进价预估（用于记录成本，不影响用户扣费）
+	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
+
 	if totalHold > 0 {
 		if chargeErr := billing.Charge(c.Request.Context(), userID, totalHold); chargeErr != nil {
 			c.JSON(http.StatusPaymentRequired, gin.H{"error": chargeErr.Error()})
@@ -91,7 +94,7 @@ func LLMProxy(c *gin.Context) {
 	corrID := uuid.New().String()
 
 	if totalHold > 0 {
-		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "hold", totalHold, model.JSON{
+		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "hold", totalHold, upstreamCostHold, model.JSON{
 			"input_hold":  inputHold,
 			"output_hold": outputHold,
 		})
@@ -167,6 +170,7 @@ func LLMProxy(c *gin.Context) {
 	if lastUsageData != nil {
 		respData := map[string]interface{}{"usage": lastUsageData}
 		actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
+		actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
 		if settleErr == nil {
 			delta := totalHold - actualCost
 			if delta > 0 {
@@ -177,7 +181,7 @@ func LLMProxy(c *gin.Context) {
 				// 补扣失败不影响已返回的响应，记录日志即可
 				_ = billing.Charge(c.Request.Context(), userID, -delta)
 			}
-			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, model.JSON{
+			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, actualUpstreamCost, model.JSON{
 				"actual_cost": actualCost,
 				"held":        totalHold,
 				"usage":       lastUsageData,

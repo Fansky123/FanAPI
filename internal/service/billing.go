@@ -9,7 +9,8 @@ import (
 )
 
 // WriteTx writes a billing transaction and syncs the user's DB balance.
-func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txType string, credits int64, metrics model.JSON) error {
+// cost 为支付给上游的进价成本（若暂不记录可传 0）。
+func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txType string, credits, cost int64, metrics model.JSON) error {
 	tx := &model.BillingTransaction{
 		UserID:    userID,
 		ChannelID: channelID,
@@ -17,6 +18,7 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txT
 		CorrID:    corrID,
 		Type:      txType,
 		Credits:   credits,
+		Cost:      cost,
 		Metrics:   metrics,
 	}
 	_, err := db.Engine.Insert(tx)
@@ -63,7 +65,7 @@ func Recharge(ctx context.Context, userID, adminID, credits int64) error {
 	if err != nil {
 		return err
 	}
-	return WriteTx(ctx, userID, 0, 0, "", "recharge", credits, nil)
+	return WriteTx(ctx, userID, 0, 0, "", "recharge", credits, 0, nil)
 }
 
 // ListTransactions returns paginated billing history for a user.

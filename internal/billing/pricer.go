@@ -305,3 +305,126 @@ func splitKey(key string) []string {
 	}
 	return append(parts, key[start:])
 }
+
+// CalcUpstreamCost 计算本次请求需要支付给上游供应商的进价成本（预估值）。
+//
+// BillingConfig 中的进价字段（与售价字段同结构，以 _cost_ 代替 _price_）：
+//   - token 类型：input_cost_per_1k_tokens、output_cost_per_1k_tokens
+//   - image 类型：base_cost（替代 base_price）
+//   - video/audio 类型：cost_per_second（替代 price_per_second）
+//   - count 类型：cost_per_call（替代 price_per_call）
+//   - custom 类型：不支持，返回 0
+//
+// 若渠道未配置进价字段，则进价默认为 0（即成本未知）。
+func CalcUpstreamCost(ch *model.Channel, req map[string]interface{}) (int64, error) {
+	cfg := map[string]interface{}(ch.BillingConfig)
+	data := map[string]map[string]interface{}{"request": req}
+
+	switch ch.BillingType {
+	case "token":
+		inputHold, outputHold, err := calcUpstreamToken(cfg, data)
+		return inputHold + outputHold, err
+	case "image":
+		return calcUpstreamImage(cfg, data)
+	case "video":
+		return calcUpstreamVideo(cfg, data)
+	case "audio":
+		return calcUpstreamAudio(cfg, data)
+	case "count":
+		return getInt64Val(cfg, "cost_per_call"), nil
+	case "custom":
+		return 0, nil
+	default:
+		return 0, nil
+	}
+}
+
+// CalcActualUpstreamCost 根据响应中的实际用量计算上游真实进价成本（仅用于 token 类型结算）。
+// 与 CalcActualCost 逻辑相同，但使用 *_cost_* 进价字段。
+func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{}) (int64, error) {
+	if ch.BillingType != "token" {
+		return 0, nil
+	}
+	cfg := map[string]interface{}(ch.BillingConfig)
+	data := map[string]map[string]interface{}{"request": req, "response": resp}
+
+	outputCostPer1k := getInt64Val(cfg, "output_cost_per_1k_tokens")
+	inputCostPer1k := getInt64Val(cfg, "input_cost_per_1k_tokens")
+
+	outputPath := getStr(cfg, "metric_paths.output_tokens", "response.usage.completion_tokens")
+	outputTokens, _ := getInt64FromData(data, outputPath)
+	outputCost := int64(math.Ceil(float64(outputTokens)/1000) * float64(outputCostPer1k))
+
+	if !getBool(cfg, "input_from_response") {
+		return outputCost, nil
+	}
+
+	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
+	inputTokens, _ := getInt64FromData(data, inputPath)
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputCostPer1k))
+
+	return inputCost + outputCost, nil
+}
+
+func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, int64, error) {
+	inputCostPer1k := getInt64Val(cfg, "input_cost_per_1k_tokens")
+	outputCostPer1k := getInt64Val(cfg, "output_cost_per_1k_tokens")
+
+	maxTokensPath := getStr(cfg, "metric_paths.max_tokens", "request.max_tokens")
+	maxTokens, _ := getInt64FromData(data, maxTokensPath)
+	outputHold := int64(math.Ceil(float64(maxTokens)/1000) * float64(outputCostPer1k))
+
+	if getBool(cfg, "input_from_response") {
+		inputEst := estimateTokensFromMessages(data["request"])
+		inputHold := int64(math.Ceil(float64(inputEst)/1000) * float64(inputCostPer1k))
+		return inputHold, outputHold, nil
+	}
+
+	inputPath := getStr(cfg, "metric_paths.input_tokens", "request.input_tokens")
+	inputTokens, err := getInt64FromData(data, inputPath)
+	if err != nil {
+		inputTokens = estimateTokensFromMessages(data["request"])
+	}
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputCostPer1k))
+	return inputCost, outputHold, nil
+}
+
+func calcUpstreamImage(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, error) {
+	sizePath := getStr(cfg, "metric_paths.size", "request.size")
+	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
+	countPath := getStr(cfg, "metric_paths.count", "request.n")
+
+	sizeStr := getStrFromData(data, sizePath)
+	ratioStr := getStrFromData(data, ratioPath)
+	count, err := getInt64FromData(data, countPath)
+	if err != nil || count == 0 {
+		count = 1
+	}
+
+	pixels := ParseSizeToPixels(sizeStr, ratioStr)
+	multiplier := resolutionMultiplier(cfg, pixels)
+	baseCost := getInt64Val(cfg, "base_cost")
+	return int64(float64(baseCost) * multiplier * float64(count)), nil
+}
+
+func calcUpstreamVideo(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, error) {
+	sizePath := getStr(cfg, "metric_paths.size", "request.size")
+	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
+	durPath := getStr(cfg, "metric_paths.duration", "request.duration")
+
+	sizeStr := getStrFromData(data, sizePath)
+	ratioStr := getStrFromData(data, ratioPath)
+	duration, _ := getInt64FromData(data, durPath)
+
+	pixels := ParseSizeToPixels(sizeStr, ratioStr)
+	multiplier := resolutionMultiplier(cfg, pixels)
+	costPerSec := getInt64Val(cfg, "cost_per_second")
+	return int64(float64(costPerSec) * float64(duration) * multiplier), nil
+}
+
+func calcUpstreamAudio(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, error) {
+	durPath := getStr(cfg, "metric_paths.duration", "request.duration")
+	duration, _ := getInt64FromData(data, durPath)
+	costPerSec := getInt64Val(cfg, "cost_per_second")
+	return costPerSec * duration, nil
+}

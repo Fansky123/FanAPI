@@ -132,6 +132,9 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "billing error: " + calcErr.Error()})
 		return
 	}
+	// 计算上游进价成本（用于记录利润，不影响用户扣费）
+	upstreamCost, _ := billing.CalcUpstreamCost(ch, reqData)
+
 	if cost > 0 {
 		if chargeErr := billing.Charge(c.Request.Context(), userID, cost); chargeErr != nil {
 			c.JSON(http.StatusPaymentRequired, gin.H{"error": chargeErr.Error()})
@@ -161,7 +164,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 
 	// 写计费流水
 	corrID := uuid.New().String()
-	_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "charge", cost, model.JSON{
+	_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "charge", cost, upstreamCost, model.JSON{
 		"task_id": task.ID,
 		"type":    taskType,
 	})
