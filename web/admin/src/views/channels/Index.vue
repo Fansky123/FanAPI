@@ -90,22 +90,22 @@
         <!-- ===== Token 计费价格 ===== -->
         <template v-if="form.billing_type === 'token'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">Token 价格（单位：credits / 1k tokens）</span>
+            <span style="font-size:13px;color:#666">Token 价格（单位：credits / 1M tokens）</span>
           </el-divider>
           <el-form-item label="售价 · 输入">
-            <el-input-number v-model="form.bp.input_price_per_1k_tokens" :min="0" :step="1000" style="width:200px" />
+            <el-input-number v-model="form.bp.input_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
             <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
           </el-form-item>
           <el-form-item label="售价 · 输出">
-            <el-input-number v-model="form.bp.output_price_per_1k_tokens" :min="0" :step="1000" style="width:200px" />
+            <el-input-number v-model="form.bp.output_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
             <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
           </el-form-item>
           <el-form-item label="进价 · 输入">
-            <el-input-number v-model="form.bp.input_cost_per_1k_tokens" :min="0" :step="1000" style="width:200px" />
+            <el-input-number v-model="form.bp.input_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
             <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
           </el-form-item>
           <el-form-item label="进价 · 输出">
-            <el-input-number v-model="form.bp.output_cost_per_1k_tokens" :min="0" :step="1000" style="width:200px" />
+            <el-input-number v-model="form.bp.output_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
             <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
           </el-form-item>
           <el-form-item label="输入从响应取">
@@ -217,8 +217,8 @@ const emptyForm = () => ({
 function emptyBp() {
   return {
     // token
-    input_price_per_1k_tokens: 0, output_price_per_1k_tokens: 0,
-    input_cost_per_1k_tokens: 0, output_cost_per_1k_tokens: 0,
+    input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0,
+    input_cost_per_1m_tokens: 0, output_cost_per_1m_tokens: 0,
     input_from_response: false,
     // image
     base_price: 0, base_cost: 0,
@@ -320,7 +320,7 @@ async function toggleActive(row) {
 function formatPrice(row) {
   const c = row.billing_config ?? {}
   if (row.billing_type === 'token') {
-    return `输入 ${c.input_price_per_1k_tokens ?? 0} / 输出 ${c.output_price_per_1k_tokens ?? 0}`
+    return `输入 ${c.input_price_per_1m_tokens ?? 0} / 输出 ${c.output_price_per_1m_tokens ?? 0}`
   }
   if (row.billing_type === 'image') return `基础 ${c.base_price ?? 0}`
   if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.price_per_second ?? 0} /秒`
@@ -331,7 +331,7 @@ function formatPrice(row) {
 function formatCost(row) {
   const c = row.billing_config ?? {}
   if (row.billing_type === 'token') {
-    return `输入 ${c.input_cost_per_1k_tokens ?? 0} / 输出 ${c.output_cost_per_1k_tokens ?? 0}`
+    return `输入 ${c.input_cost_per_1m_tokens ?? 0} / 输出 ${c.output_cost_per_1m_tokens ?? 0}`
   }
   if (row.billing_type === 'image') return `基础 ${c.base_cost ?? 0}`
   if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.cost_per_second ?? 0} /秒`

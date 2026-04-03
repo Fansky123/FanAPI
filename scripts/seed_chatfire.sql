@@ -23,8 +23,8 @@ INSERT INTO channels (
     '',  -- 响应符合 OpenAI 标准，无需映射
     'token',
     '{
-        "input_price_per_1k_tokens": 15000,
-        "output_price_per_1k_tokens": 60000,
+        "input_price_per_1m_tokens": 15000000,
+        "output_price_per_1m_tokens": 60000000,
         "input_from_response": true,
         "metric_paths": {
             "input_tokens":  "response.usage.prompt_tokens",

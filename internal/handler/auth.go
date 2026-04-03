@@ -179,10 +179,10 @@ func buildPriceDisplay(billingType string, cfg model.JSON) string {
 	}
 	switch billingType {
 	case "token":
-		in := toF("input_price_per_1k_tokens") / 1000 // credits → ¥
-		out := toF("output_price_per_1k_tokens") / 1000
+		in := toF("input_price_per_1m_tokens") / 1000000 // credits → ¥
+		out := toF("output_price_per_1m_tokens") / 1000000
 		if in > 0 && out > 0 {
-			return fmt.Sprintf("¥%.4f / 1k 输入 + ¥%.4f / 1k 输出", in/1000, out/1000)
+			return fmt.Sprintf("¥%.4f / 1M 输入 + ¥%.4f / 1M 输出", in, out)
 		}
 	case "image":
 		base := toF("base_price") / 1000000

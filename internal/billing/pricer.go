@@ -59,13 +59,13 @@ func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64,
 	cfg := map[string]interface{}(ch.BillingConfig)
 	data := map[string]map[string]interface{}{"request": req, "response": resp}
 
-	outputPricePer1k := getInt64Val(cfg, "output_price_per_1k_tokens")
-	inputPricePer1k := getInt64Val(cfg, "input_price_per_1k_tokens")
+	outputPricePer1m := getInt64Val(cfg, "output_price_per_1m_tokens")
+	inputPricePer1m := getInt64Val(cfg, "input_price_per_1m_tokens")
 
 	// 从响应获取实际输出 token 数，默认路径兼容 OpenAI / chatfire 格式
 	outputPath := getStr(cfg, "metric_paths.output_tokens", "response.usage.completion_tokens")
 	outputTokens, _ := getInt64FromData(data, outputPath)
-	outputCost := int64(math.Ceil(float64(outputTokens)/1000) * float64(outputPricePer1k))
+	outputCost := int64(math.Ceil(float64(outputTokens)/1000000) * float64(outputPricePer1m))
 
 	if !getBool(cfg, "input_from_response") {
 		// 输入费用已在请求时精确扣除，结算只需返回实际输出费用
@@ -75,7 +75,7 @@ func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64,
 	// input_from_response=true：从响应 usage 中获取实际输入 token 数
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputPricePer1k))
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputPricePer1m))
 
 	return inputCost + outputCost, nil
 }
@@ -84,18 +84,18 @@ func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64,
 
 // calcToken 计算 LLM token 类型的预扣费用。
 func calcToken(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, int64, error) {
-	inputPricePer1k := getInt64Val(cfg, "input_price_per_1k_tokens")
-	outputPricePer1k := getInt64Val(cfg, "output_price_per_1k_tokens")
+	inputPricePer1m := getInt64Val(cfg, "input_price_per_1m_tokens")
+	outputPricePer1m := getInt64Val(cfg, "output_price_per_1m_tokens")
 
 	// 获取 max_tokens（用于预扣输出费）
 	maxTokensPath := getStr(cfg, "metric_paths.max_tokens", "request.max_tokens")
 	maxTokens, _ := getInt64FromData(data, maxTokensPath)
-	outputHold := int64(math.Ceil(float64(maxTokens)/1000) * float64(outputPricePer1k))
+	outputHold := int64(math.Ceil(float64(maxTokens)/1000000) * float64(outputPricePer1m))
 
 	if getBool(cfg, "input_from_response") {
 		// 输入费延迟到响应结算，预扣时用消息内容长度估算，避免余额不足风险
 		inputEst := estimateTokensFromMessages(data["request"])
-		inputHold := int64(math.Ceil(float64(inputEst)/1000) * float64(inputPricePer1k))
+		inputHold := int64(math.Ceil(float64(inputEst)/1000000) * float64(inputPricePer1m))
 		return inputHold, outputHold, nil
 	}
 
@@ -106,7 +106,7 @@ func calcToken(cfg map[string]interface{}, data map[string]map[string]interface{
 		// 路径不存在时降级为消息估算
 		inputTokens = estimateTokensFromMessages(data["request"])
 	}
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputPricePer1k))
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputPricePer1m))
 	return inputCost, outputHold, nil
 }
 
@@ -309,7 +309,7 @@ func splitKey(key string) []string {
 // CalcUpstreamCost 计算本次请求需要支付给上游供应商的进价成本（预估值）。
 //
 // BillingConfig 中的进价字段（与售价字段同结构，以 _cost_ 代替 _price_）：
-//   - token 类型：input_cost_per_1k_tokens、output_cost_per_1k_tokens
+//   - token 类型：input_cost_per_1m_tokens、output_cost_per_1m_tokens
 //   - image 类型：base_cost（替代 base_price）
 //   - video/audio 类型：cost_per_second（替代 price_per_second）
 //   - count 类型：cost_per_call（替代 price_per_call）
@@ -348,12 +348,12 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 	cfg := map[string]interface{}(ch.BillingConfig)
 	data := map[string]map[string]interface{}{"request": req, "response": resp}
 
-	outputCostPer1k := getInt64Val(cfg, "output_cost_per_1k_tokens")
-	inputCostPer1k := getInt64Val(cfg, "input_cost_per_1k_tokens")
+	outputCostPer1m := getInt64Val(cfg, "output_cost_per_1m_tokens")
+	inputCostPer1m := getInt64Val(cfg, "input_cost_per_1m_tokens")
 
 	outputPath := getStr(cfg, "metric_paths.output_tokens", "response.usage.completion_tokens")
 	outputTokens, _ := getInt64FromData(data, outputPath)
-	outputCost := int64(math.Ceil(float64(outputTokens)/1000) * float64(outputCostPer1k))
+	outputCost := int64(math.Ceil(float64(outputTokens)/1000000) * float64(outputCostPer1m))
 
 	if !getBool(cfg, "input_from_response") {
 		return outputCost, nil
@@ -361,22 +361,22 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputCostPer1k))
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputCostPer1m))
 
 	return inputCost + outputCost, nil
 }
 
 func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, int64, error) {
-	inputCostPer1k := getInt64Val(cfg, "input_cost_per_1k_tokens")
-	outputCostPer1k := getInt64Val(cfg, "output_cost_per_1k_tokens")
+	inputCostPer1m := getInt64Val(cfg, "input_cost_per_1m_tokens")
+	outputCostPer1m := getInt64Val(cfg, "output_cost_per_1m_tokens")
 
 	maxTokensPath := getStr(cfg, "metric_paths.max_tokens", "request.max_tokens")
 	maxTokens, _ := getInt64FromData(data, maxTokensPath)
-	outputHold := int64(math.Ceil(float64(maxTokens)/1000) * float64(outputCostPer1k))
+	outputHold := int64(math.Ceil(float64(maxTokens)/1000000) * float64(outputCostPer1m))
 
 	if getBool(cfg, "input_from_response") {
 		inputEst := estimateTokensFromMessages(data["request"])
-		inputHold := int64(math.Ceil(float64(inputEst)/1000) * float64(inputCostPer1k))
+		inputHold := int64(math.Ceil(float64(inputEst)/1000000) * float64(inputCostPer1m))
 		return inputHold, outputHold, nil
 	}
 
@@ -385,7 +385,7 @@ func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]in
 	if err != nil {
 		inputTokens = estimateTokensFromMessages(data["request"])
 	}
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000) * float64(inputCostPer1k))
+	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputCostPer1m))
 	return inputCost, outputHold, nil
 }
 
