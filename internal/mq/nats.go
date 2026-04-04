@@ -3,6 +3,7 @@ package mq
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"fanapi/internal/config"
@@ -61,15 +62,32 @@ func EnsureStream() error {
 			return fmt.Errorf("create TASKS stream: %w", err)
 		}
 		log.Printf("[mq] JetStream stream %q created (FileStorage, WorkQueuePolicy)", streamName)
-		return nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return fmt.Errorf("stream info: %w", err)
+	} else {
+		if _, err = JS.UpdateStream(cfg); err != nil {
+			return fmt.Errorf("update TASKS stream: %w", err)
+		}
+		log.Printf("[mq] JetStream stream %q confirmed", streamName)
 	}
-	if _, err = JS.UpdateStream(cfg); err != nil {
-		return fmt.Errorf("update TASKS stream: %w", err)
+
+	// Clean up any stale consumers whose filter subjects no longer match
+	// (e.g. old "script-workers" bound to "task.image.*" after migrating to "task.>").
+	for info := range JS.Consumers(streamName) {
+		name := info.Name
+		filter := info.Config.FilterSubject
+		// A consumer is stale if it claims to be a workers-* consumer but its filter
+		// no longer matches any of the expected patterns.
+		if strings.HasPrefix(name, "workers-") && filter != "" && filter != streamSubj {
+			expected := "workers-" + strings.NewReplacer(
+				"task.", "", ".*", "", ".", "-", ">", "all", "*", "any",
+			).Replace(filter)
+			if name != expected {
+				_ = JS.DeleteConsumer(streamName, name)
+				log.Printf("[mq] deleted stale consumer %q (filter: %q)", name, filter)
+			}
+		}
 	}
-	log.Printf("[mq] JetStream stream %q confirmed", streamName)
 	return nil
 }
 

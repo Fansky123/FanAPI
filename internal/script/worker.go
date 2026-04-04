@@ -8,8 +8,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
+	"fanapi/internal/config"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
 	"fanapi/internal/mq"
@@ -25,17 +27,46 @@ type taskRequest struct {
 	Payload   map[string]interface{} `json:"payload"`
 }
 
-// StartWorkers 订阅 NATS 的 task.image.*、task.video.*、task.audio.* 三类主题，
-// 使用 queue group "script-workers" 保证同一任务只被一个 worker 处理。
-func StartWorkers() error {
-	subjects := []string{"task.image.*", "task.video.*", "task.audio.*"}
+// StartWorkers subscribes to NATS task subjects based on WorkerConfig.
+//
+// Default (no config): subscribes to "task.>" with consumer "workers-all".
+// Example specialised worker (add to config.yaml):
+//
+//	worker:
+//	  subjects:
+//	    - "task.video.*"   # consumer: workers-video
+//	    - "task.audio.*"   # consumer: workers-audio
+//
+// Each subject gets its own durable consumer so multiple specialised workers
+// can coexist on the NATS stream without conflict.
+func StartWorkers(cfg config.WorkerConfig) error {
+	subjects := cfg.Subjects
+	if len(subjects) == 0 {
+		subjects = []string{"task.>"}
+	}
 	for _, subj := range subjects {
-		if _, err := mq.QueueSubscribe(subj, "script-workers", handleTask); err != nil {
+		consumer := subjectToConsumer(subj)
+		if _, err := mq.QueueSubscribe(subj, consumer, handleTask); err != nil {
 			return fmt.Errorf("subscribe %s: %w", subj, err)
 		}
+		log.Printf("[script worker] subscribed to %s (consumer: %s)", subj, consumer)
 	}
-	log.Println("[script worker] subscribed to task.image.*, task.video.*, task.audio.*")
 	return nil
+}
+
+// subjectToConsumer derives a stable, JetStream-safe consumer name from a subject.
+// Examples:
+//
+//	"task.>"       → "workers-all"
+//	"task.image.*" → "workers-image"
+//	"task.video.*" → "workers-video"
+func subjectToConsumer(subject string) string {
+	s := strings.TrimPrefix(subject, "task.")
+	s = strings.TrimSuffix(s, ".*")
+	s = strings.ReplaceAll(s, ".", "-")
+	s = strings.ReplaceAll(s, ">", "all")
+	s = strings.ReplaceAll(s, "*", "any")
+	return "workers-" + s
 }
 
 func handleTask(msg *nats.Msg) {

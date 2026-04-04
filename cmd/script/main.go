@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	if err := db.Init(&cfg.DB); err != nil {
+	if err := db.Init(&cfg.DB, false); err != nil {
 		log.Fatalf("db: %v", err)
 	}
 	log.Println("db connected")
@@ -38,7 +38,7 @@ func main() {
 		log.Fatalf("nats ensure stream: %v", err)
 	}
 
-	if err := script.StartWorkers(); err != nil {
+	if err := script.StartWorkers(cfg.Worker); err != nil {
 		log.Fatalf("start workers: %v", err)
 	}
 

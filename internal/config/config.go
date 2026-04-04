@@ -10,6 +10,7 @@ type Config struct {
 	Redis  RedisConfig  `mapstructure:"redis"`
 	NATS   NATSConfig   `mapstructure:"nats"`
 	SMTP   SMTPConfig   `mapstructure:"smtp"`
+	Worker WorkerConfig `mapstructure:"worker"`
 }
 
 type ServerConfig struct {
@@ -35,6 +36,17 @@ type RedisConfig struct {
 
 type NATSConfig struct {
 	URL string `mapstructure:"url"`
+}
+
+// WorkerConfig controls which NATS subjects this worker process subscribes to.
+// Defaults to ["task.>"] (all task types).
+// To run a specialised worker (e.g. GPU node for video only), set:
+//
+//	worker:
+//	  subjects:
+//	    - "task.video.*"
+type WorkerConfig struct {
+	Subjects []string `mapstructure:"subjects"`
 }
 
 type SMTPConfig struct {

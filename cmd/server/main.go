@@ -22,7 +22,7 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	if err := db.Init(&cfg.DB); err != nil {
+	if err := db.Init(&cfg.DB, true); err != nil {
 		log.Fatalf("db: %v", err)
 	}
 	log.Println("db connected")

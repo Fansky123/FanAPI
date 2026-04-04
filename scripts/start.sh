@@ -14,14 +14,14 @@ else
 fi
 
 # ---------- 2. Redis ----------
-if curl -s --max-time 1 telnet://127.0.0.1:6379 >/dev/null 2>&1; then
-    echo "[2/4] Redis 已运行 ✓"
-elif command -v redis-server >/dev/null 2>&1; then
-    echo "[2/4] 启动 Redis..."
-    redis-server --daemonize yes --logfile /tmp/redis.log
-    sleep 1
+REDIS_ADDR=$(awk '/^redis:/{f=1;next} f && /addr:/{gsub(/.*addr:[[:space:]]*/,""); gsub(/"/, ""); print; exit} /^[^[:space:]]/{f=0}' config.yaml | tr -d '\r')
+REDIS_ADDR=${REDIS_ADDR:-"localhost:6379"}
+REDIS_HOST=${REDIS_ADDR%%:*}
+REDIS_PORT=${REDIS_ADDR##*:}
+if python3 -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('${REDIS_HOST}', ${REDIS_PORT})); s.close()" 2>/dev/null; then
+    echo "[2/4] Redis 已就绪 ${REDIS_ADDR} ✓"
 else
-    echo "[2/4] Redis 未运行且 redis-server 不可用，请先在宿主机启动 Redis (端口 6379)" >&2
+    echo "[2/4] 无法连接 Redis (${REDIS_ADDR})，请确认 Redis 容器已启动并可达" >&2
     exit 1
 fi
 
