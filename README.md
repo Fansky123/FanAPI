@@ -5,11 +5,13 @@
 ## 功能特性
 
 - **多渠道代理** — 通过 goja（JS 运行时）动态脚本映射请求/响应格式，灵活接入各类上游 API
+- **多协议支持** — 同时支持 OpenAI、Claude、Gemini 三种协议格式（含 SSE 流式）
 - **LLM 对话** — 支持流式（SSE）和非流式代理，双阶段计费（预扣 + 结算）
 - **异步任务** — 图片、视频、音频生成任务，支持异步轮询状态查询
 - **计费系统** — 多维度计费模型（按 token / 图片 / 视频 / 音频 / 自定义脚本），余额管理与交易记录
+- **卡密充值** — 管理员生成卡密，用户凭码充值
 - **用户系统** — 邮件验证码注册、JWT 登录、API Key 管理
-- **管理后台** — 渠道 CRUD、用户充值、交易查询
+- **管理后台** — 渠道 CRUD、号池管理、用户充值、交易查询、卡密管理，与用户端共享同一前端入口
 
 ## 技术栈
 
@@ -47,6 +49,11 @@ cp config.yaml config.local.yaml
 ```bash
 bash scripts/start.sh
 ```
+
+启动后访问地址：
+- 用户端：`http://localhost:3000`
+- 管理后台：`http://localhost:3000/admin`
+- API 文档：`http://localhost:8080/docs`
 
 ### 3. 默认账号
 
@@ -88,7 +95,9 @@ psql -U <user> -d <db> -f scripts/seed_chatfire.sql
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/v1/llm?channel_id=X` | LLM 对话代理（支持 SSE） |
+| POST | `/v1/chat/completions?channel_id=X` | LLM 对话（OpenAI 标准格式，支持 SSE） |
+| POST | `/v1/messages?channel_id=X` | LLM 对话（Claude 原生格式，支持 SSE） |
+| POST | `/v1/gemini?channel_id=X` | LLM 对话（Gemini 原生格式，支持 SSE） |
 | POST | `/v1/image` | 图片生成（异步） |
 | POST | `/v1/video` | 视频生成（异步） |
 | POST | `/v1/audio` | 音频生成（异步） |
@@ -100,10 +109,18 @@ psql -U <user> -d <db> -f scripts/seed_chatfire.sql
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | CRUD | `/admin/channels` | 频道管理 |
+| CRUD | `/admin/key-pools` | 号池管理 |
+| GET/POST/DELETE | `/admin/key-pools/:id/keys` | 号池 Key 管理 |
 | GET | `/admin/users` | 用户列表 |
 | POST | `/admin/users/:id/recharge` | 用户充值 |
+| PUT | `/admin/users/:id/password` | 重置用户密码 |
 | GET | `/admin/transactions` | 全部交易记录 |
 | GET | `/admin/tasks` | 全部任务查询 |
+| GET | `/admin/stats` | 平台数据统计 |
+| POST | `/admin/cards/generate` | 批量生成卡密 |
+| GET | `/admin/cards` | 卡密列表 |
+| DELETE | `/admin/cards/:id` | 删除卡密 |
+| POST | `/user/cards/redeem` | 用户兑换卡密（需 JWT）|
 
 ## 项目结构
 
@@ -126,8 +143,21 @@ fanapi/
 ├── pkg/
 │   └── mailer/       # 邮件发送
 ├── web/
-│   ├── admin/        # 管理后台前端（Vue 3）
-│   └── user/         # 用户前端（Vue 3）
+│   └── user/         # 前端（Vue 3 + Vite，用户端 + 管理后台）
+│       ├── src/views/         # 页面组件
+│       │   ├── admin/         # 管理后台页面（路由前缀 /admin）
+│       │   ├── auth/          # 登录 / 注册
+│       │   ├── billing/       # 充值与账单
+│       │   ├── dashboard/     # 布局与渠道列表
+│       │   ├── docs/          # API 文档
+│       │   ├── keys/          # API Key 管理
+│       │   ├── playground/    # 在线调试
+│       │   └── tasks/         # 任务中心
+│       └── src/api/           # API 封装
+│           ├── index.js       # 用户端 API
+│           ├── http.js        # 用户端 axios 实例
+│           ├── admin.js       # 管理端 API
+│           └── admin-http.js  # 管理端 axios 实例
 └── scripts/          # 数据库初始化脚本
 ```
 

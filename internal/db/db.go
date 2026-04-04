@@ -45,6 +45,7 @@ func Init(cfg *config.DBConfig, migrate bool) error {
 		new(model.PoolKey),
 		new(model.Task),
 		new(model.BillingTransaction),
+		new(model.Card),
 	); err != nil {
 		return err
 	}
@@ -76,6 +77,15 @@ func seedAdmin() error {
 			return fmt.Errorf("seed check %s: %w", a.email, err)
 		}
 		if exists {
+			// Ensure the pre-existing account has the correct role (e.g., if admin
+			// registered through the public endpoint before the seed ran).
+			if a.role == "admin" {
+				if _, err := Engine.Where("email = ? AND role != 'admin'", a.email).
+					Cols("role", "is_active").
+					Update(&model.User{Role: "admin", IsActive: true}); err != nil {
+					return fmt.Errorf("seed fix role %s: %w", a.email, err)
+				}
+			}
 			continue
 		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(a.password), bcrypt.DefaultCost)

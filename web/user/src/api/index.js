@@ -22,4 +22,5 @@ export const userApi = {
   createAPIKey: (name) => http.post('/user/apikeys', { name }),
   deleteAPIKey: (id) => http.delete(`/user/apikeys/${id}`),
   listChannels: () => http.get('/user/channels'),
+  redeemCard: (code) => http.post('/user/cards/redeem', { code }),
 }

@@ -9,11 +9,13 @@
         </div>
       </div>
       <el-menu :default-active="route.path" router class="side-menu">
-        <el-menu-item index="/channels"><el-icon><Connection /></el-icon>渠道管理</el-menu-item>
-        <el-menu-item index="/key-pools"><el-icon><Key /></el-icon>号池管理</el-menu-item>
-        <el-menu-item index="/users"><el-icon><User /></el-icon>用户管理</el-menu-item>
-        <el-menu-item index="/billing"><el-icon><Tickets /></el-icon>账单流水</el-menu-item>
-        <el-menu-item index="/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
+        <el-menu-item index="/admin/dashboard"><el-icon><DataAnalysis /></el-icon>数据概览</el-menu-item>
+        <el-menu-item index="/admin/channels"><el-icon><Connection /></el-icon>渠道管理</el-menu-item>
+        <el-menu-item index="/admin/key-pools"><el-icon><Key /></el-icon>号池管理</el-menu-item>
+        <el-menu-item index="/admin/users"><el-icon><User /></el-icon>用户管理</el-menu-item>
+        <el-menu-item index="/admin/billing"><el-icon><Tickets /></el-icon>账单流水</el-menu-item>
+        <el-menu-item index="/admin/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
+        <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
     </el-aside>
@@ -60,12 +62,12 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authApi } from '@/api'
+import { authApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
-const titles = { '/channels': '渠道管理', '/key-pools': '号池管理', '/users': '用户管理', '/billing': '账单流水', '/tasks': '任务中心' }
+const titles = { '/admin/dashboard': '数据概览', '/admin/channels': '渠道管理', '/admin/key-pools': '号池管理', '/admin/users': '用户管理', '/admin/billing': '账单流水', '/admin/tasks': '任务中心', '/admin/cards': '卡密管理' }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
 
 // 账户菜单
@@ -97,7 +99,7 @@ async function doChangePwd() {
 
 function logout() {
   localStorage.removeItem('admin_token')
-  router.push('/login')
+  router.push('/admin/login')
 }
 </script>
 

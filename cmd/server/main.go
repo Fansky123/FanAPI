@@ -76,6 +76,7 @@ func main() {
 			user.POST("/apikeys", authH.CreateAPIKey)
 			user.DELETE("/apikeys/:id", authH.DeleteAPIKey)
 			user.PUT("/password", authH.ChangePassword)
+			user.POST("/cards/redeem", handler.RedeemCard)
 		}
 
 		// Admin routes (JWT or API Key + admin role)
@@ -99,7 +100,16 @@ func main() {
 			admin.GET("/transactions", handler.ListAllTransactions)
 			admin.GET("/tasks", handler.ListTasks)
 			admin.GET("/tasks/:id", handler.GetAdminTask)
+			admin.GET("/stats", handler.GetAdminStats)
+			// 卡密管理
+			admin.POST("/cards/generate", handler.GenerateCards)
+			admin.GET("/cards", handler.ListCards)
+			admin.DELETE("/cards/:id", handler.DeleteCard)
 		}
+
+		// 用户任务查询（支持 JWT 或 API Key）
+		authed.GET("/v1/tasks", handler.ListUserTasks)
+		authed.GET("/v1/tasks/:id", handler.GetTask)
 
 		// Public API (API Key required)
 		v1 := authed.Group("/v1")
@@ -111,8 +121,6 @@ func main() {
 			v1.POST("/image", handler.CreateImageTask)
 			v1.POST("/video", handler.CreateVideoTask)
 			v1.POST("/audio", handler.CreateAudioTask)
-			v1.GET("/tasks", handler.ListUserTasks)
-			v1.GET("/tasks/:id", handler.GetTask)
 		}
 	}
 

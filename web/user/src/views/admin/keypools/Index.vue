@@ -151,7 +151,7 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { keyPoolApi } from '@/api'
+import { keyPoolApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 // ── 号池列表 ──

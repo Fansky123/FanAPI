@@ -236,3 +236,51 @@ func ListAllTransactions(c *gin.Context) {
 		},
 	})
 }
+
+// GetAdminStats GET /admin/stats
+func GetAdminStats(c *gin.Context) {
+	totalChannels, _ := db.Engine.Count(new(model.Channel))
+	activeChannels, _ := db.Engine.Where("is_active = true").Count(new(model.Channel))
+	totalUsers, _ := db.Engine.Where("role = 'user'").Count(new(model.User))
+
+	type sumRow struct {
+		Revenue int64
+		Cost    int64
+		Count   int64
+	}
+
+	var todayRow, totalRow sumRow
+
+	today := time.Now().Truncate(24 * time.Hour)
+	db.Engine.SQL(`SELECT
+		COALESCE(SUM(credits),0) AS revenue,
+		COALESCE(SUM(cost),0)    AS cost,
+		COUNT(*)                 AS count
+	FROM billing_transactions
+	WHERE type = 'settle' AND created_at >= ?`, today).Get(&todayRow)
+
+	db.Engine.SQL(`SELECT
+		COALESCE(SUM(credits),0) AS revenue,
+		COALESCE(SUM(cost),0)    AS cost,
+		COUNT(*)                 AS count
+	FROM billing_transactions
+	WHERE type = 'settle'`).Get(&totalRow)
+
+	c.JSON(http.StatusOK, gin.H{
+		"channels":        totalChannels,
+		"active_channels": activeChannels,
+		"users":           totalUsers,
+		"today": gin.H{
+			"revenue": todayRow.Revenue,
+			"cost":    todayRow.Cost,
+			"profit":  todayRow.Revenue - todayRow.Cost,
+			"count":   todayRow.Count,
+		},
+		"total": gin.H{
+			"revenue": totalRow.Revenue,
+			"cost":    totalRow.Cost,
+			"profit":  totalRow.Revenue - totalRow.Cost,
+			"count":   totalRow.Count,
+		},
+	})
+}

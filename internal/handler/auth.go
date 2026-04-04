@@ -143,7 +143,7 @@ func (h *AuthHandler) GetTransactions(c *gin.Context) {
 func (h *AuthHandler) ListModels(c *gin.Context) {
 	var channels []model.Channel
 	if err := db.Engine.Where("is_active = true").
-		Cols("id", "name", "model", "type", "billing_type", "billing_config").
+		Cols("id", "name", "model", "type", "protocol", "billing_type", "billing_config").
 		Find(&channels); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -152,11 +152,12 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 	// channelInfo 是暴露给用户的渠道公开信息，隐藏脚本/密钥/上游地址。
 	type channelInfo struct {
 		ID           int64  `json:"id"`
-		Name         string `json:"name"`          // 渠道展示名称，如 "nano-1001"
-		Model        string `json:"model"`         // 标准模型名，用于前端分组
-		Type         string `json:"type"`          // llm / image / video / audio
-		BillingType  string `json:"billing_type"`  // token / image / video / audio / count
-		PriceDisplay string `json:"price_display"` // 简化价格字符串，方便用户对比
+		Name         string `json:"name"`
+		Model        string `json:"model"`
+		Type         string `json:"type"`
+		Protocol     string `json:"protocol"`
+		BillingType  string `json:"billing_type"`
+		PriceDisplay string `json:"price_display"`
 	}
 
 	result := make([]channelInfo, 0, len(channels))
@@ -166,6 +167,7 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 			Name:         ch.Name,
 			Model:        ch.Model,
 			Type:         ch.Type,
+			Protocol:     ch.Protocol,
 			BillingType:  ch.BillingType,
 			PriceDisplay: buildPriceDisplay(ch.BillingType, ch.BillingConfig),
 		})

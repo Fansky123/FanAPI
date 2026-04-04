@@ -1,41 +1,36 @@
 <template>
   <div class="billing-page">
-    <el-card class="hero-card">
-      <div class="hero-row">
-        <div>
-          <div class="eyebrow">Wallet & Billing</div>
-          <h3>余额与消费流水</h3>
-          <p>余额不过期，所有充值、预扣、结算与退款记录都可以在这里统一查看。</p>
+    <!-- 余额卡片 -->
+    <el-row :gutter="18" style="margin-bottom:18px">
+      <el-col :span="10">
+        <div class="balance-card">
+          <div class="balance-label">当前余额</div>
+          <div class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
+          <div class="balance-sub">{{ store.balance.toLocaleString() }} credits</div>
+          <el-button type="primary" style="margin-top:16px" @click="showRedeem = true">
+            兑换卡密充值
+          </el-button>
         </div>
-        <div class="balance-box">
-          <span>当前余额</span>
-          <strong>¥{{ (store.balance / 1e6).toFixed(4) }}</strong>
-          <small>{{ store.balance.toLocaleString() }} credits</small>
-          <el-button type="primary" @click="showRecharge = true">充值</el-button>
-        </div>
-      </div>
-    </el-card>
+      </el-col>
+    </el-row>
 
-    <!-- 账单明细 -->
+    <!-- 余额流水 -->
     <el-card>
-      <template #header>消费记录</template>
+      <template #header>余额流水</template>
       <el-table :data="txList" stripe>
         <el-table-column prop="type" label="类型" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'charge' ? 'danger' : 'success'" size="small">
-              {{ txTypeLabel(row.type) }}
-            </el-tag>
+            <el-tag :type="txTagType(row.type)" size="small">{{ txTypeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="金额" width="140">
+        <el-table-column label="金额" width="160">
           <template #default="{ row }">
-            <span :style="{ color: row.type === 'charge' ? '#f56c6c' : '#67c23a' }">
-              {{ row.type === 'charge' ? '-' : '+' }}{{ (Math.abs(row.credits) / 1e6).toFixed(6) }} ¥
+            <span :class="txAmtClass(row.type)">
+              {{ txSign(row.type) }}¥{{ (Math.abs(row.credits) / 1e6).toFixed(6) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="时间" :formatter="fmtTime" />
-        <el-table-column prop="note" label="备注" show-overflow-tooltip />
       </el-table>
       <el-pagination
         v-model:current-page="page"
@@ -46,13 +41,21 @@
       />
     </el-card>
 
-    <!-- 充值弹窗（占位，实际需对接支付）-->
-    <el-dialog v-model="showRecharge" title="充值" width="400px">
-      <el-alert type="info" :closable="false">
-        请联系管理员手动充值或对接支付渠道
-      </el-alert>
+    <!-- 兑换卡密弹窗 -->
+    <el-dialog v-model="showRedeem" title="兑换卡密" width="400px" @close="redeemCode = ''">
+      <el-form @submit.prevent="doRedeem">
+        <el-form-item label="卡密">
+          <el-input
+            v-model="redeemCode"
+            placeholder="FANAPI-XXXXXXXXXXXXXXXX"
+            clearable
+            @keyup.enter="doRedeem"
+          />
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <el-button @click="showRecharge = false">关闭</el-button>
+        <el-button @click="showRedeem = false">取消</el-button>
+        <el-button type="primary" :loading="redeeming" @click="doRedeem">立即兑换</el-button>
       </template>
     </el-dialog>
   </div>
@@ -60,6 +63,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { userApi } from '@/api'
 
@@ -67,75 +71,57 @@ const store = useUserStore()
 const txList = ref([])
 const page = ref(1)
 const total = ref(0)
-const showRecharge = ref(false)
+const showRedeem = ref(false)
+const redeemCode = ref('')
+const redeeming = ref(false)
 
 onMounted(fetchTx)
 
-async function fetchTx() {
-  const res = await userApi.getTransactions(page.value, 20)
+async function fetchTx(p = page.value) {
+  page.value = p
+  const res = await userApi.getTransactions(p, 20)
   txList.value = res.transactions ?? []
   total.value = res.total ?? 0
 }
 
-const txTypeLabel = (t) => ({
-  charge: '扣费', refund: '退款', recharge: '充值', hold: '预扣', settle: '结算'
-}[t] ?? t)
+async function doRedeem() {
+  const code = redeemCode.value.trim()
+  if (!code) return
+  redeeming.value = true
+  try {
+    const res = await userApi.redeemCard(code)
+    ElMessage.success(res.message ?? '兑换成功')
+    showRedeem.value = false
+    redeemCode.value = ''
+    store.fetchBalance()
+    fetchTx(1)
+  } finally {
+    redeeming.value = false
+  }
+}
+
+const txTypeLabel = (t) => ({ charge: '扣费', refund: '退款', recharge: '充值', hold: '预扣', settle: '结算' }[t] ?? t)
+const txTagType = (t) => ({ charge: 'danger', hold: 'warning', settle: 'info', refund: 'success', recharge: 'success' }[t] ?? '')
+const txSign = (t) => (['charge', 'hold', 'settle'].includes(t) ? '-' : '+')
+const txAmtClass = (t) => (['charge', 'hold', 'settle'].includes(t) ? 'amt-neg' : 'amt-pos')
 
 function fmtTime(row, col, val) {
-  return val ? new Date(val).toLocaleString('zh-CN') : '-'
+  return val ? new Date(val).toLocaleString('zh-CN', { hour12: false }) : '—'
 }
 </script>
 
 <style scoped>
-.billing-page {
-  max-width: 1320px;
-}
-.hero-card {
-  margin-bottom: 20px;
-}
-.hero-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-}
-.eyebrow {
-  color: #1e66ff;
-  font-size: .82rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-.hero-row h3 {
-  margin: 8px 0 10px;
-  font-size: 1.55rem;
-}
-.hero-row p {
-  margin: 0;
-  color: #617086;
-}
-.balance-box {
-  min-width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 18px;
+.billing-page { max-width: 960px }
+.balance-card {
+  background: linear-gradient(135deg, #0b1a3e, #163879);
   border-radius: 18px;
-  border: 1px solid #dce7fb;
-  background: linear-gradient(180deg, #f7fbff, #eef6ff);
+  padding: 28px 32px;
+  color: #fff;
 }
-.balance-box span,
-.balance-box small {
-  color: #69809e;
-}
-.balance-box strong {
-  font-size: 1.9rem;
-}
-
-@media (max-width: 900px) {
-  .hero-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+.balance-label { font-size: .84rem; opacity: .72 }
+.balance-val { font-size: 2.4rem; font-weight: 700; margin: 6px 0 2px }
+.balance-sub { font-size: .82rem; opacity: .6 }
+.amt-neg { color: #f56c6c }
+.amt-pos { color: #67c23a }
 </style>
+

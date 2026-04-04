@@ -73,7 +73,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { txApi } from '@/api'
+import { txApi } from '@/api/admin'
 
 const txList = ref([])
 const page = ref(1)

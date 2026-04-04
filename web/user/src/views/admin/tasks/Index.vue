@@ -107,7 +107,7 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { taskApi } from '@/api'
+import { taskApi } from '@/api/admin'
 
 const tasks = ref([])
 const page = ref(1)

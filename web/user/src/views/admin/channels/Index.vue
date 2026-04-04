@@ -212,10 +212,10 @@
           </div>
         </el-form-item>
         <el-form-item label="入参映射脚本">
-          <el-input v-model="form.request_script" type="textarea" :rows="8" placeholder="package main&#10;&#10;func MapRequest(input map[string]interface{}) map[string]interface{} {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
+          <el-input v-model="form.request_script" type="textarea" :rows="8" placeholder="// 将用户请求体转换为上游所需格式&#10;// input 为解析后的请求 JSON，返回值作为上游请求体&#10;function MapRequest(input) {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
         <el-form-item label="出参映射脚本">
-          <el-input v-model="form.response_script" type="textarea" :rows="8" placeholder="package main&#10;&#10;// 同步接口：返回 {&quot;code&quot;:200,&quot;url&quot;:&quot;...&quot;,&quot;status&quot;:2}&#10;// 异步接口：返回 {&quot;upstream_task_id&quot;:&quot;xxx&quot;} 即可触发轮询&#10;func MapResponse(input map[string]interface{}) map[string]interface{} {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
+          <el-input v-model="form.response_script" type="textarea" :rows="8" placeholder="// 将上游响应映射为平台标准格式&#10;// 同步接口：返回 {code: 200, url: '...', status: 2}&#10;// 异步接口：返回 {upstream_task_id: 'xxx'} 即可触发轮询&#10;function MapResponse(input) {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
 
         <el-divider content-position="left" style="margin:8px 0 12px">
@@ -231,7 +231,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="轮询映射脚本">
-          <el-input v-model="form.query_script" type="textarea" :rows="8" placeholder="package main&#10;&#10;// 将第三方轮询响应映射为标准格式&#10;// status: 2=成功 3=失败 其他=进行中&#10;func MapResponse(input map[string]interface{}) map[string]interface{} {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
+          <el-input v-model="form.query_script" type="textarea" :rows="8" placeholder="// 将第三方轮询响应映射为标准格式&#10;// status: 2=成功 3=失败 其他=进行中&#10;function MapResponse(input) {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -244,7 +244,7 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { channelApi, keyPoolApi } from '@/api'
+import { channelApi, keyPoolApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 const channels = ref([])

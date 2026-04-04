@@ -58,17 +58,11 @@ echo $! > /tmp/script.pid
 
 # ---------- 前端（需要 Node.js） ----------
 if command -v npm &>/dev/null; then
-    echo ">>> 启动用户端前端 (port 3000)..."
+    echo ">>> 启动前端 (port 3000)..."
     cd "$ROOT/web/user"
     [ ! -d node_modules ] && npm install --silent
     npm run dev -- --host 0.0.0.0 &>/tmp/user-web.log &
     echo $! > /tmp/user-web.pid
-
-    echo ">>> 启动管理端前端 (port 3001)..."
-    cd "$ROOT/web/admin"
-    [ ! -d node_modules ] && npm install --silent
-    npm run dev -- --host 0.0.0.0 &>/tmp/admin-web.log &
-    echo $! > /tmp/admin-web.pid
 
     cd "$ROOT"
 else
@@ -86,8 +80,8 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  API Server:    http://localhost:8080"
     echo "  API 文档:      http://localhost:8080/docs"
     if command -v npm &>/dev/null; then
-    echo "  用户端:        http://localhost:3000"
-    echo "  管理端:        http://localhost:3001"
+    echo "  前端:          http://localhost:3000"
+    echo "  管理端:        http://localhost:3000/admin"
     fi
     echo ""
     echo "  管理账号:      admin@fanapi.dev   / Admin@2026!"
@@ -96,8 +90,7 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  server 日志:   tail -f /tmp/server.log"
     echo "  worker 日志:   tail -f /tmp/script.log"
     if command -v npm &>/dev/null; then
-    echo "  用户端日志:    tail -f /tmp/user-web.log"
-    echo "  管理端日志:    tail -f /tmp/admin-web.log"
+    echo "  前端日志:      tail -f /tmp/user-web.log"
     fi
 else
     echo "启动失败，查看日志: cat /tmp/server.log"

@@ -21,7 +21,8 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { authApi } from '@/api'
+import { authApi } from '@/api/admin'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const loading = ref(false)
@@ -31,8 +32,12 @@ async function handleLogin() {
   loading.value = true
   try {
     const res = await authApi.login(form)
+    if (res.user?.role !== 'admin') {
+      ElMessage.error('该账号无管理员权限')
+      return
+    }
     localStorage.setItem('admin_token', res.token)
-    router.push('/')
+    router.push('/admin/dashboard')
   } finally {
     loading.value = false
   }

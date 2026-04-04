@@ -80,7 +80,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { userApi } from '@/api'
+import { userApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 const users = ref([])
