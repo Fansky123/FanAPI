@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
@@ -274,6 +275,37 @@ func (h *AuthHandler) ListAPIKeys(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"api_keys": items})
+}
+
+// PUT /user/password — 当前登录用户修改自己的密码（需提供旧密码）
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID := c.MustGet("user_id").(int64)
+	var req struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user := &model.User{}
+	found, err := db.Engine.ID(userID).Get(user)
+	if err != nil || !found {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "旧密码不正确"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash error"})
+		return
+	}
+	db.Engine.ID(userID).Cols("password_hash").Update(&model.User{PasswordHash: string(hash)})
+	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
 }
 
 // DELETE /user/apikeys/:id

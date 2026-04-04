@@ -45,14 +45,21 @@ cp config.yaml config.local.yaml
 ### 2. 启动（开发环境）
 
 ```bash
-# 使用 Docker 启动依赖服务
-docker compose -f Dockerfile.dev up -d
-
-# 启动服务
-go run cmd/server/main.go
+bash scripts/start.sh
 ```
 
-### 3. 数据库初始化
+### 3. 默认账号
+
+服务首次启动时，数据库会自动创建以下账号：
+
+| 角色 | 邮箱 | 密码 | 说明 |
+|------|------|------|------|
+| 管理员 | `admin@fanapi.dev` | `Admin@2026!` | 拥有全部管理接口权限 |
+| 测试用户 | `test@fanapi.dev` | `Test@2026!` | 普通用户权限，用于接口调试 |
+
+> **生产环境请立即修改默认密码。**
+
+### 4. 数据库种子数据（可选）
 
 ```bash
 psql -U <user> -d <db> -f scripts/seed_chatfire.sql

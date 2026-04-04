@@ -20,10 +20,130 @@ import (
 	"github.com/google/uuid"
 )
 
-// LLMProxy 处理 POST /v1/llm，以 SSE 流式代理 LLM 请求并完成双阶段计费：
-//  1. 请求时：预扣输入估算费 + 输出最大 token 费（totalHold）
-//  2. SSE 结束后：从响应 usage 字段取实际费用，与 totalHold 做差额退/补。
-func LLMProxy(c *gin.Context) {
+const (
+	protocolOpenAI = "openai"
+	protocolClaude = "claude"
+	protocolGemini = "gemini"
+)
+
+func effectiveProtocol(ch *model.Channel) string {
+	if ch.Protocol == "" {
+		return protocolOpenAI
+	}
+	return ch.Protocol
+}
+
+// usageState 在 SSE 流中收集 token 用量，支持 OpenAI / Claude / Gemini 三种协议。
+// 最终通过 normalized() 统一输出 {prompt_tokens, completion_tokens} 格式供计费使用。
+type usageState struct {
+	protocol      string
+	promptTokens  int64
+	completTokens int64
+	lastEvent     string // Claude 专用：记录上一个 "event:" 行的值
+}
+
+func (u *usageState) processLine(line string) {
+	switch u.protocol {
+	case protocolClaude:
+		if strings.HasPrefix(line, "event: ") {
+			u.lastEvent = strings.TrimPrefix(line, "event: ")
+			return
+		}
+		if strings.HasPrefix(line, "data: ") {
+			payload := strings.TrimPrefix(line, "data: ")
+			var chunk map[string]interface{}
+			if json.Unmarshal([]byte(payload), &chunk) != nil {
+				return
+			}
+			switch u.lastEvent {
+			case "message_start":
+				// {"message": {"usage": {"input_tokens": N}}}
+				if msg, ok := chunk["message"].(map[string]interface{}); ok {
+					if usg, ok := msg["usage"].(map[string]interface{}); ok {
+						if n, _ := usg["input_tokens"].(float64); n > 0 {
+							u.promptTokens = int64(n)
+						}
+					}
+				}
+			case "message_delta":
+				// {"usage": {"output_tokens": M}}
+				if usg, ok := chunk["usage"].(map[string]interface{}); ok {
+					if n, _ := usg["output_tokens"].(float64); n > 0 {
+						u.completTokens = int64(n)
+					}
+				}
+			}
+		}
+
+	case protocolGemini:
+		if strings.HasPrefix(line, "data: ") {
+			payload := strings.TrimPrefix(line, "data: ")
+			var chunk map[string]interface{}
+			if json.Unmarshal([]byte(payload), &chunk) != nil {
+				return
+			}
+			// 每片 Gemini SSE chunk 都可能携带 usageMetadata，以最后一片为准
+			if meta, ok := chunk["usageMetadata"].(map[string]interface{}); ok {
+				if n, _ := meta["promptTokenCount"].(float64); n > 0 {
+					u.promptTokens = int64(n)
+				}
+				if n, _ := meta["candidatesTokenCount"].(float64); n > 0 {
+					u.completTokens = int64(n)
+				}
+			}
+		}
+
+	default: // openai
+		if strings.HasPrefix(line, "data: ") {
+			payload := strings.TrimPrefix(line, "data: ")
+			if payload == "[DONE]" {
+				return
+			}
+			var chunk map[string]interface{}
+			if json.Unmarshal([]byte(payload), &chunk) != nil {
+				return
+			}
+			if usg, ok := chunk["usage"].(map[string]interface{}); ok {
+				if n, _ := usg["prompt_tokens"].(float64); n > 0 {
+					u.promptTokens = int64(n)
+				}
+				if n, _ := usg["completion_tokens"].(float64); n > 0 {
+					u.completTokens = int64(n)
+				}
+			}
+		}
+	}
+}
+
+// normalized 返回标准化的 usage map（prompt_tokens / completion_tokens）。
+// 若未收到任何用量数据则返回 nil。
+func (u *usageState) normalized() map[string]interface{} {
+	if u.promptTokens == 0 && u.completTokens == 0 {
+		return nil
+	}
+	return map[string]interface{}{
+		"prompt_tokens":     u.promptTokens,
+		"completion_tokens": u.completTokens,
+	}
+}
+
+// LLMProxy 处理 POST /v1/chat/completions（OpenAI 标准格式）。
+// 客户端发送 OpenAI 格式请求，收到 OpenAI 格式 SSE 响应。
+func LLMProxy(c *gin.Context) { llmProxy(c) }
+
+// ClaudeProxy 处理 POST /v1/messages（Anthropic Claude 原生格式）。
+// 客户端发送 Claude 原生格式请求，收到 Claude 原生格式 SSE 响应。
+func ClaudeProxy(c *gin.Context) { llmProxy(c) }
+
+// GeminiProxy 处理 POST /v1/gemini（Google Gemini 原生格式）。
+// 客户端发送 Gemini 原生格式请求，收到 Gemini 原生格式 SSE 响应。
+func GeminiProxy(c *gin.Context) { llmProxy(c) }
+
+// llmProxy 是三条 LLM 路由的共同实现。
+// 设计原则：请求体原样透传给上游，响应体原样返回给客户端，无任何格式转换。
+// Channel.Protocol 仅用于决定上游认证头的写法和从 SSE 流提取 usage 的方式（计费用）。
+// 如需格式转换，请在渠道配置中填写 request_script / response_script。
+func llmProxy(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	apiKeyID, _ := c.Get("api_key_id")
 	var apiKeyIDVal int64
@@ -31,7 +151,6 @@ func LLMProxy(c *gin.Context) {
 		apiKeyIDVal = apiKeyID.(int64)
 	}
 
-	// 从 query 获取渠道 ID
 	channelIDStr := c.Query("channel_id")
 	if channelIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 必填"})
@@ -43,7 +162,6 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 
-	// 读取请求体
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
@@ -55,14 +173,15 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 
-	// 加载渠道配置（Redis 缓存 + DB 回源）
 	ch, err := service.GetChannel(c.Request.Context(), channelID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// JS 脚本映射入参（将平台统一格式 → 第三方 API 格式）
+	protocol := effectiveProtocol(ch)
+
+	// 请求映射：仅当渠道配置了 request_script 时执行脚本转换，否则原样透传。
 	mappedReq := reqData
 	if ch.RequestScript != "" {
 		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData)
@@ -80,7 +199,6 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 	totalHold := inputHold + outputHold
-	// 计算上游进价预估（用于记录成本，不影响用户扣费）
 	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
 
 	if totalHold > 0 {
@@ -90,9 +208,7 @@ func LLMProxy(c *gin.Context) {
 		}
 	}
 
-	// 关联 ID，用于串联同一次请求的 hold + settle 两条流水
 	corrID := uuid.New().String()
-
 	if totalHold > 0 {
 		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "hold", totalHold, upstreamCostHold, model.JSON{
 			"input_hold":  inputHold,
@@ -100,8 +216,7 @@ func LLMProxy(c *gin.Context) {
 		})
 	}
 
-	// 号池：为该请求选取（或沿用上次） Sticky 分配的三方 Key
-	// entityID 优先使用 api_key_id（保证同一用户 Key 始终命中同一个三方账号的上下文缓存）
+	// 号池 Sticky Key 分配
 	entityID := apiKeyIDVal
 	if entityID == 0 {
 		entityID = userID
@@ -116,20 +231,19 @@ func LLMProxy(c *gin.Context) {
 		poolKey = pk
 	}
 
-	// 发送上游请求（若 429 则标记当前 Key 耗尽并用新 Key 重试一次）
-	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey)
+	// 发送上游请求（429 时轮转 Key 重试一次）
+	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 	if err != nil {
 		llmRefundAndAbort(c, userID, totalHold, "上游请求失败: "+err.Error())
 		return
 	}
 
 	if resp.StatusCode == http.StatusTooManyRequests && ch.KeyPoolID > 0 && poolKey != nil {
-		// 当前三方 Key 配额耗尽，轮转到下一 Key 重试
 		resp.Body.Close()
 		newKey, rotErr := service.MarkExhaustedAndRotate(c.Request.Context(), ch.KeyPoolID, poolKey.ID, entityID)
 		if rotErr == nil {
 			poolKey = newKey
-			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey)
+			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 			if err != nil {
 				llmRefundAndAbort(c, userID, totalHold, "上游请求失败(重试): "+err.Error())
 				return
@@ -145,13 +259,13 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 
-	// 设置 SSE 响应头，透传流给客户端
+	// SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
 
-	// 收集最后一帧包含 usage 信息的数据（OpenAI / chatfire 格式兼容）
-	var lastUsageData map[string]interface{}
+	// 流式透传并按协议提取 usage（用于结算）
+	usage := &usageState{protocol: protocol}
 	scanner := bufio.NewScanner(resp.Body)
 	c.Stream(func(w io.Writer) bool {
 		if !scanner.Scan() {
@@ -159,27 +273,13 @@ func LLMProxy(c *gin.Context) {
 		}
 		line := scanner.Text()
 		fmt.Fprintf(w, "%s\n", line)
-
-		// 从 data: ... 行中提取 usage 字段
-		if strings.HasPrefix(line, "data: ") {
-			payload := strings.TrimPrefix(line, "data: ")
-			if payload != "[DONE]" {
-				var chunk map[string]interface{}
-				if json.Unmarshal([]byte(payload), &chunk) == nil {
-					if usage, ok := chunk["usage"]; ok {
-						if usageMap, ok := usage.(map[string]interface{}); ok {
-							lastUsageData = usageMap
-						}
-					}
-				}
-			}
-		}
+		usage.processLine(line)
 		return true
 	})
 
+	lastUsageData := usage.normalized()
+
 	// ---- 结算阶段 ----
-	// CalcActualCost 会根据 input_from_response 标志决定是否从响应 usage 中重新计算输入费用。
-	// actualCost 可能大于 totalHold（当实际输入 token 超出估算），此时需补扣差额。
 	if lastUsageData != nil {
 		respData := map[string]interface{}{"usage": lastUsageData}
 		actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
@@ -187,11 +287,8 @@ func LLMProxy(c *gin.Context) {
 		if settleErr == nil {
 			delta := totalHold - actualCost
 			if delta > 0 {
-				// 实际费用低于预扣，退回差额
 				_ = billing.Refund(c.Request.Context(), userID, delta)
 			} else if delta < 0 {
-				// 实际费用超出预扣（输入 token 估算偏低），补扣差额
-				// 补扣失败不影响已返回的响应，记录日志即可
 				_ = billing.Charge(c.Request.Context(), userID, -delta)
 			}
 			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, actualUpstreamCost, model.JSON{
@@ -201,14 +298,15 @@ func LLMProxy(c *gin.Context) {
 			})
 		}
 	} else if totalHold > 0 {
-		// 未收到 usage 数据（如上游异常截断），退回全部预扣保护用户余额
 		_ = billing.Refund(c.Request.Context(), userID, totalHold)
 	}
 }
 
 // sendLLMRequest 构建并发送对上游 LLM 的 HTTP 请求。
-// 若 poolKey 不为 nil，用其 Value 覆盖渠道静态 Authorization 头。
-func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey) (*http.Response, error) {
+// protocol 决定认证头格式：
+//   - openai / gemini：标准 "Authorization: Bearer KEY"
+//   - claude：改为 "x-api-key: KEY" + "anthropic-version: 2023-06-01"
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, protocol string) (*http.Response, error) {
 	body, _ := json.Marshal(reqData)
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
@@ -219,15 +317,33 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	}
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
+
+	// 复制渠道静态 Headers，同时记录静态 API Key
+	apiKey := ""
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
+			if strings.EqualFold(k, "authorization") && strings.HasPrefix(sv, "Bearer ") {
+				apiKey = strings.TrimPrefix(sv, "Bearer ")
+			}
 			upReq.Header.Set(k, sv)
 		}
 	}
-	// 号池 Key 覆盖渠道静态 Authorization
+
+	// 号池 Key 覆盖静态 Key
 	if poolKey != nil {
+		apiKey = poolKey.Value
 		upReq.Header.Set("Authorization", "Bearer "+poolKey.Value)
 	}
+
+	// Claude 协议：x-api-key 替换 Authorization: Bearer
+	if protocol == protocolClaude {
+		upReq.Header.Del("Authorization")
+		if apiKey != "" {
+			upReq.Header.Set("x-api-key", apiKey)
+		}
+		upReq.Header.Set("anthropic-version", "2023-06-01")
+	}
+
 	return httpClient.Do(upReq)
 }
 

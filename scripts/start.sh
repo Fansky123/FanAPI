@@ -2,6 +2,7 @@
 # fanapi 一键启动脚本
 set -e
 cd "$(dirname "$0")/.."
+ROOT=$(pwd)
 
 echo "=== fanapi 启动脚本 ==="
 
@@ -58,18 +59,18 @@ echo $! > /tmp/script.pid
 # ---------- 前端（需要 Node.js） ----------
 if command -v npm &>/dev/null; then
     echo ">>> 启动用户端前端 (port 3000)..."
-    cd "$(dirname "$0")/../web/user"
+    cd "$ROOT/web/user"
     [ ! -d node_modules ] && npm install --silent
     npm run dev -- --host 0.0.0.0 &>/tmp/user-web.log &
     echo $! > /tmp/user-web.pid
 
     echo ">>> 启动管理端前端 (port 3001)..."
-    cd "$(dirname "$0")/../web/admin"
+    cd "$ROOT/web/admin"
     [ ! -d node_modules ] && npm install --silent
     npm run dev -- --host 0.0.0.0 &>/tmp/admin-web.log &
     echo $! > /tmp/admin-web.pid
 
-    cd "$(dirname "$0")/.."
+    cd "$ROOT"
 else
     echo "    [跳过前端] 未找到 npm，请手动运行:"
     echo "      cd web/user  && npm install && npm run dev"
@@ -89,7 +90,8 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  管理端:        http://localhost:3001"
     fi
     echo ""
-    echo "  管理账号:      admin@test.com / Admin1234!"
+    echo "  管理账号:      admin@fanapi.dev   / Admin@2026!"
+  echo "  测试账号:      test@fanapi.dev    / Test@2026!"
     echo ""
     echo "  server 日志:   tail -f /tmp/server.log"
     echo "  worker 日志:   tail -f /tmp/script.log"

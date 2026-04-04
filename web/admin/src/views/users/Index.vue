@@ -29,9 +29,10 @@
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="注册时间" :formatter="fmtTime" />
-      <el-table-column label="操作" width="120" align="center">
+      <el-table-column label="操作" width="180" align="center">
         <template #default="{ row }">
           <el-button size="small" type="success" @click="openRecharge(row)">充值</el-button>
+          <el-button size="small" type="warning" @click="openResetPwd(row)">改密</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -57,6 +58,23 @@
         <el-button type="primary" @click="doRecharge">确认充值</el-button>
       </template>
     </el-dialog>
+
+    <!-- 重置密码弹窗 -->
+    <el-dialog v-model="showResetPwd" title="重置密码" width="380px">
+      <p style="margin-bottom:12px">为用户 <b>{{ resetPwdUser?.email }}</b> 设置新密码</p>
+      <el-form :model="pwdForm" :rules="pwdRules" ref="pwdFormRef" label-width="90px">
+        <el-form-item label="新密码" prop="password">
+          <el-input v-model="pwdForm.password" type="password" show-password placeholder="至少 8 位" />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirm">
+          <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="再次输入" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showResetPwd = false">取消</el-button>
+        <el-button type="primary" @click="doResetPwd">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -68,9 +86,25 @@ import { ElMessage } from 'element-plus'
 const users = ref([])
 const page = ref(1)
 const total = ref(0)
+
+// 充值
 const showRecharge = ref(false)
 const rechargeUser = ref(null)
 const rechargeAmount = ref(1000000)
+
+// 改密
+const showResetPwd = ref(false)
+const resetPwdUser = ref(null)
+const pwdFormRef = ref(null)
+const pwdForm = ref({ password: '', confirm: '' })
+const pwdRules = {
+  password: [{ required: true, min: 8, message: '至少 8 位', trigger: 'blur' }],
+  confirm: [{
+    validator: (rule, val, cb) =>
+      val === pwdForm.value.password ? cb() : cb(new Error('两次密码不一致')),
+    trigger: 'blur'
+  }]
+}
 
 onMounted(fetchUsers)
 
@@ -91,6 +125,19 @@ async function doRecharge() {
   ElMessage.success(`已为 ${rechargeUser.value.email} 充值 ${rechargeAmount.value.toLocaleString()} credits`)
   showRecharge.value = false
   fetchUsers()
+}
+
+function openResetPwd(user) {
+  resetPwdUser.value = user
+  pwdForm.value = { password: '', confirm: '' }
+  showResetPwd.value = true
+}
+
+async function doResetPwd() {
+  await pwdFormRef.value.validate()
+  await userApi.resetPassword(resetPwdUser.value.id, pwdForm.value.password)
+  ElMessage.success(`已重置 ${resetPwdUser.value.email} 的密码`)
+  showResetPwd.value = false
 }
 
 function fmtTime(row, col, val) {

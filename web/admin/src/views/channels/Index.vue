@@ -23,6 +23,12 @@
           <el-tag size="small">{{ row.type }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="协议" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.protocol && row.protocol !== 'openai'" size="small" type="success">{{ row.protocol }}</el-tag>
+          <span v-else style="color:#ccc;font-size:12px">openai</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="billing_type" label="计费类型" width="100" />
       <el-table-column label="售价" width="160">
         <template #default="{ row }">
@@ -75,6 +81,16 @@
             <el-option label="视频生成" value="video" />
             <el-option label="音频生成" value="audio" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="API 协议">
+          <el-select v-model="form.protocol" style="width:100%">
+            <el-option label="OpenAI 兼容格式（默认）" value="openai" />
+            <el-option label="Claude 原生格式（Anthropic）" value="claude" />
+            <el-option label="Gemini 原生格式（Google）" value="gemini" />
+          </el-select>
+          <div style="font-size:11px;color:#aaa;margin-top:4px">
+            无入参脚本时自动将 OpenAI 格式请求转换为所选协议格式；有入参脚本时脚本优先
+          </div>
         </el-form-item>
         <el-form-item label="上游 URL" required>
           <el-input v-model="form.base_url" placeholder="https://api.example.com/v1/..." />
@@ -236,7 +252,7 @@ const dialogVisible = ref(false)
 const editRow = ref(null)
 
 const emptyForm = () => ({
-  name: '', model: '', type: 'llm', base_url: '', method: 'POST',
+  name: '', model: '', type: 'llm', protocol: 'openai', base_url: '', method: 'POST',
   headersStr: '{}', timeout_ms: 30000,
   billing_type: 'token', billingConfigStr: '{}',
   request_script: '', response_script: '',
@@ -326,7 +342,7 @@ async function saveChannel() {
   }
 
   const payload = {
-    name: form.name, model: form.model, type: form.type,
+    name: form.name, model: form.model, type: form.type, protocol: form.protocol,
     base_url: form.base_url, method: form.method, headers,
     timeout_ms: form.timeout_ms, billing_type: form.billing_type,
     billing_config: billingConfig, request_script: form.request_script,

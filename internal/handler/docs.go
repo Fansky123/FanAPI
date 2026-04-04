@@ -66,17 +66,19 @@ pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;ove
   <!-- LLM -->
   <div class="section">
     <div class="section-title">1 · LLM 对话</div>
+
+    <!-- 1.1 OpenAI -->
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/llm?channel_id={id}</span>
-        <span class="ep-desc">流式 / 非流式对话（OpenAI 兼容）</span>
+        <span class="ep-path">/v1/chat/completions?channel_id={id}</span>
+        <span class="ep-desc">OpenAI 标准格式（兼容 OpenAI SDK）</span>
       </div>
       <div class="ep-body open">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>模型名，如 <code>claude-3-5-sonnet-20241022</code></td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>模型名，如 <code>gpt-4o</code></td></tr>
           <tr><td>messages</td><td>array</td><td><span class="req">必填</span></td><td><code>[{"role":"user","content":"..."}]</code></td></tr>
           <tr><td>stream</td><td>bool</td><td><span class="opt">可选</span></td><td>true = SSE 流式，默认 false</td></tr>
           <tr><td>max_tokens</td><td>int</td><td><span class="opt">可选</span></td><td>最大输出 token 数</td></tr>
@@ -90,30 +92,179 @@ pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;ove
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/llm?channel_id=1" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/chat/completions?channel_id=1" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
-  -d '{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":"你好"}],"stream":true,"max_tokens":500}'</pre>
-          <pre class="code-pane" data-lang="python" hidden>import requests
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"你好"}],"stream":true,"max_tokens":500}'</pre>
+          <pre class="code-pane" data-lang="python" hidden>from openai import OpenAI
 
-resp = requests.post(
-    "http://localhost:8080/v1/llm",
-    params={"channel_id": 1},
-    headers={"X-API-Key": "YOUR_SK"},
-    json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "你好"}],
-        "stream": False,
-        "max_tokens": 500
-    }
+client = OpenAI(
+    api_key="YOUR_SK",
+    base_url="http://localhost:8080/v1",
+    default_query={"channel_id": "1"},
 )
-print(resp.json())
 
-# 流式（stream=True）
-# resp = requests.post(..., json={..., "stream": True}, stream=True)
-# for line in resp.iter_lines():
-#     if line and line != b"data: [DONE]":
-#         print(line.decode())</pre>
+# 流式
+stream = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "你好"}],
+    stream=True,
+    max_tokens=500,
+)
+for chunk in stream:
+    print(chunk.choices[0].delta.content or "", end="", flush=True)
+
+# 非流式
+resp = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "你好"}],
+    max_tokens=500,
+)
+print(resp.choices[0].message.content)</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"model":      "gpt-4o",
+		"messages":   []map[string]string{{"role": "user", "content": "你好"}},
+		"stream":     false,
+		"max_tokens": 500,
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/chat/completions?channel_id=1",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data))
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"model":"gpt-4o",
+             "messages":[{"role":"user","content":"你好"}],
+             "stream":false,"max_tokens":500}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/chat/completions?channel_id=1"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>// 使用官方 openai SDK
+import OpenAI from "openai";
+const client = new OpenAI({
+  apiKey: "YOUR_SK",
+  baseURL: "http://localhost:8080/v1",
+  defaultQuery: { channel_id: "1" },
+});
+
+// 流式
+const stream = await client.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "你好" }],
+  stream: true,
+  max_tokens: 500,
+});
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content || "");
+}
+
+// 非流式
+const resp = await client.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "你好" }],
+  max_tokens: 500,
+});
+console.log(resp.choices[0].message.content);</pre>
+        </div>
+        <div class="note">流式响应为 SSE 格式，每行 <code>data: {...}</code>，最后一行 <code>data: [DONE]</code>。完全兼容 OpenAI SDK，将 <code>base_url</code> 改为 <code>http://localhost:8080/v1</code> 即可直接使用。</div>
+      </div>
+    </div>
+
+    <!-- 1.2 Claude -->
+    <div class="endpoint">
+      <div class="ep-header" onclick="toggle(this)">
+        <span class="method POST">POST</span>
+        <span class="ep-path">/v1/messages?channel_id={id}</span>
+        <span class="ep-desc">Anthropic Claude 原生格式</span>
+      </div>
+      <div class="ep-body">
+        <h4>Request Body</h4>
+        <table>
+          <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>如 <code>claude-3-5-sonnet-20241022</code></td></tr>
+          <tr><td>messages</td><td>array</td><td><span class="req">必填</span></td><td><code>[{"role":"user","content":"..."}]</code>，不含 system</td></tr>
+          <tr><td>system</td><td>string</td><td><span class="opt">可选</span></td><td>System prompt（顶层字段）</td></tr>
+          <tr><td>max_tokens</td><td>int</td><td><span class="req">必填</span></td><td>最大输出 token 数</td></tr>
+          <tr><td>stream</td><td>bool</td><td><span class="opt">可选</span></td><td>true = SSE 流式</td></tr>
+        </table>
+        <h4>示例</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/messages?channel_id=1" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "system": "你是一个助手",
+    "messages": [{"role": "user", "content": "你好"}],
+    "max_tokens": 500,
+    "stream": true
+  }'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import anthropic
+
+client = anthropic.Anthropic(
+    api_key="YOUR_SK",
+    base_url="http://localhost:8080",
+    default_headers={"X-API-Key": "YOUR_SK"},
+    # 注意：SDK 认证由平台 X-API-Key 替代，api_key 随便填即可
+)
+
+# 流式
+with client.messages.stream(
+    model="claude-3-5-sonnet-20241022",
+    system="你是一个助手",
+    messages=[{"role": "user", "content": "你好"}],
+    max_tokens=500,
+    extra_query={"channel_id": "1"},
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+
+# 非流式
+resp = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    system="你是一个助手",
+    messages=[{"role": "user", "content": "你好"}],
+    max_tokens=500,
+    extra_query={"channel_id": "1"},
+)
+print(resp.content[0].text)</pre>
           <pre class="code-pane" data-lang="go" hidden>package main
 
 import (
@@ -127,12 +278,13 @@ import (
 func main() {
 	body, _ := json.Marshal(map[string]any{
 		"model":      "claude-3-5-sonnet-20241022",
+		"system":     "你是一个助手",
 		"messages":   []map[string]string{{"role": "user", "content": "你好"}},
-		"stream":     false,
 		"max_tokens": 500,
+		"stream":     false,
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/llm?channel_id=1",
+		"http://localhost:8080/v1/messages?channel_id=1",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -148,11 +300,12 @@ public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
             {"model":"claude-3-5-sonnet-20241022",
+             "system":"你是一个助手",
              "messages":[{"role":"user","content":"你好"}],
-             "stream":false,"max_tokens":500}
+             "max_tokens":500,"stream":false}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/llm?channel_id=1"))
+            .uri(URI.create("http://localhost:8080/v1/messages?channel_id=1"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -162,29 +315,145 @@ public class Main {
         System.out.println(resp.body());
     }
 }</pre>
-          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/llm?channel_id=1", {
+          <pre class="code-pane" data-lang="node" hidden>import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: "unused",           // 平台用 X-API-Key 替代
+  baseURL: "http://localhost:8080",
+  defaultHeaders: { "X-API-Key": "YOUR_SK" },
+  defaultQuery: { channel_id: "1" },
+});
+
+// 流式
+const stream = client.messages.stream({
+  model: "claude-3-5-sonnet-20241022",
+  system: "你是一个助手",
+  messages: [{ role: "user", content: "你好" }],
+  max_tokens: 500,
+});
+stream.on("text", (text) => process.stdout.write(text));
+await stream.finalMessage();
+
+// 非流式
+const resp = await client.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  system: "你是一个助手",
+  messages: [{ role: "user", content: "你好" }],
+  max_tokens: 500,
+});
+console.log(resp.content[0].text);</pre>
+        </div>
+        <div class="note">流式响应遵循 Claude SSE 协议：<code>event: message_start</code> / <code>content_block_delta</code> / <code>message_delta</code> / <code>message_stop</code>。</div>
+      </div>
+    </div>
+
+    <!-- 1.3 Gemini -->
+    <div class="endpoint">
+      <div class="ep-header" onclick="toggle(this)">
+        <span class="method POST">POST</span>
+        <span class="ep-path">/v1/gemini?channel_id={id}</span>
+        <span class="ep-desc">Google Gemini 原生格式</span>
+      </div>
+      <div class="ep-body">
+        <h4>Request Body</h4>
+        <table>
+          <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
+          <tr><td>contents</td><td>array</td><td><span class="req">必填</span></td><td><code>[{"role":"user","parts":[{"text":"..."}]}]</code></td></tr>
+          <tr><td>generationConfig</td><td>object</td><td><span class="opt">可选</span></td><td><code>{"maxOutputTokens":500,"temperature":0.7}</code></td></tr>
+          <tr><td>systemInstruction</td><td>object</td><td><span class="opt">可选</span></td><td><code>{"parts":[{"text":"你是助手"}]}</code></td></tr>
+        </table>
+        <h4>示例</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/gemini?channel_id=1" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role":"user","parts":[{"text":"你好"}]}],
+    "generationConfig": {"maxOutputTokens": 500}
+  }'</pre>
+          <pre class="code-pane" data-lang="python" hidden>import google.generativeai as genai
+import google.auth.transport.requests as ga_requests
+# 将 SDK 的 base_url 指向平台
+# 方法：直接用 requests 原生调用更简单
+
+import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/gemini",
+    params={"channel_id": "1"},
+    headers={"X-API-Key": "YOUR_SK", "Content-Type": "application/json"},
+    json={
+        "contents": [{"role": "user", "parts": [{"text": "你好"}]}],
+        "generationConfig": {"maxOutputTokens": 500},
+    },
+)
+print(resp.json())</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	body, _ := json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]string{{"text": "你好"}}},
+		},
+		"generationConfig": map[string]any{"maxOutputTokens": 500},
+	})
+	req, _ := http.NewRequest("POST",
+		"http://localhost:8080/v1/gemini?channel_id=1",
+		bytes.NewReader(body))
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(data))
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        String body = """
+            {"contents":[{"role":"user","parts":[{"text":"你好"}]}],
+             "generationConfig":{"maxOutputTokens":500}}
+            """;
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/v1/gemini?channel_id=1"))
+            .header("X-API-Key", "YOUR_SK")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/gemini?channel_id=1", {
   method: "POST",
   headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "claude-3-5-sonnet-20241022",
-    messages: [{ role: "user", content: "你好" }],
-    stream: false,
-    max_tokens: 500
-  })
+    contents: [{ role: "user", parts: [{ text: "你好" }] }],
+    generationConfig: { maxOutputTokens: 500 },
+  }),
 });
 const data = await resp.json();
-console.log(data);
-
-// 流式（stream: true）
-// const resp = await fetch(..., { body: JSON.stringify({...stream:true}) });
-// const reader = resp.body.getReader();
-// while (true) {
-//   const { done, value } = await reader.read();
-//   if (done) break;
-//   console.log(new TextDecoder().decode(value));
-// }</pre>
+console.log(data.candidates[0].content.parts[0].text);</pre>
         </div>
-        <div class="note">流式响应为 SSE 格式，每行 <code>data: {...}</code>，最后一行 <code>data: [DONE]</code></div>
+        <div class="note">流式响应（SSE）中每片均携带 <code>usageMetadata</code>，以最后一片为准用于计费。</div>
       </div>
     </div>
   </div>

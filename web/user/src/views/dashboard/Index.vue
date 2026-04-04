@@ -54,11 +54,13 @@ const channelCount = ref(0)
 const keyCount = ref(0)
 
 const apiEndpoints = [
-  { method: 'POST', path: '/v1/llm?channel_id=1', desc: 'LLM 对话（OpenAI 兼容）' },
-  { method: 'POST', path: '/v1/image?channel_id=2', desc: '图片生成（异步）' },
-  { method: 'POST', path: '/v1/video?channel_id=3', desc: '视频生成（异步）' },
-  { method: 'POST', path: '/v1/audio?channel_id=4', desc: '音频生成（异步）' },
-  { method: 'GET',  path: '/v1/tasks/:id', desc: '查询任务结果' },
+  { method: 'POST', path: '/v1/chat/completions?channel_id=1', desc: 'LLM 对话（OpenAI 标准格式）' },
+  { method: 'POST', path: '/v1/messages?channel_id=1',       desc: 'LLM 对话（Claude 原生格式）' },
+  { method: 'POST', path: '/v1/gemini?channel_id=1',          desc: 'LLM 对话（Gemini 原生格式）' },
+  { method: 'POST', path: '/v1/image?channel_id=2',           desc: '图片生成（异步）' },
+  { method: 'POST', path: '/v1/video?channel_id=3',           desc: '视频生成（异步）' },
+  { method: 'POST', path: '/v1/audio?channel_id=4',           desc: '音频生成（异步）' },
+  { method: 'GET',  path: '/v1/tasks/:id',                    desc: '查询任务结果' },
 ]
 
 onMounted(async () => {

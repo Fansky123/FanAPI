@@ -2,6 +2,7 @@ import http from './http'
 
 export const authApi = {
   login: (data) => http.post('/auth/login', data),
+  changePassword: (data) => http.put('/user/password', data),
 }
 
 export const channelApi = {
@@ -25,6 +26,7 @@ export const keyPoolApi = {
 export const userApi = {
   list: (page = 1, size = 20) => http.get('/admin/users', { params: { page, size } }),
   recharge: (id, amount) => http.post(`/admin/users/${id}/recharge`, { amount }),
+  resetPassword: (id, password) => http.put(`/admin/users/${id}/password`, { password }),
 }
 
 export const txApi = {

@@ -251,7 +251,11 @@ async function runRequest() {
 
   try {
     const ch = channels.value.find(c => c.id === selectedChannel.value)
-    const path = `/v1/${ch?.type ?? 'llm'}`
+    // LLM 类型按渠道协议路由到对应端点
+    const llmPathMap = { claude: '/v1/messages', gemini: '/v1/gemini' }
+    const path = ch?.type === 'llm'
+      ? (llmPathMap[ch?.protocol] ?? '/v1/chat/completions')
+      : `/v1/${ch?.type ?? 'image'}`
     const res = await fetch(`/api${path}?channel_id=${selectedChannel.value}`, {
       method: 'POST',
       headers: {

@@ -23,20 +23,77 @@
           <div class="page-title">{{ pageTitle }}</div>
           <div class="page-subtitle">平台管理、利润分析与运营控制</div>
         </div>
+        <el-dropdown @command="handleCmd">
+          <div class="avatar-btn"><el-icon><UserFilled /></el-icon>我的账户<el-icon class="el-icon--right"><ArrowDown /></el-icon></div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="pwd">修改密码</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </el-header>
       <el-main class="page-main"><router-view /></el-main>
     </el-container>
   </el-container>
+
+  <!-- 修改密码 -->
+  <el-dialog v-model="showPwd" title="修改密码" width="380px">
+    <el-form :model="pwdForm" :rules="pwdRules" ref="pwdFormRef" label-width="90px">
+      <el-form-item label="旧密码" prop="old_password">
+        <el-input v-model="pwdForm.old_password" type="password" show-password />
+      </el-form-item>
+      <el-form-item label="新密码" prop="new_password">
+        <el-input v-model="pwdForm.new_password" type="password" show-password placeholder="至少 8 位" />
+      </el-form-item>
+      <el-form-item label="确认密码" prop="confirm">
+        <el-input v-model="pwdForm.confirm" type="password" show-password />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showPwd = false">取消</el-button>
+      <el-button type="primary" @click="doChangePwd">确认修改</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { authApi } from '@/api'
+import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const titles = { '/channels': '渠道管理', '/key-pools': '号池管理', '/users': '用户管理', '/billing': '账单流水', '/tasks': '任务中心' }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
+
+// 账户菜单
+const showPwd = ref(false)
+const pwdFormRef = ref(null)
+const pwdForm = ref({ old_password: '', new_password: '', confirm: '' })
+const pwdRules = {
+  old_password: [{ required: true, message: '请输入旧密码', trigger: 'blur' }],
+  new_password: [{ required: true, min: 8, message: '至少 8 位', trigger: 'blur' }],
+  confirm: [{ validator: (r, v, cb) => v === pwdForm.value.new_password ? cb() : cb(new Error('两次密码不一致')), trigger: 'blur' }]
+}
+
+function handleCmd(cmd) {
+  if (cmd === 'pwd') {
+    pwdForm.value = { old_password: '', new_password: '', confirm: '' }
+    showPwd.value = true
+  } else if (cmd === 'logout') {
+    logout()
+  }
+}
+
+async function doChangePwd() {
+  await pwdFormRef.value.validate()
+  await authApi.changePassword({ old_password: pwdForm.value.old_password, new_password: pwdForm.value.new_password })
+  ElMessage.success('密码已修改，请重新登录')
+  showPwd.value = false
+  setTimeout(logout, 1200)
+}
 
 function logout() {
   localStorage.removeItem('admin_token')
@@ -71,6 +128,11 @@ function logout() {
   margin-top:auto;padding:14px 12px;color:rgba(235,242,255,.82);cursor:pointer;display:flex;align-items:center;gap:8px;border-radius:10px
 }
 .sidebar-bottom:hover { background:rgba(255,255,255,.08);color:#fff }
+.avatar-btn {
+  display:flex;align-items:center;gap:6px;cursor:pointer;
+  color:#374151;font-size:.9rem;padding:6px 10px;border-radius:8px;
+}
+.avatar-btn:hover { background:#f3f6fa }
 .header {
   display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e7edf5;background:rgba(255,255,255,.84);backdrop-filter:blur(8px);padding:0 24px;height:76px
 }

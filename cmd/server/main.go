@@ -71,10 +71,11 @@ func main() {
 		{
 			user.GET("/balance", authH.GetBalance)
 			user.GET("/transactions", authH.GetTransactions)
-			user.GET("/channels", authH.ListModels) // 对用户暴露渠道列表（含价格展示）
+			user.GET("/channels", authH.ListModels)
 			user.GET("/apikeys", authH.ListAPIKeys)
 			user.POST("/apikeys", authH.CreateAPIKey)
 			user.DELETE("/apikeys/:id", authH.DeleteAPIKey)
+			user.PUT("/password", authH.ChangePassword)
 		}
 
 		// Admin routes (JWT or API Key + admin role)
@@ -94,6 +95,7 @@ func main() {
 			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)
+			admin.PUT("/users/:id/password", handler.ResetUserPassword)
 			admin.GET("/transactions", handler.ListAllTransactions)
 			admin.GET("/tasks", handler.ListTasks)
 			admin.GET("/tasks/:id", handler.GetAdminTask)
@@ -103,7 +105,9 @@ func main() {
 		v1 := authed.Group("/v1")
 		v1.Use(middleware.APIKeyOnly())
 		{
-			v1.POST("/llm", handler.LLMProxy)
+			v1.POST("/chat/completions", handler.LLMProxy) // OpenAI 兼容格式
+			v1.POST("/messages", handler.ClaudeProxy)      // Claude 原生格式
+			v1.POST("/gemini", handler.GeminiProxy)        // Gemini 原生格式
 			v1.POST("/image", handler.CreateImageTask)
 			v1.POST("/video", handler.CreateVideoTask)
 			v1.POST("/audio", handler.CreateAudioTask)

@@ -55,8 +55,9 @@ type Channel struct {
 	QueryScript   string    `xorm:"text 'query_script'" json:"query_script"`                   // JS 脚本：mapResponse(input) → 将轮询响应映射为标准格式
 	BillingType   string    `xorm:"notnull 'billing_type'" json:"billing_type"`                // 计费类型：token / image / video / audio / count / custom
 	BillingConfig JSON      `xorm:"jsonb 'billing_config'" json:"billing_config"`
-	BillingScript string    `xorm:"text 'billing_script'" json:"billing_script"` // billing_type=custom 时的计费脚本
-	KeyPoolID     int64     `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"` // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
+	BillingScript string    `xorm:"text 'billing_script'" json:"billing_script"`          // billing_type=custom 时的计费脚本
+	KeyPoolID     int64     `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"`          // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
+	Protocol      string    `xorm:"notnull default('openai') 'protocol'" json:"protocol"` // API 协议格式：openai（默认）/ claude / gemini
 	IsActive      bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
 	CreatedAt     time.Time `xorm:"created 'created_at'" json:"created_at"`
 	UpdatedAt     time.Time `xorm:"updated 'updated_at'" json:"updated_at"`

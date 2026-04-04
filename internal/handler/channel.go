@@ -10,6 +10,7 @@ import (
 	"fanapi/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func parseDateTime(value string, endOfDay bool) (time.Time, error) {
@@ -84,6 +85,33 @@ func DeleteChannel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "channel disabled"})
+}
+
+// PUT /admin/users/:id/password — 管理员重置任意用户密码
+func ResetUserPassword(c *gin.Context) {
+	targetID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Password string `json:"password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash error"})
+		return
+	}
+	affected, err := db.Engine.ID(targetID).Cols("password_hash").Update(&model.User{PasswordHash: string(hash)})
+	if err != nil || affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
 }
 
 // POST /admin/users/:id/recharge — 为用户手动充值（直接填写 credits 数量）
