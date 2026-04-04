@@ -160,7 +160,7 @@ func calcCount(cfg map[string]interface{}) (int64, error) {
 	return getInt64Val(cfg, "price_per_call"), nil
 }
 
-// calcCustom 调用 yaegi 自定义计费脚本。
+// calcCustom 调用 JS 自定义计费脚本（goja 运行时）。
 func calcCustom(script string, req map[string]interface{}) (int64, error) {
 	return RunBillingScript(script, req, nil)
 }

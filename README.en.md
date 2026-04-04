@@ -4,7 +4,7 @@ A multi-channel LLM & AI generation service aggregation platform. It provides a 
 
 ## Features
 
-- **Multi-channel proxy** — Flexible upstream API integration via yaegi dynamic scripts for request/response mapping
+- **Multi-channel proxy** — Flexible upstream API integration via goja (JavaScript runtime) dynamic scripts for request/response mapping
 - **LLM chat** — Streaming (SSE) and non-streaming proxy with two-phase billing (pre-deduction + settlement)
 - **Async tasks** — Image, video, and audio generation with async polling for task status
 - **Billing system** — Multi-dimensional billing models (by token / image / video / audio / custom script), balance management and transaction history
@@ -21,7 +21,7 @@ A multi-channel LLM & AI generation service aggregation platform. It provides a 
 | Cache | Redis |
 | Message Queue | NATS |
 | Auth | JWT + API Key |
-| Dynamic Scripts | yaegi |
+| Dynamic Scripts | goja (JavaScript) |
 | Frontend | Vue 3 + Vite |
 
 ## Dependencies

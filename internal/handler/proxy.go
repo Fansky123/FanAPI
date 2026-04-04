@@ -19,7 +19,7 @@ import (
 
 // asyncTaskMsg 是通过 NATS 发送给 script worker 的消息结构。
 // Payload 存储平台标准格式（size="4k", aspect_ratio="9:16"），
-// worker 在执行时调用 channel.RequestScript（yaegi 脚本）将其转换为 vendor 格式。
+// worker 在执行时调用 channel.RequestScript（JS 脚本）将其转换为 vendor 格式。
 type asyncTaskMsg struct {
 	TaskID    int64                  `json:"task_id"`
 	ChannelID int64                  `json:"channel_id"`
@@ -29,7 +29,7 @@ type asyncTaskMsg struct {
 
 // bindImageRequest 将请求 body 解析为 ImageRequest。
 // 先按结构体绑定固定字段（做必填校验），再将原始 JSON 中其余字段写入 Extra，
-// Extra 字段经 ToMap() 合并后透传给 yaegi 映射脚本。
+// Extra 字段经 ToMap() 合并后透传给 JS 映射脚本。
 func bindImageRequest(bodyBytes []byte) (*model.ImageRequest, error) {
 	var req model.ImageRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {

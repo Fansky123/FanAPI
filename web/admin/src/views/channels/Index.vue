@@ -34,6 +34,12 @@
           <span style="font-size:12px;color:#999">{{ formatCost(row) }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="号池" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.key_pool_id" size="small" type="warning">{{ row.key_pool_id }}</el-tag>
+          <span v-else style="color:#ccc;font-size:12px">—</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="is_active" label="状态" width="80" align="center">
         <template #default="{ row }">
           <el-switch v-model="row.is_active" @change="toggleActive(row)" />
@@ -174,6 +180,21 @@
             placeholder="其余计费参数，如 metric_paths、resolution_tiers 等" style="font-family:monospace;font-size:12px" />
           <div style="font-size:11px;color:#aaa;margin-top:4px">上方价格字段优先级更高，保存时自动合并到此 JSON</div>
         </el-form-item>
+
+        <el-divider content-position="left" style="margin:8px 0 12px">
+          <span style="font-size:13px;color:#666">号池绑定（多 Key 轮转）</span>
+        </el-divider>
+        <el-form-item label="绑定号池">
+          <el-select v-model="form.key_pool_id" placeholder="不启用（使用 Headers 中的静态 Key）" clearable style="width:100%"
+            :disabled="!editRow">
+            <el-option :value="0" label="不启用" />
+            <el-option v-for="p in channelPools" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+          <div style="font-size:11px;color:#aaa;margin-top:4px">
+            <template v-if="!editRow">保存渠道后再编辑可选择号池</template>
+            <template v-else>绑定后 Headers 中的 Authorization 将被号池中的 Sticky Key 覆盖</template>
+          </div>
+        </el-form-item>
         <el-form-item label="入参映射脚本">
           <el-input v-model="form.request_script" type="textarea" :rows="8" placeholder="package main&#10;&#10;func MapRequest(input map[string]interface{}) map[string]interface{} {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
@@ -207,7 +228,7 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { channelApi } from '@/api'
+import { channelApi, keyPoolApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
 const channels = ref([])
@@ -220,6 +241,7 @@ const emptyForm = () => ({
   billing_type: 'token', billingConfigStr: '{}',
   request_script: '', response_script: '',
   query_url: '', query_method: 'GET', query_script: '',
+  key_pool_id: 0,
   is_active: true,
   bp: emptyBp(),
 })
@@ -260,6 +282,7 @@ function mergeBpToConfig(bp, baseConfigStr) {
   return cfg
 }
 const form = reactive(emptyForm())
+const channelPools = ref([]) // 供编辑弹窗中「号池绑定」下拉使用
 
 onMounted(fetchChannels)
 
@@ -282,8 +305,13 @@ function openDialog(row = null) {
       billingConfigStr: JSON.stringify(rest, null, 2),
       bp,
     })
+    // 加载该渠道可用的号池列表（channel_id 精确匹配）
+    keyPoolApi.listPools(row.id).then(res => {
+      channelPools.value = Array.isArray(res) ? res : (res.pools ?? [])
+    })
   } else {
     Object.assign(form, emptyForm())
+    channelPools.value = []
   }
   dialogVisible.value = true
 }
@@ -304,6 +332,7 @@ async function saveChannel() {
     billing_config: billingConfig, request_script: form.request_script,
     response_script: form.response_script,
     query_url: form.query_url, query_method: form.query_method, query_script: form.query_script,
+    key_pool_id: form.key_pool_id ?? 0,
     is_active: form.is_active,
   }
 

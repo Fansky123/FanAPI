@@ -12,7 +12,7 @@ package model
 //   - ReferImages：参考图片 URL 列表（图生图场景）
 //   - N：生成数量，默认 1
 //
-// 模型特有的额外参数通过 Extra 透传到 yaegi 映射脚本，不做强制校验。
+// 模型特有的额外参数通过 Extra 透传到 JS 映射脚本，不做强制校验。
 type ImageRequest struct {
 	Model       string                 `json:"model" binding:"required"`
 	Prompt      string                 `json:"prompt" binding:"required"`
@@ -35,7 +35,7 @@ type ImageRequest struct {
 //   - Duration：时长秒数字符串，如 "5"、"10"、"15"
 //   - ReferImages：参考图片 URL 列表（图生视频场景）
 //
-// 额外参数通过 Extra 透传到 yaegi 脚本。
+// 额外参数通过 Extra 透传到 JS 脚本。
 type VideoRequest struct {
 	Model       string                 `json:"model" binding:"required"`
 	Prompt      string                 `json:"prompt" binding:"required"`
@@ -61,7 +61,7 @@ type AudioRequest struct {
 	Extra    map[string]interface{} `json:"-"`
 }
 
-// ToMap 将 ImageRequest 序列化为 map（保留 Extra 扩展字段），供 billing 和 yaegi 脚本使用。
+// ToMap 将 ImageRequest 序列化为 map（保留 Extra 扩展字段），供 billing 和 JS 脚本使用。
 func (r *ImageRequest) ToMap() map[string]interface{} {
 	m := map[string]interface{}{
 		"model":        r.Model,
@@ -79,7 +79,7 @@ func (r *ImageRequest) ToMap() map[string]interface{} {
 	return m
 }
 
-// ToMap 将 VideoRequest 序列化为 map，供 billing 和 yaegi 脚本使用。
+// ToMap 将 VideoRequest 序列化为 map，供 billing 和 JS 脚本使用。
 func (r *VideoRequest) ToMap() map[string]interface{} {
 	m := map[string]interface{}{
 		"model":        r.Model,

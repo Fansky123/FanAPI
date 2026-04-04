@@ -10,6 +10,7 @@
       </div>
       <el-menu :default-active="route.path" router class="side-menu">
         <el-menu-item index="/channels"><el-icon><Connection /></el-icon>渠道管理</el-menu-item>
+        <el-menu-item index="/key-pools"><el-icon><Key /></el-icon>号池管理</el-menu-item>
         <el-menu-item index="/users"><el-icon><User /></el-icon>用户管理</el-menu-item>
         <el-menu-item index="/billing"><el-icon><Tickets /></el-icon>账单流水</el-menu-item>
         <el-menu-item index="/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
@@ -34,7 +35,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const titles = { '/channels': '渠道管理', '/users': '用户管理', '/billing': '账单流水', '/tasks': '任务中心' }
+const titles = { '/channels': '渠道管理', '/key-pools': '号池管理', '/users': '用户管理', '/billing': '账单流水', '/tasks': '任务中心' }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
 
 function logout() {

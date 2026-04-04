@@ -42,6 +42,8 @@ func handleTask(msg *nats.Msg) {
 	var req taskRequest
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
 		log.Printf("[worker] bad message: %v", err)
+		// Malformed message: terminate immediately, no retry.
+		_ = msg.Term()
 		return
 	}
 
@@ -52,6 +54,14 @@ func handleTask(msg *nats.Msg) {
 	found, err := db.Engine.Where("id = ?", req.TaskID).Get(task)
 	if err != nil || !found {
 		log.Printf("[worker] task %d not found: %v", req.TaskID, err)
+		_ = msg.Term()
+		return
+	}
+
+	// Idempotency: if the task was already processed (e.g. message redelivered after a crash),
+	// just ACK and exit without re-processing.
+	if task.Status == "done" || task.Status == "failed" {
+		_ = msg.Ack()
 		return
 	}
 
@@ -62,6 +72,7 @@ func handleTask(msg *nats.Msg) {
 	ch, err := service.GetChannel(ctx, req.ChannelID)
 	if err != nil {
 		failTask(task.ID, "channel not found: "+err.Error())
+		_ = msg.Term()
 		return
 	}
 
@@ -71,28 +82,60 @@ func handleTask(msg *nats.Msg) {
 		mapped, scriptErr := RunMapRequest(ch.RequestScript, payload)
 		if scriptErr != nil {
 			failTask(task.ID, "request mapping error: "+scriptErr.Error())
+			_ = msg.Term()
 			return
 		}
 		payload = mapped
 	}
 
-	// Call third-party API
-	respData, err := callUpstream(ch, payload)
-	if err != nil {
-		failTask(task.ID, "upstream error: "+err.Error())
-		return
+	// 号池：为该用户选取 Sticky 分配的三方 Key
+	var poolKey *model.PoolKey
+	if ch.KeyPoolID > 0 {
+		pk, pkErr := service.GetOrAssignPoolKey(ctx, ch.KeyPoolID, req.UserID)
+		if pkErr != nil {
+			failTask(task.ID, "key pool error: "+pkErr.Error())
+			_ = msg.Term()
+			return
+		}
+		poolKey = pk
 	}
 
+	// upstream_request 在调用上游前就落库，确保任意失败路径下日志可查
 	upstreamReq := model.JSON{}
 	for k, v := range payload {
 		upstreamReq[k] = v
 	}
+	db.Engine.Where("id = ?", task.ID).Cols("upstream_request").Update(&model.Task{
+		UpstreamRequest: upstreamReq,
+	})
+
+	// Call third-party API
+	respData, statusCode, err := callUpstream(ch, payload, poolKey)
+	if err != nil {
+		failTask(task.ID, "upstream error: "+err.Error())
+		_ = msg.Term()
+		return
+	}
+
+	// 若 429，号池轮转并重试一次
+	if statusCode == http.StatusTooManyRequests && ch.KeyPoolID > 0 && poolKey != nil {
+		newKey, rotErr := service.MarkExhaustedAndRotate(ctx, ch.KeyPoolID, poolKey.ID, req.UserID)
+		if rotErr == nil {
+			poolKey = newKey
+			respData, _, err = callUpstream(ch, payload, poolKey)
+			if err != nil {
+				failTask(task.ID, "upstream error (retry): "+err.Error())
+				_ = msg.Term()
+				return
+			}
+		}
+	}
+
 	upstreamResp := model.JSON{}
 	for k, v := range respData {
 		upstreamResp[k] = v
 	}
-	db.Engine.Where("id = ?", task.ID).Cols("upstream_request", "upstream_response").Update(&model.Task{
-		UpstreamRequest:  upstreamReq,
+	db.Engine.Where("id = ?", task.ID).Cols("upstream_response").Update(&model.Task{
 		UpstreamResponse: upstreamResp,
 	})
 
@@ -104,6 +147,7 @@ func handleTask(msg *nats.Msg) {
 		mapped, scriptErr := RunMapResponse(ch.ResponseScript, respData)
 		if scriptErr != nil {
 			failTask(task.ID, "response mapping error: "+scriptErr.Error())
+			_ = msg.Term()
 			return
 		}
 		respData = mapped
@@ -126,6 +170,7 @@ func handleTask(msg *nats.Msg) {
 			UpstreamResponse: upstreamResp,
 		})
 		log.Printf("[worker] task %d is async, upstream_task_id=%s", task.ID, upstreamTaskID)
+		_ = msg.Ack()
 		return
 	}
 
@@ -141,12 +186,13 @@ func handleTask(msg *nats.Msg) {
 		UpstreamRequest:  upstreamReq,
 		UpstreamResponse: upstreamResp,
 	})
+	_ = msg.Ack()
 }
 
-func callUpstream(ch *model.Channel, payload map[string]interface{}) (map[string]interface{}, error) {
+func callUpstream(ch *model.Channel, payload map[string]interface{}, poolKey *model.PoolKey) (map[string]interface{}, int, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
@@ -154,7 +200,7 @@ func callUpstream(ch *model.Channel, payload map[string]interface{}) (map[string
 
 	req, err := http.NewRequest(ch.Method, ch.BaseURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range ch.Headers {
@@ -162,26 +208,33 @@ func callUpstream(ch *model.Channel, payload map[string]interface{}) (map[string
 			req.Header.Set(k, sv)
 		}
 	}
+	// 号池 Key 覆盖渠道静态 Authorization
+	if poolKey != nil {
+		req.Header.Set("Authorization", "Bearer "+poolKey.Value)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, resp.StatusCode, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, resp.StatusCode, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, string(respBody))
+		return nil, resp.StatusCode, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("upstream response not JSON: %w", err)
+		return nil, resp.StatusCode, fmt.Errorf("upstream response not JSON: %w", err)
 	}
-	return result, nil
+	return result, resp.StatusCode, nil
 }
 
 // failTask 将任务标记为失败，同时在 result 中写入标准错误格式，

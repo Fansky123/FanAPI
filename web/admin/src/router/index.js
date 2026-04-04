@@ -14,6 +14,7 @@ const routes = [
     children: [
       { path: '', redirect: '/channels' },
       { path: 'channels', name: 'Channels', component: () => import('@/views/channels/Index.vue') },
+      { path: 'key-pools', name: 'KeyPools', component: () => import('@/views/keypools/Index.vue') },
       { path: 'users', name: 'Users', component: () => import('@/views/users/Index.vue') },
       { path: 'billing', name: 'Billing', component: () => import('@/views/billing/Index.vue') },
       { path: 'tasks', name: 'Tasks', component: () => import('@/views/tasks/Index.vue') },

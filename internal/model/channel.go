@@ -45,17 +45,18 @@ type Channel struct {
 	Method         string `xorm:"notnull default('POST') 'method'" json:"method"`
 	Headers        JSON   `xorm:"jsonb 'headers'" json:"headers"` // 固定请求头，如 Authorization
 	TimeoutMs      int64  `xorm:"notnull default(30000) 'timeout_ms'" json:"timeout_ms"`
-	RequestScript  string `xorm:"text 'request_script'" json:"request_script"`   // yaegi 脚本：MapRequest
-	ResponseScript string `xorm:"text 'response_script'" json:"response_script"` // yaegi 脚本：MapResponse（同步）或提取 upstream_task_id（异步）
+	RequestScript  string `xorm:"text 'request_script'" json:"request_script"`   // JS 脚本：mapRequest(input) → 将平台请求映射为上游格式
+	ResponseScript string `xorm:"text 'response_script'" json:"response_script"` // JS 脚本：mapResponse(input) → 映射上游响应（同步）或提取 upstream_task_id（异步）
 	// 异步轮询配置（video/audio 等异步接口使用）：
 	// 提交请求后从 response_script 映射结果中取 upstream_task_id，
 	// 然后定期请求 QueryURL（支持 {id} 占位符）获取最终状态。
 	QueryURL      string    `xorm:"text default('') 'query_url'" json:"query_url"`             // 轮询 URL，如 https://api.example.com/v1/tasks/{id}
 	QueryMethod   string    `xorm:"notnull default('GET') 'query_method'" json:"query_method"` // 轮询 HTTP 方法，默认 GET
-	QueryScript   string    `xorm:"text 'query_script'" json:"query_script"`                   // yaegi 脚本：MapQueryResponse，将轮询响应映射为标准格式
+	QueryScript   string    `xorm:"text 'query_script'" json:"query_script"`                   // JS 脚本：mapResponse(input) → 将轮询响应映射为标准格式
 	BillingType   string    `xorm:"notnull 'billing_type'" json:"billing_type"`                // 计费类型：token / image / video / audio / count / custom
 	BillingConfig JSON      `xorm:"jsonb 'billing_config'" json:"billing_config"`
 	BillingScript string    `xorm:"text 'billing_script'" json:"billing_script"` // billing_type=custom 时的计费脚本
+	KeyPoolID     int64     `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"` // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
 	IsActive      bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
 	CreatedAt     time.Time `xorm:"created 'created_at'" json:"created_at"`
 	UpdatedAt     time.Time `xorm:"updated 'updated_at'" json:"updated_at"`

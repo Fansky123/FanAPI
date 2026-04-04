@@ -14,12 +14,15 @@ else
 fi
 
 # ---------- 2. Redis ----------
-if ! redis-cli ping 2>/dev/null | grep -q "PONG"; then
+if curl -s --max-time 1 telnet://127.0.0.1:6379 >/dev/null 2>&1; then
+    echo "[2/4] Redis 已运行 ✓"
+elif command -v redis-server >/dev/null 2>&1; then
     echo "[2/4] 启动 Redis..."
     redis-server --daemonize yes --logfile /tmp/redis.log
     sleep 1
 else
-    echo "[2/4] Redis 已运行 ✓"
+    echo "[2/4] Redis 未运行且 redis-server 不可用，请先在宿主机启动 Redis (端口 6379)" >&2
+    exit 1
 fi
 
 # ---------- 3. NATS ----------

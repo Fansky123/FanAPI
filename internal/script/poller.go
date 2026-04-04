@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"fanapi/internal/cache"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
 	"fanapi/internal/service"
@@ -20,6 +21,11 @@ const (
 	pollInterval = 5 * time.Second  // 每次轮询间隔
 	pollTimeout  = 30 * time.Second // 单次查询上游超时
 	maxAge       = 2 * time.Hour    // 超过此时间仍未完成则标记失败（防止僵死任务）
+
+	// pollLockTTL must be > pollTimeout so the lock outlives the upstream HTTP call.
+	// It is a safety-net expiry: if the goroutine crashes, the lock auto-expires and
+	// the next poller cycle can pick up the task again.
+	pollLockTTL = 60 * time.Second
 )
 
 // StartPoller 启动轮询协程，定期检查所有 status=processing 且有 upstream_task_id 的任务。
@@ -51,23 +57,39 @@ func pollPendingTasks(ctx context.Context) {
 	for i := range tasks {
 		task := &tasks[i]
 
+		// Distributed lock: prevents multiple instances (or goroutines) from polling
+		// the same task concurrently. The lock TTL acts as a dead-man's switch —
+		// if the goroutine crashes without releasing it, the lock expires after pollLockTTL
+		// and the next cycle can pick it up.
+		lockKey := fmt.Sprintf("poll:lock:%d", task.ID)
+		acquired, lockErr := cache.Client.SetNX(ctx, lockKey, "1", pollLockTTL).Result()
+		if lockErr != nil || !acquired {
+			continue // another instance is handling this task
+		}
+
 		// 超时保护：任务创建超过 maxAge 仍未完成，标记为失败
 		if time.Since(task.CreatedAt) > maxAge {
+			cache.Client.Del(ctx, lockKey)
 			failTask(task.ID, "task timed out after "+maxAge.String())
 			continue
 		}
 
 		ch, err := service.GetChannel(ctx, task.ChannelID)
 		if err != nil {
+			cache.Client.Del(ctx, lockKey)
 			log.Printf("[poller] task %d: channel not found: %v", task.ID, err)
 			continue
 		}
 		if ch.QueryURL == "" {
 			// 渠道未配置查询地址，跳过（不应出现，防御性处理）
+			cache.Client.Del(ctx, lockKey)
 			continue
 		}
 
-		go pollOneTask(ctx, task, ch)
+		go func(t *model.Task, c *model.Channel, lk string) {
+			defer cache.Client.Del(ctx, lk)
+			pollOneTask(ctx, t, c)
+		}(task, ch, lockKey)
 	}
 }
 

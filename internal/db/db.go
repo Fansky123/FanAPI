@@ -33,6 +33,8 @@ func Init(cfg *config.DBConfig) error {
 		new(model.EmailVerification),
 		new(model.APIKey),
 		new(model.Channel),
+		new(model.KeyPool),
+		new(model.PoolKey),
 		new(model.Task),
 		new(model.BillingTransaction),
 	)

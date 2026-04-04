@@ -36,6 +36,9 @@ func main() {
 		log.Fatalf("nats: %v", err)
 	}
 	log.Println("nats connected")
+	if err := mq.EnsureStream(); err != nil {
+		log.Fatalf("nats ensure stream: %v", err)
+	}
 
 	_ = billing.SyncBalanceToRedis // available for use
 
@@ -82,6 +85,13 @@ func main() {
 			admin.GET("/channels", handler.ListChannels)
 			admin.PUT("/channels/:id", handler.UpdateChannel)
 			admin.DELETE("/channels/:id", handler.DeleteChannel)
+			// 号池管理
+			admin.GET("/key-pools", handler.ListKeyPools)
+			admin.POST("/key-pools", handler.CreateKeyPool)
+			admin.DELETE("/key-pools/:id", handler.DeleteKeyPool)
+			admin.GET("/key-pools/:id/keys", handler.ListPoolKeys)
+			admin.POST("/key-pools/:id/keys", handler.AddPoolKey)
+			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)
 			admin.GET("/transactions", handler.ListAllTransactions)

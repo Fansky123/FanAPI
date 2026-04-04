@@ -62,7 +62,7 @@ func LLMProxy(c *gin.Context) {
 		return
 	}
 
-	// yaegi 脚本映射入参（将平台统一格式 → 第三方 API 格式）
+	// JS 脚本映射入参（将平台统一格式 → 第三方 API 格式）
 	mappedReq := reqData
 	if ch.RequestScript != "" {
 		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData)
@@ -100,30 +100,43 @@ func LLMProxy(c *gin.Context) {
 		})
 	}
 
-	// 构建上游 HTTP 请求
-	upstreamBody, _ := json.Marshal(mappedReq)
-	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
-	httpClient := &http.Client{Timeout: timeout}
-
-	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, ch.BaseURL, bytes.NewReader(upstreamBody))
-	if err != nil {
-		llmRefundAndAbort(c, userID, totalHold, err.Error())
-		return
+	// 号池：为该请求选取（或沿用上次） Sticky 分配的三方 Key
+	// entityID 优先使用 api_key_id（保证同一用户 Key 始终命中同一个三方账号的上下文缓存）
+	entityID := apiKeyIDVal
+	if entityID == 0 {
+		entityID = userID
 	}
-	upReq.Header.Set("Content-Type", "application/json")
-	upReq.Header.Set("Accept", "text/event-stream")
-	// 注入渠道固定请求头（如 Authorization: Bearer <key>）
-	for k, v := range ch.Headers {
-		if sv, ok := v.(string); ok {
-			upReq.Header.Set(k, sv)
+	var poolKey *model.PoolKey
+	if ch.KeyPoolID > 0 {
+		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, entityID)
+		if pkErr != nil {
+			llmRefundAndAbort(c, userID, totalHold, "key pool error: "+pkErr.Error())
+			return
 		}
+		poolKey = pk
 	}
 
-	resp, err := httpClient.Do(upReq)
+	// 发送上游请求（若 429 则标记当前 Key 耗尽并用新 Key 重试一次）
+	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey)
 	if err != nil {
 		llmRefundAndAbort(c, userID, totalHold, "上游请求失败: "+err.Error())
 		return
 	}
+
+	if resp.StatusCode == http.StatusTooManyRequests && ch.KeyPoolID > 0 && poolKey != nil {
+		// 当前三方 Key 配额耗尽，轮转到下一 Key 重试
+		resp.Body.Close()
+		newKey, rotErr := service.MarkExhaustedAndRotate(c.Request.Context(), ch.KeyPoolID, poolKey.ID, entityID)
+		if rotErr == nil {
+			poolKey = newKey
+			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey)
+			if err != nil {
+				llmRefundAndAbort(c, userID, totalHold, "上游请求失败(重试): "+err.Error())
+				return
+			}
+		}
+	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -191,6 +204,31 @@ func LLMProxy(c *gin.Context) {
 		// 未收到 usage 数据（如上游异常截断），退回全部预扣保护用户余额
 		_ = billing.Refund(c.Request.Context(), userID, totalHold)
 	}
+}
+
+// sendLLMRequest 构建并发送对上游 LLM 的 HTTP 请求。
+// 若 poolKey 不为 nil，用其 Value 覆盖渠道静态 Authorization 头。
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey) (*http.Response, error) {
+	body, _ := json.Marshal(reqData)
+	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
+	httpClient := &http.Client{Timeout: timeout}
+
+	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, ch.BaseURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	upReq.Header.Set("Content-Type", "application/json")
+	upReq.Header.Set("Accept", "text/event-stream")
+	for k, v := range ch.Headers {
+		if sv, ok := v.(string); ok {
+			upReq.Header.Set(k, sv)
+		}
+	}
+	// 号池 Key 覆盖渠道静态 Authorization
+	if poolKey != nil {
+		upReq.Header.Set("Authorization", "Bearer "+poolKey.Value)
+	}
+	return httpClient.Do(upReq)
 }
 
 // llmRefundAndAbort 退款并终止请求（上游失败时调用）。

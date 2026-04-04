@@ -34,6 +34,9 @@ func main() {
 		log.Fatalf("nats: %v", err)
 	}
 	log.Println("nats connected")
+	if err := mq.EnsureStream(); err != nil {
+		log.Fatalf("nats ensure stream: %v", err)
+	}
 
 	if err := script.StartWorkers(); err != nil {
 		log.Fatalf("start workers: %v", err)
