@@ -53,7 +53,8 @@ async function handleLogin() {
   try {
     const res = await authApi.login(form)
     store.setToken(res.token)
-    router.push('/dashboard')
+    store.setEmail(form.email)
+    router.push('/playground')
   } finally {
     loading.value = false
   }
