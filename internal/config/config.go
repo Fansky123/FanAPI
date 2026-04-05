@@ -20,12 +20,15 @@ type ServerConfig struct {
 }
 
 type DBConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"dbname"`
-	SSLMode  string `mapstructure:"sslmode"`
+	Host           string `mapstructure:"host"`
+	Port           int    `mapstructure:"port"`
+	User           string `mapstructure:"user"`
+	Password       string `mapstructure:"password"`
+	DBName         string `mapstructure:"dbname"`
+	SSLMode        string `mapstructure:"sslmode"`
+	MaxOpenConns   int    `mapstructure:"max_open_conns"`    // 0 = unlimited
+	MaxIdleConns   int    `mapstructure:"max_idle_conns"`    // 0 = Go default (2)
+	ConnMaxIdleSec int    `mapstructure:"conn_max_idle_sec"` // 0 = no limit
 }
 
 type RedisConfig struct {
@@ -35,7 +38,9 @@ type RedisConfig struct {
 }
 
 type NATSConfig struct {
-	URL string `mapstructure:"url"`
+	URL           string `mapstructure:"url"`
+	MemoryStorage bool   `mapstructure:"memory_storage"` // true = 内存存储，吞吐更高但重启丢消息
+	Replicas      int    `mapstructure:"replicas"`       // JetStream 副本数，单节点填 1（默认）
 }
 
 // WorkerConfig controls which NATS subjects this worker process subscribes to.

@@ -26,11 +26,13 @@ const (
 )
 
 var (
-	Conn *nats.Conn
-	JS   nats.JetStreamContext
+	Conn  *nats.Conn
+	JS    nats.JetStreamContext
+	mqCfg *config.NATSConfig
 )
 
 func Init(cfg *config.NATSConfig) error {
+	mqCfg = cfg
 	var err error
 	Conn, err = nats.Connect(cfg.URL)
 	if err != nil {
@@ -46,13 +48,23 @@ func Init(cfg *config.NATSConfig) error {
 // EnsureStream creates or updates the persistent TASKS and RESULTS JetStream streams.
 // Must be called once on startup in every process that uses NATS.
 func EnsureStream() error {
+	storage := nats.FileStorage
+	replicas := 1
+	if mqCfg != nil {
+		if mqCfg.MemoryStorage {
+			storage = nats.MemoryStorage
+		}
+		if mqCfg.Replicas > 1 {
+			replicas = mqCfg.Replicas
+		}
+	}
 	if err := ensureOneStream(&nats.StreamConfig{
 		Name:      streamName,
 		Subjects:  []string{streamSubj},
 		Retention: nats.WorkQueuePolicy,
-		Storage:   nats.FileStorage,
+		Storage:   storage,
 		MaxAge:    24 * time.Hour,
-		Replicas:  1,
+		Replicas:  replicas,
 	}); err != nil {
 		return err
 	}
@@ -60,9 +72,9 @@ func EnsureStream() error {
 		Name:      resultStreamName,
 		Subjects:  []string{resultStreamSubj},
 		Retention: nats.WorkQueuePolicy,
-		Storage:   nats.FileStorage,
+		Storage:   storage,
 		MaxAge:    24 * time.Hour,
-		Replicas:  1,
+		Replicas:  replicas,
 	})
 }
 

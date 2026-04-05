@@ -42,27 +42,27 @@ func handleResult(msg *nats.Msg) {
 	switch res.Outcome {
 
 	case model.OutcomeDone:
-		result := toJSON(res.Result)
-		db.Engine.Where("id = ?", res.TaskID).
-			Cols("status", "progress", "result", "upstream_request", "upstream_response").
-			Update(&model.Task{
-				Status:           "done",
-				Progress:         100,
-				Result:           result,
-				UpstreamRequest:  upstreamReq,
-				UpstreamResponse: upstreamResp,
-			})
+		enqueueDoneUpdate(doneItem{
+			msg:          msg,
+			taskID:       res.TaskID,
+			status:       "done",
+			progress:     100,
+			result:       toJSON(res.Result),
+			upstreamReq:  upstreamReq,
+			upstreamResp: upstreamResp,
+		})
+		return // ACK handled by batch writer
 
 	case model.OutcomeAsync:
-		db.Engine.Where("id = ?", res.TaskID).
-			Cols("status", "upstream_task_id", "upstream_request", "upstream_response").
-			Update(&model.Task{
-				Status:           "processing",
-				UpstreamTaskID:   res.UpstreamTaskID,
-				UpstreamRequest:  upstreamReq,
-				UpstreamResponse: upstreamResp,
-			})
+		enqueueDoneUpdate(doneItem{
+			msg:            msg,
+			taskID:         res.TaskID,
+			status:         "processing",
+			upstreamTaskID: res.UpstreamTaskID,
+			upstreamReq:    upstreamReq,
+		})
 		log.Printf("[result-proc] task %d async, upstream_task_id=%s", res.TaskID, res.UpstreamTaskID)
+		return // ACK handled by batch writer
 
 	case model.OutcomeRateLimited:
 		if res.RetryCount >= 1 {

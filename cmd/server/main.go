@@ -52,6 +52,7 @@ func main() {
 	// Start async-task poller (polls DB for processing tasks with upstream_task_id)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	taskresult.StartBatchWriter(ctx)
 	taskresult.StartPoller(ctx)
 
 	m := mailer.New(&cfg.SMTP)

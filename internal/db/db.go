@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"fanapi/internal/config"
 	"fanapi/internal/model"
@@ -31,6 +32,17 @@ func Init(cfg *config.DBConfig, migrate bool) error {
 
 	if err = Engine.Ping(); err != nil {
 		return err
+	}
+
+	// 连接池调优（生产环境建议显式配置）
+	if cfg.MaxOpenConns > 0 {
+		Engine.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+	if cfg.MaxIdleConns > 0 {
+		Engine.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	if cfg.ConnMaxIdleSec > 0 {
+		Engine.SetConnMaxIdleTime(time.Duration(cfg.ConnMaxIdleSec) * time.Second)
 	}
 
 	if !migrate {
