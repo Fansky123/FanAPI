@@ -61,7 +61,7 @@ pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;ove
   <div class="page-sub">LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询</div>
   <div class="base-url">Base URL：http://localhost:8080</div>
   <div class="auth-tip">所有接口均需在 Header 中携带 API Key：<code>X-API-Key: YOUR_SK</code><br>
-  调用接口时通过 Query 参数 <code>channel_id</code> 指定渠道，渠道列表见登录后 <code>GET /user/channels</code>。</div>
+  <strong>渠道路由：</strong>将请求体中的 <code>model</code> 字段设为渠道名称（即 <code>GET /user/channels</code> 返回的 <code>routing_model</code> 值），服务端自动解析为真实上游模型名。也可使用 <code>?channel_id=X</code> 查询参数（向后兼容）。</div>
 
   <!-- LLM -->
   <div class="section">
@@ -71,14 +71,14 @@ pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;ove
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/chat/completions?channel_id={id}</span>
+        <span class="ep-path">/v1/chat/completions</span>
         <span class="ep-desc">OpenAI 标准格式（兼容 OpenAI SDK）</span>
       </div>
       <div class="ep-body open">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>模型名，如 <code>gpt-4o</code></td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称</td></tr>
           <tr><td>messages</td><td>array</td><td><span class="req">必填</span></td><td><code>[{"role":"user","content":"..."}]</code></td></tr>
           <tr><td>stream</td><td>bool</td><td><span class="opt">可选</span></td><td>true = SSE 流式，默认 false</td></tr>
           <tr><td>max_tokens</td><td>int</td><td><span class="opt">可选</span></td><td>最大输出 token 数</td></tr>
@@ -92,21 +92,21 @@ pre{background:#13151f;padding:14px;border-radius:0 0 6px 6px;font-size:12px;ove
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/chat/completions?channel_id=1" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/chat/completions" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"你好"}],"stream":true,"max_tokens":500}'</pre>
+  -d '{"model":"渠道名称","messages":[{"role":"user","content":"你好"}],"stream":true,"max_tokens":500}'</pre>
           <pre class="code-pane" data-lang="python" hidden>from openai import OpenAI
 
 client = OpenAI(
     api_key="YOUR_SK",
     base_url="http://localhost:8080/v1",
-    default_query={"channel_id": "1"},
 )
 
+# 将 model 设为渠道名称（routing_model），服务端自动路由
 # 流式
 stream = client.chat.completions.create(
-    model="gpt-4o",
+    model="渠道名称",
     messages=[{"role": "user", "content": "你好"}],
     stream=True,
     max_tokens=500,
@@ -116,7 +116,7 @@ for chunk in stream:
 
 # 非流式
 resp = client.chat.completions.create(
-    model="gpt-4o",
+    model="渠道名称",
     messages=[{"role": "user", "content": "你好"}],
     max_tokens=500,
 )
@@ -133,13 +133,13 @@ import (
 
 func main() {
 	body, _ := json.Marshal(map[string]any{
-		"model":      "gpt-4o",
+		"model":      "渠道名称", // routing_model from /user/channels
 		"messages":   []map[string]string{{"role": "user", "content": "你好"}},
 		"stream":     false,
 		"max_tokens": 500,
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/chat/completions?channel_id=1",
+		"http://localhost:8080/v1/chat/completions",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -159,7 +159,7 @@ public class Main {
              "stream":false,"max_tokens":500}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/chat/completions?channel_id=1"))
+            .uri(URI.create("http://localhost:8080/v1/chat/completions"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -174,12 +174,12 @@ import OpenAI from "openai";
 const client = new OpenAI({
   apiKey: "YOUR_SK",
   baseURL: "http://localhost:8080/v1",
-  defaultQuery: { channel_id: "1" },
 });
 
+// 将 model 设为渠道名称（routing_model），服务端自动路由
 // 流式
 const stream = await client.chat.completions.create({
-  model: "gpt-4o",
+  model: "渠道名称",
   messages: [{ role: "user", content: "你好" }],
   stream: true,
   max_tokens: 500,
@@ -190,13 +190,13 @@ for await (const chunk of stream) {
 
 // 非流式
 const resp = await client.chat.completions.create({
-  model: "gpt-4o",
+  model: "渠道名称",
   messages: [{ role: "user", content: "你好" }],
   max_tokens: 500,
 });
 console.log(resp.choices[0].message.content);</pre>
         </div>
-        <div class="note">流式响应为 SSE 格式，每行 <code>data: {...}</code>，最后一行 <code>data: [DONE]</code>。完全兼容 OpenAI SDK，将 <code>base_url</code> 改为 <code>http://localhost:8080/v1</code> 即可直接使用。</div>
+        <div class="note">流式响应为 SSE 格式，每行 <code>data: {...}</code>，最后一行 <code>data: [DONE]</code>。完全兼容 OpenAI SDK，将 <code>base_url</code> 改为 <code>http://localhost:8080/v1</code>，<code>model</code> 填渠道名称即可直接使用。也支持 <code>?channel_id=X</code> 参数（向后兼容）。</div>
       </div>
     </div>
 
@@ -204,14 +204,14 @@ console.log(resp.choices[0].message.content);</pre>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/messages?channel_id={id}</span>
+        <span class="ep-path">/v1/messages</span>
         <span class="ep-desc">Anthropic Claude 原生格式</span>
       </div>
       <div class="ep-body">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>如 <code>claude-3-5-sonnet-20241022</code></td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称如 <code>claude-3-5-sonnet</code></td></tr>
           <tr><td>messages</td><td>array</td><td><span class="req">必填</span></td><td><code>[{"role":"user","content":"..."}]</code>，不含 system</td></tr>
           <tr><td>system</td><td>string</td><td><span class="opt">可选</span></td><td>System prompt（顶层字段）</td></tr>
           <tr><td>max_tokens</td><td>int</td><td><span class="req">必填</span></td><td>最大输出 token 数</td></tr>
@@ -226,11 +226,11 @@ console.log(resp.choices[0].message.content);</pre>
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/messages?channel_id=1" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/messages" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "渠道名称",
     "system": "你是一个助手",
     "messages": [{"role": "user", "content": "你好"}],
     "max_tokens": 500,
@@ -242,27 +242,24 @@ client = anthropic.Anthropic(
     api_key="YOUR_SK",
     base_url="http://localhost:8080",
     default_headers={"X-API-Key": "YOUR_SK"},
-    # 注意：SDK 认证由平台 X-API-Key 替代，api_key 随便填即可
 )
 
 # 流式
 with client.messages.stream(
-    model="claude-3-5-sonnet-20241022",
+    model="渠道名称",  # routing_model from /user/channels
     system="你是一个助手",
     messages=[{"role": "user", "content": "你好"}],
     max_tokens=500,
-    extra_query={"channel_id": "1"},
 ) as stream:
     for text in stream.text_stream:
         print(text, end="", flush=True)
 
 # 非流式
 resp = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
+    model="渠道名称",
     system="你是一个助手",
     messages=[{"role": "user", "content": "你好"}],
     max_tokens=500,
-    extra_query={"channel_id": "1"},
 )
 print(resp.content[0].text)</pre>
           <pre class="code-pane" data-lang="go" hidden>package main
@@ -277,14 +274,14 @@ import (
 
 func main() {
 	body, _ := json.Marshal(map[string]any{
-		"model":      "claude-3-5-sonnet-20241022",
+		"model":      "渠道名称",
 		"system":     "你是一个助手",
 		"messages":   []map[string]string{{"role": "user", "content": "你好"}},
 		"max_tokens": 500,
 		"stream":     false,
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/messages?channel_id=1",
+		"http://localhost:8080/v1/messages",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -299,13 +296,13 @@ import java.net.http.*;
 public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
-            {"model":"claude-3-5-sonnet-20241022",
+            {"model":"渠道名称",
              "system":"你是一个助手",
              "messages":[{"role":"user","content":"你好"}],
              "max_tokens":500,"stream":false}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/messages?channel_id=1"))
+            .uri(URI.create("http://localhost:8080/v1/messages"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -318,15 +315,15 @@ public class Main {
           <pre class="code-pane" data-lang="node" hidden>import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  apiKey: "unused",           // 平台用 X-API-Key 替代
+  apiKey: "unused",
   baseURL: "http://localhost:8080",
   defaultHeaders: { "X-API-Key": "YOUR_SK" },
-  defaultQuery: { channel_id: "1" },
 });
 
+// 将 model 设为渠道名称（routing_model）
 // 流式
 const stream = client.messages.stream({
-  model: "claude-3-5-sonnet-20241022",
+  model: "渠道名称",
   system: "你是一个助手",
   messages: [{ role: "user", content: "你好" }],
   max_tokens: 500,
@@ -336,7 +333,7 @@ await stream.finalMessage();
 
 // 非流式
 const resp = await client.messages.create({
-  model: "claude-3-5-sonnet-20241022",
+  model: "渠道名称",
   system: "你是一个助手",
   messages: [{ role: "user", content: "你好" }],
   max_tokens: 500,
@@ -351,7 +348,7 @@ console.log(resp.content[0].text);</pre>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/gemini?channel_id={id}</span>
+        <span class="ep-path">/v1/gemini</span>
         <span class="ep-desc">Google Gemini 原生格式</span>
       </div>
       <div class="ep-body">
@@ -371,10 +368,11 @@ console.log(resp.content[0].text);</pre>
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/gemini?channel_id=1" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/gemini" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "渠道名称",
     "contents": [{"role":"user","parts":[{"text":"你好"}]}],
     "generationConfig": {"maxOutputTokens": 500}
   }'</pre>
@@ -387,7 +385,7 @@ import requests
 
 resp = requests.post(
     "http://localhost:8080/v1/gemini",
-    params={"channel_id": "1"},
+    params={"channel_id": "1"},  # 可选，向后兼容；也可在 model 字段填渠道名称
     headers={"X-API-Key": "YOUR_SK", "Content-Type": "application/json"},
     json={
         "contents": [{"role": "user", "parts": [{"text": "你好"}]}],
@@ -413,7 +411,7 @@ func main() {
 		"generationConfig": map[string]any{"maxOutputTokens": 500},
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/gemini?channel_id=1",
+		"http://localhost:8080/v1/gemini",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -428,11 +426,12 @@ import java.net.http.*;
 public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
-            {"contents":[{"role":"user","parts":[{"text":"你好"}]}],
+            {"model":"渠道名称",
+             "contents":[{"role":"user","parts":[{"text":"你好"}]}],
              "generationConfig":{"maxOutputTokens":500}}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/gemini?channel_id=1"))
+            .uri(URI.create("http://localhost:8080/v1/gemini"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -442,10 +441,11 @@ public class Main {
         System.out.println(resp.body());
     }
 }</pre>
-          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/gemini?channel_id=1", {
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/gemini", {
   method: "POST",
   headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
   body: JSON.stringify({
+    model: "渠道名称",
     contents: [{ role: "user", parts: [{ text: "你好" }] }],
     generationConfig: { maxOutputTokens: 500 },
   }),
@@ -464,14 +464,14 @@ console.log(data.candidates[0].content.parts[0].text);</pre>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/image?channel_id={id}</span>
+        <span class="ep-path">/v1/image</span>
         <span class="ep-desc">创建图片生成任务（异步，返回 task_id）</span>
       </div>
       <div class="ep-body open">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>模型，如 <code>nano-banana-pro</code></td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称如 <code>nano-banana-pro</code></td></tr>
           <tr><td>prompt</td><td>string</td><td><span class="req">必填</span></td><td>正向提示词</td></tr>
           <tr><td>negative_prompt</td><td>string</td><td><span class="opt">可选</span></td><td>反向提示词</td></tr>
           <tr><td>size</td><td>string</td><td><span class="opt">可选</span></td><td>分辨率档位：<code>1k</code> / <code>2k</code> / <code>3k</code> / <code>4k</code>，默认 2k</td></tr>
@@ -496,18 +496,17 @@ console.log(data.candidates[0].content.parts[0].text);</pre>
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/image?channel_id=2" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/image" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
-  -d '{"model":"nano-banana-pro","prompt":"赛博朋克猫","size":"4k","aspect_ratio":"9:16"}'</pre>
+  -d '{"model":"渠道名称","prompt":"赛博朋克猫","size":"4k","aspect_ratio":"9:16"}'</pre>
           <pre class="code-pane" data-lang="python" hidden>import requests
 
 resp = requests.post(
     "http://localhost:8080/v1/image",
-    params={"channel_id": 2},
     headers={"X-API-Key": "YOUR_SK"},
     json={
-        "model": "nano-banana-pro",
+        "model": "渠道名称",
         "prompt": "赛博朋克猫",
         "size": "4k",
         "aspect_ratio": "9:16"
@@ -527,13 +526,13 @@ import (
 
 func main() {
 	body, _ := json.Marshal(map[string]any{
-		"model":        "nano-banana-pro",
+		"model":        "渠道名称",
 		"prompt":       "赛博朋克猫",
 		"size":         "4k",
 		"aspect_ratio": "9:16",
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/image?channel_id=2",
+		"http://localhost:8080/v1/image",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -548,11 +547,11 @@ import java.net.http.*;
 public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
-            {"model":"nano-banana-pro","prompt":"赛博朋克猫",
+            {"model":"渠道名称","prompt":"赛博朋克猫",
              "size":"4k","aspect_ratio":"9:16"}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/image?channel_id=2"))
+            .uri(URI.create("http://localhost:8080/v1/image"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -562,11 +561,11 @@ public class Main {
         System.out.println(resp.body()); // {"task_id":1}
     }
 }</pre>
-          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/image?channel_id=2", {
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/image", {
   method: "POST",
   headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "nano-banana-pro",
+    model: "渠道名称",
     prompt: "赛博朋克猫",
     size: "4k",
     aspect_ratio: "9:16"
@@ -587,14 +586,14 @@ console.log("Task ID:", task_id);</pre>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/video?channel_id={id}</span>
+        <span class="ep-path">/v1/video</span>
         <span class="ep-desc">创建视频生成任务（异步，返回 task_id）</span>
       </div>
       <div class="ep-body">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>视频模型名称</td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称如 <code>video-gen-pro</code></td></tr>
           <tr><td>prompt</td><td>string</td><td><span class="req">必填</span></td><td>提示词</td></tr>
           <tr><td>size</td><td>string</td><td><span class="opt">可选</span></td><td><code>720p</code> / <code>1080p</code> / <code>2k</code> / <code>4k</code></td></tr>
           <tr><td>aspect_ratio</td><td>string</td><td><span class="opt">可选</span></td><td><code>16:9</code> / <code>9:16</code></td></tr>
@@ -610,18 +609,17 @@ console.log("Task ID:", task_id);</pre>
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/video?channel_id=3" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/video" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
-  -d '{"model":"video-gen-pro","prompt":"海浪拍打礁石","size":"1080p","aspect_ratio":"16:9","duration":5}'</pre>
+  -d '{"model":"渠道名称","prompt":"海浪拍打礁石","size":"1080p","aspect_ratio":"16:9","duration":5}'</pre>
           <pre class="code-pane" data-lang="python" hidden>import requests
 
 resp = requests.post(
     "http://localhost:8080/v1/video",
-    params={"channel_id": 3},
     headers={"X-API-Key": "YOUR_SK"},
     json={
-        "model": "video-gen-pro",
+        "model": "渠道名称",
         "prompt": "海浪拍打礁石",
         "size": "1080p",
         "aspect_ratio": "16:9",
@@ -642,14 +640,14 @@ import (
 
 func main() {
 	body, _ := json.Marshal(map[string]any{
-		"model":        "video-gen-pro",
+		"model":        "渠道名称",
 		"prompt":       "海浪拍打礁石",
 		"size":         "1080p",
 		"aspect_ratio": "16:9",
 		"duration":     5,
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/video?channel_id=3",
+		"http://localhost:8080/v1/video",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -664,11 +662,11 @@ import java.net.http.*;
 public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
-            {"model":"video-gen-pro","prompt":"海浪拍打礁石",
+            {"model":"渠道名称","prompt":"海浪拍打礁石",
              "size":"1080p","aspect_ratio":"16:9","duration":5}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/video?channel_id=3"))
+            .uri(URI.create("http://localhost:8080/v1/video"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -678,11 +676,11 @@ public class Main {
         System.out.println(resp.body());
     }
 }</pre>
-          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/video?channel_id=3", {
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/video", {
   method: "POST",
   headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "video-gen-pro",
+    model: "渠道名称",
     prompt: "海浪拍打礁石",
     size: "1080p",
     aspect_ratio: "16:9",
@@ -704,14 +702,14 @@ console.log("Task ID:", task_id);</pre>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
-        <span class="ep-path">/v1/audio?channel_id={id}</span>
+        <span class="ep-path">/v1/audio</span>
         <span class="ep-desc">创建音频生成任务（异步，返回 task_id）</span>
       </div>
       <div class="ep-body">
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>模型名称</td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称如 <code>music-gen</code></td></tr>
           <tr><td>prompt</td><td>string</td><td><span class="req">必填</span></td><td>歌词 / 描述</td></tr>
           <tr><td>style</td><td>string</td><td><span class="opt">可选</span></td><td>风格描述</td></tr>
           <tr><td>duration</td><td>int</td><td><span class="opt">可选</span></td><td>时长（秒）</td></tr>
@@ -725,18 +723,17 @@ console.log("Task ID:", task_id);</pre>
             <button class="tab" onclick="switchLang(this,'java')">Java</button>
             <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
           </div>
-          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/audio?channel_id=4" \
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/audio" \
   -H "X-API-Key: YOUR_SK" \
   -H "Content-Type: application/json" \
-  -d '{"model":"music-gen","prompt":"一首轻快的爵士乐","style":"jazz","duration":30}'</pre>
+  -d '{"model":"渠道名称","prompt":"一首轻快的爵士乐","style":"jazz","duration":30}'</pre>
           <pre class="code-pane" data-lang="python" hidden>import requests
 
 resp = requests.post(
     "http://localhost:8080/v1/audio",
-    params={"channel_id": 4},
     headers={"X-API-Key": "YOUR_SK"},
     json={
-        "model": "music-gen",
+        "model": "渠道名称",
         "prompt": "一首轻快的爵士乐",
         "style": "jazz",
         "duration": 30
@@ -756,13 +753,13 @@ import (
 
 func main() {
 	body, _ := json.Marshal(map[string]any{
-		"model":    "music-gen",
+		"model":    "渠道名称",
 		"prompt":   "一首轻快的爵士乐",
 		"style":    "jazz",
 		"duration": 30,
 	})
 	req, _ := http.NewRequest("POST",
-		"http://localhost:8080/v1/audio?channel_id=4",
+		"http://localhost:8080/v1/audio",
 		bytes.NewReader(body))
 	req.Header.Set("X-API-Key", "YOUR_SK")
 	req.Header.Set("Content-Type", "application/json")
@@ -777,11 +774,11 @@ import java.net.http.*;
 public class Main {
     public static void main(String[] args) throws Exception {
         String body = """
-            {"model":"music-gen","prompt":"一首轻快的爵士乐",
+            {"model":"渠道名称","prompt":"一首轻快的爵士乐",
              "style":"jazz","duration":30}
             """;
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/v1/audio?channel_id=4"))
+            .uri(URI.create("http://localhost:8080/v1/audio"))
             .header("X-API-Key", "YOUR_SK")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -791,11 +788,11 @@ public class Main {
         System.out.println(resp.body());
     }
 }</pre>
-          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/audio?channel_id=4", {
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/audio", {
   method: "POST",
   headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "music-gen",
+    model: "渠道名称",
     prompt: "一首轻快的爵士乐",
     style: "jazz",
     duration: 30
@@ -965,6 +962,85 @@ const resultUrl = await pollTask(1, "YOUR_SK");
 console.log("Result:", resultUrl);</pre>
         </div>
         <div class="note">建议轮询策略：前 10s 每 2s 一次，之后每 5s 一次，5 分钟未完成视为超时。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BALANCE -->
+  <div class="section">
+    <div class="section-title">6 · 余额查询</div>
+    <div class="endpoint">
+      <div class="ep-header" onclick="toggle(this)">
+        <span class="method GET">GET</span>
+        <span class="ep-path">/user/balance</span>
+        <span class="ep-desc">查询当前 API Key 对应账户的剩余余额</span>
+      </div>
+      <div class="ep-body open">
+        <h4>Response</h4>
+        <table>
+          <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+          <tr><td>balance_credits</td><td>int64</td><td>剩余 credits（1 CNY = 1,000,000 credits）</td></tr>
+          <tr><td>balance_cny</td><td>float64</td><td>折合人民币金额</td></tr>
+        </table>
+        <pre>{"balance_credits": 5000000, "balance_cny": 5.0}</pre>
+        <h4>示例</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'go')">Go</button>
+            <button class="tab" onclick="switchLang(this,'java')">Java</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl "http://localhost:8080/user/balance" -H "X-API-Key: YOUR_SK"</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.get(
+    "http://localhost:8080/user/balance",
+    headers={"X-API-Key": "YOUR_SK"},
+)
+data = resp.json()
+print(f"余额：{data['balance_credits']} credits（{data['balance_cny']:.4f} CNY）")</pre>
+          <pre class="code-pane" data-lang="go" hidden>package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+func main() {
+	req, _ := http.NewRequest("GET", "http://localhost:8080/user/balance", nil)
+	req.Header.Set("X-API-Key", "YOUR_SK")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	json.Unmarshal(body, &result)
+	fmt.Printf("余额：%.0f credits（%.4f CNY）\n",
+		result["balance_credits"], result["balance_cny"])
+}</pre>
+          <pre class="code-pane" data-lang="java" hidden>import java.net.URI;
+import java.net.http.*;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/user/balance"))
+            .header("X-API-Key", "YOUR_SK")
+            .GET().build();
+        var resp = HttpClient.newHttpClient()
+            .send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println(resp.body());
+    }
+}</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/user/balance", {
+  headers: { "X-API-Key": "YOUR_SK" },
+});
+const { balance_credits, balance_cny } = await resp.json();
+console.log(` + "`" + `余额：${balance_credits} credits（${balance_cny.toFixed(4)} CNY）` + "`" + `);</pre>
+        </div>
       </div>
     </div>
   </div>

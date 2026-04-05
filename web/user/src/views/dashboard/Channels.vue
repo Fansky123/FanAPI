@@ -23,12 +23,12 @@
     <el-card class="table-card">
       <el-table :data="filteredChannels" stripe :loading="loading" row-class-name="model-row">
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="渠道名称" min-width="180">
+        <el-table-column label="模型名称" min-width="180">
           <template #default="{ row }">
             <span class="name-text">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="model" label="模型" min-width="180">
+        <el-table-column prop="model" label="上游模型" min-width="180">
           <template #default="{ row }">
             <el-tag size="small" effect="plain" type="info">{{ row.model }}</el-tag>
           </template>
@@ -48,9 +48,9 @@
             <span class="price-text">{{ row.price_display || '免费' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="调用" width="140" fixed="right">
+        <el-table-column label="调用" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="copyId(row.id)">复制 ID={{ row.id }}</el-button>
+            <el-button size="small" @click="copyName(row.name)">复制模型名</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -60,19 +60,22 @@
 
     <!-- 调用提示 -->
     <el-card class="hint-card">
-      <div class="hint-title">调用示例</div>
+      <div class="hint-title">调用示例（将模型名称填入请求体 model 字段）</div>
       <div class="hint-row">
         <el-tag type="info" size="small">OpenAI</el-tag>
-        <code>POST /v1/chat/completions?channel_id=<b>&lt;ID&gt;</b></code>
-        <el-tag size="small">X-API-Key: sk-xxx</el-tag>
+        <code>POST /v1/chat/completions &nbsp; {"model": "<b>&lt;模型名称&gt;</b>", ...}</code>
       </div>
       <div class="hint-row">
         <el-tag type="warning" size="small">Claude</el-tag>
-        <code>POST /v1/messages?channel_id=<b>&lt;ID&gt;</b></code>
+        <code>POST /v1/messages &nbsp; {"model": "<b>&lt;模型名称&gt;</b>", ...}</code>
       </div>
       <div class="hint-row">
         <el-tag type="success" size="small">Gemini</el-tag>
-        <code>POST /v1/gemini?channel_id=<b>&lt;ID&gt;</b></code>
+        <code>POST /v1/gemini &nbsp; {"model": "<b>&lt;模型名称&gt;</b>", ...}</code>
+      </div>
+      <div class="hint-row">
+        <el-tag size="small">图/视/音频</el-tag>
+        <code>POST /v1/image (video/audio) &nbsp; {"model": "<b>&lt;模型名称&gt;</b>", ...}</code>
       </div>
     </el-card>
   </div>
@@ -112,9 +115,9 @@ const filteredChannels = computed(() =>
 
 const typeColor = (t) => ({ llm: 'primary', image: 'success', video: 'warning', audio: 'info' }[t] ?? '')
 
-function copyId(id) {
-  navigator.clipboard.writeText(String(id))
-  ElMessage.success(`channel_id=${id} 已复制`)
+function copyName(name) {
+  navigator.clipboard.writeText(name)
+  ElMessage.success(`模型名称 "${name}" 已复制`)
 }
 </script>
 

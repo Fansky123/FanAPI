@@ -16,7 +16,7 @@
     <el-card>
     <el-table :data="channels" stripe border>
       <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="渠道名称" />
+      <el-table-column prop="name" label="模型名称（路由键）" />
       <el-table-column prop="model" label="模型" />
       <el-table-column prop="type" label="类型" width="90">
         <template #default="{ row }">
@@ -68,14 +68,14 @@
     <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="editRow ? '编辑渠道' : '新增渠道'" width="760px" top="5vh">
       <el-form :model="form" label-width="120px" style="max-height:70vh;overflow-y:auto">
-        <el-form-item label="渠道名称" required>
-          <el-input v-model="form.name" placeholder="如：nano-1001（用户可见）" />
+        <el-form-item label="模型名称" required>
+          <el-input v-model="form.name" placeholder="如：nano-1001（用户在 model 字段填写此值路由到本渠道）" />
         </el-form-item>
         <el-form-item label="标准模型名" required>
           <el-input v-model="form.model" placeholder="如：nano-banana-pro（用于前端分组）" />
         </el-form-item>
         <el-form-item label="接口类型" required>
-          <el-select v-model="form.type" style="width:100%">
+          <el-select v-model="form.type" style="width:100%" @change="val => { if (!editRow) { form.timeout_ms = defaultTimeoutByType[val] ?? 60000; form.query_timeout_ms = defaultQueryTimeoutByType[val] ?? 30000 } }">
             <el-option label="LLM 对话" value="llm" />
             <el-option label="图片生成" value="image" />
             <el-option label="视频生成" value="video" />
@@ -256,6 +256,10 @@
             <el-option label="POST" value="POST" />
           </el-select>
         </el-form-item>
+        <el-form-item label="轮询超时（ms）">
+          <el-input-number v-model="form.query_timeout_ms" :min="1000" :step="1000" />
+          <div style="font-size:11px;color:#aaa;margin-top:4px">单次轮询 HTTP 请求的最大等待时间，视频/音频建议 60000ms</div>
+        </el-form-item>
         <el-form-item label="轮询映射脚本">
           <el-input v-model="form.query_script" type="textarea" :rows="8" placeholder="// 将第三方轮询响应映射为标准格式&#10;// status: 2=成功 3=失败 其他=进行中&#10;function MapResponse(input) {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
@@ -286,12 +290,16 @@ const channels = ref([])
 const dialogVisible = ref(false)
 const editRow = ref(null)
 
+// 按渠道类型推荐的超时默认值
+const defaultTimeoutByType      = { llm: 60000, image: 180000, video: 300000, audio: 180000 }
+const defaultQueryTimeoutByType = { llm: 30000, image: 30000,  video: 60000,  audio: 60000  }
+
 const emptyForm = () => ({
   name: '', model: '', type: 'llm', protocol: 'openai', base_url: '', method: 'POST',
-  headersStr: '{}', timeout_ms: 30000,
+  headersStr: '{}', timeout_ms: defaultTimeoutByType.llm,
   billing_type: 'token', billingConfigStr: '{}',
   request_script: '', response_script: '',
-  query_url: '', query_method: 'GET', query_script: '', error_script: '',
+  query_url: '', query_method: 'GET', query_timeout_ms: defaultQueryTimeoutByType.llm, query_script: '', error_script: '',
   key_pool_id: 0,
   is_active: true,
   bp: emptyBp(),
@@ -403,7 +411,9 @@ async function saveChannel() {
     timeout_ms: form.timeout_ms, billing_type: form.billing_type,
     billing_config: billingConfig, request_script: form.request_script,
     response_script: form.response_script,
-    query_url: form.query_url, query_method: form.query_method, query_script: form.query_script,
+    query_url: form.query_url, query_method: form.query_method,
+    query_timeout_ms: form.query_timeout_ms ?? 30000,
+    query_script: form.query_script,
     error_script: form.error_script,
     key_pool_id: form.key_pool_id ?? 0,
     is_active: form.is_active,

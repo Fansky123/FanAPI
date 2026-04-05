@@ -99,21 +99,38 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		apiKeyIDVal = apiKeyID.(int64)
 	}
 
-	channelIDStr := c.Query("channel_id")
-	if channelIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id required"})
-		return
+	// 渠道解析：优先 channel_id 查询参数（兼容旧客户端），否则用 reqData["model"] 按渠道名路由。
+	var ch *model.Channel
+	if channelIDStr := c.Query("channel_id"); channelIDStr != "" {
+		channelID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel_id"})
+			return
+		}
+		var chErr error
+		ch, chErr = service.GetChannel(c.Request.Context(), channelID)
+		if chErr != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": chErr.Error()})
+			return
+		}
+	} else {
+		routingModel, _ := reqData["model"].(string)
+		if routingModel == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "model or channel_id required"})
+			return
+		}
+		var chErr error
+		ch, chErr = service.GetChannelByName(c.Request.Context(), routingModel)
+		if chErr != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found: " + routingModel})
+			return
+		}
 	}
-	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel_id"})
-		return
-	}
+	channelID := ch.ID
 
-	ch, err := service.GetChannel(c.Request.Context(), channelID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
+	// 用渠道配置的真实模型名覆盖用户传入的路由键。
+	if ch.Model != "" {
+		reqData["model"] = ch.Model
 	}
 
 	// 精确计费：图片/视频/音频在请求时参数已全部已知，无需两阶段结算
@@ -169,7 +186,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 			db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "key pool error"})
 			if cost > 0 {
 				_ = billing.Refund(c.Request.Context(), userID, cost)
-				_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, 0, model.JSON{
+				_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, upstreamCost, model.JSON{
 					"task_id": task.ID,
 					"reason":  "key pool error",
 				})
@@ -195,6 +212,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		Method:         ch.Method,
 		Headers:        ch.Headers,
 		TimeoutMs:      ch.TimeoutMs,
+		QueryTimeoutMs: ch.QueryTimeoutMs,
 		RequestScript:  ch.RequestScript,
 		ResponseScript: ch.ResponseScript,
 		ErrorScript:    ch.ErrorScript,
@@ -210,7 +228,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "publish error"})
 		if cost > 0 {
 			_ = billing.Refund(c.Request.Context(), userID, cost)
-			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, 0, model.JSON{
+			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, upstreamCost, model.JSON{
 				"task_id": task.ID,
 				"reason":  "publish error",
 			})

@@ -38,8 +38,8 @@
       </el-table-column>
       <el-table-column label="金额" width="160">
         <template #default="{ row }">
-          <span :style="{ color: row.type === 'charge' ? '#f56c6c' : '#67c23a' }">
-            {{ row.type === 'charge' ? '-' : '+' }}{{ Math.abs(row.credits).toLocaleString() }} cr
+          <span :style="{ color: ['charge','hold','settle'].includes(row.type) ? '#f56c6c' : '#67c23a' }">
+            {{ ['charge','hold','settle'].includes(row.type) ? '-' : '+' }}{{ Math.abs(row.credits).toLocaleString() }} cr
           </span>
         </template>
       </el-table-column>
@@ -112,8 +112,8 @@ function toYuan(credits) {
 function profitOf(row) {
   const credits = row.credits ?? 0
   const cost = row.cost ?? 0
-  if (row.type === 'refund') return -credits
-  if (row.type === 'charge' || row.type === 'settle') return credits - cost
+  if (row.type === 'refund') return -(credits - cost)
+  if (row.type === 'charge' || row.type === 'settle' || row.type === 'hold') return credits - cost
   return 0
 }
 </script>

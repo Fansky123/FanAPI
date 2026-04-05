@@ -94,6 +94,7 @@ func handleResult(msg *nats.Msg) {
 			Method:         ch.Method,
 			Headers:        ch.Headers,
 			TimeoutMs:      ch.TimeoutMs,
+			QueryTimeoutMs: ch.QueryTimeoutMs,
 			RequestScript:  ch.RequestScript,
 			ResponseScript: ch.ResponseScript,
 			ErrorScript:    ch.ErrorScript,
@@ -152,11 +153,19 @@ func failTaskDB(ctx context.Context, taskID, userID, channelID, apiKeyID int64, 
 	if credits <= 0 {
 		return
 	}
-	if err := billing.Refund(ctx, userID, credits); err != nil {
-		log.Printf("[result-proc] task %d: refund failed: %v", taskID, err)
-		return
+
+	// Look up the upstream cost from the original charge tx so the refund tx
+	// carries the same cost and (charge + refund) nets to zero in profit analytics.
+	var chargeTx model.BillingTransaction
+	upstreamCost := int64(0)
+	if found, _ := db.Engine.Where("corr_id = ? AND type = ?", corrID, "charge").Get(&chargeTx); found {
+		upstreamCost = chargeTx.Cost
 	}
-	_ = service.WriteTx(ctx, userID, channelID, apiKeyID, corrID, "refund", credits, 0, model.JSON{
+
+	if err := billing.Refund(ctx, userID, credits); err != nil {
+		log.Printf("[result-proc] task %d: refund (Redis) failed: %v — proceeding to update DB", taskID, err)
+	}
+	_ = service.WriteTx(ctx, userID, channelID, apiKeyID, corrID, "refund", credits, upstreamCost, model.JSON{
 		"task_id": taskID,
 		"reason":  errMsg,
 	})

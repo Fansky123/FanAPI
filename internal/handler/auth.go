@@ -222,9 +222,11 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 	}
 
 	// channelInfo 是暴露给用户的渠道公开信息，隐藏脚本/密钥/上游地址。
+	// RoutingModel 字段即为调用 API 时 model 参数应填写的值（等于渠道名称）。
 	type channelInfo struct {
 		ID           int64  `json:"id"`
 		Name         string `json:"name"`
+		RoutingModel string `json:"routing_model"` // 在 API 请求的 model 字段填写此值即可路由到本渠道
 		Model        string `json:"model"`
 		Type         string `json:"type"`
 		Protocol     string `json:"protocol"`
@@ -237,6 +239,7 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		result = append(result, channelInfo{
 			ID:           ch.ID,
 			Name:         ch.Name,
+			RoutingModel: ch.Name,
 			Model:        ch.Model,
 			Type:         ch.Type,
 			Protocol:     ch.Protocol,

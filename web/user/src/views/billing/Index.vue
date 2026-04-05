@@ -45,6 +45,14 @@
             </span>
           </template>
         </el-table-column>
+        <el-table-column label="操作后余额" width="160">
+          <template #default="{ row }">
+            <span v-if="row.balance_after" style="color:#617086;font-size:12px">
+              ¥{{ (row.balance_after / 1e6).toFixed(4) }}
+            </span>
+            <span v-else style="color:#ccc;font-size:12px">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="时间" :formatter="fmtTime" />
       </el-table>
       <el-pagination

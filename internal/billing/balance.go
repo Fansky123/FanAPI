@@ -73,5 +73,12 @@ func Refund(ctx context.Context, userID, credits int64) error {
 		return nil
 	}
 	key := fmt.Sprintf(balanceKeyFmt, userID)
+	// Ensure key exists in Redis so IncrBy doesn't create a new key with just
+	// the refund amount instead of (actual_balance + refund_amount).
+	if _, err := cache.Client.Get(ctx, key).Int64(); err != nil {
+		if _, syncErr := SyncBalanceToRedis(ctx, userID); syncErr != nil {
+			return syncErr
+		}
+	}
 	return cache.Client.IncrBy(ctx, key, credits).Err()
 }

@@ -201,15 +201,6 @@ func llmProxy(c *gin.Context) {
 	}
 
 	channelIDStr := c.Query("channel_id")
-	if channelIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 必填"})
-		return
-	}
-	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
-		return
-	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -222,10 +213,37 @@ func llmProxy(c *gin.Context) {
 		return
 	}
 
-	ch, err := service.GetChannel(c.Request.Context(), channelID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
+	// 渠道解析：优先 channel_id 查询参数（兼容旧客户端），否则用请求体中的 model 字段按渠道名路由。
+	var ch *model.Channel
+	if channelIDStr != "" {
+		channelID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
+			return
+		}
+		ch, err = service.GetChannel(c.Request.Context(), channelID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		routingModel, _ := reqData["model"].(string)
+		if routingModel == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请在请求体 model 字段填写渠道名称，或通过 channel_id 参数指定渠道"})
+			return
+		}
+		ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+			return
+		}
+	}
+	channelID := ch.ID
+
+	// 用渠道配置的真实模型名覆盖用户传入的路由键，确保上游收到正确的 model 字段。
+	// ch.Model 为空时保留用户传入值（兼容渠道未填 model 字段的情况）。
+	if ch.Model != "" {
+		reqData["model"] = ch.Model
 	}
 
 	protocol := effectiveProtocol(ch)
@@ -306,7 +324,7 @@ func llmProxy(c *gin.Context) {
 	if ch.KeyPoolID > 0 {
 		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, entityID)
 		if pkErr != nil {
-			llmRefundAndAbort(c, corrID, userID, totalHold, 0, "key pool error: "+pkErr.Error())
+			llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "key pool error: "+pkErr.Error())
 			return
 		}
 		poolKey = pk
@@ -315,7 +333,7 @@ func llmProxy(c *gin.Context) {
 	// 发送上游请求（429 时轮转 Key 重试一次）
 	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 	if err != nil {
-		llmRefundAndAbort(c, corrID, userID, totalHold, 0, "上游请求失败: "+err.Error())
+		llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "上游请求失败: "+err.Error())
 		return
 	}
 
@@ -326,7 +344,7 @@ func llmProxy(c *gin.Context) {
 			poolKey = newKey
 			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 			if err != nil {
-				llmRefundAndAbort(c, corrID, userID, totalHold, 0, "上游请求失败(重试): "+err.Error())
+				llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "上游请求失败(重试): "+err.Error())
 				return
 			}
 		}
@@ -336,7 +354,7 @@ func llmProxy(c *gin.Context) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyErr, _ := io.ReadAll(resp.Body)
-		llmRefundAndAbort(c, corrID, userID, totalHold, resp.StatusCode, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, string(bodyErr)))
+		llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, resp.StatusCode, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, string(bodyErr)))
 		return
 	}
 
@@ -400,9 +418,12 @@ func llmProxy(c *gin.Context) {
 // 为 nil 时（连接在任何输出前断开）全额退款。
 func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]interface{},
 	totalHold, userID, channelID, apiKeyIDVal int64, corrID string) {
+	ctx := c.Request.Context()
+	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
 	if usageData == nil {
 		if totalHold > 0 {
-			_ = billing.Refund(c.Request.Context(), userID, totalHold)
+			_ = billing.Refund(ctx, userID, totalHold)
+			_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "no_output"})
 		}
 		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status").
 			Update(&model.LLMLog{Status: "refunded"})
@@ -412,17 +433,55 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
 	actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
 	if settleErr == nil {
-		delta := totalHold - actualCost
-		if delta > 0 {
-			_ = billing.Refund(c.Request.Context(), userID, delta)
-		} else if delta < 0 {
-			_ = billing.Charge(c.Request.Context(), userID, -delta)
+		inputFromResponse, _ := ch.BillingConfig["input_from_response"].(bool)
+		if ch.BillingType == "token" && !inputFromResponse {
+			// 分离结算：预扣已从 DB/Redis 扣除输入费用，结算仅处理输出部分。
+			outputCost := actualCost - totalHold
+			outputUpstreamCost := actualUpstreamCost - upstreamCostHold
+			if outputCost < 0 {
+				outputCost = 0
+			}
+			if outputUpstreamCost < 0 {
+				outputUpstreamCost = 0
+			}
+			if outputCost > 0 {
+				_ = billing.Charge(ctx, userID, outputCost)
+			}
+			_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, corrID, "settle", outputCost, outputUpstreamCost, model.JSON{
+				"actual_cost": actualCost,
+				"held":        totalHold,
+				"usage":       usageData,
+			})
+		} else {
+			// input_from_response=true 或非 token 类型：预扣为估算，结算修正差额。
+			// 预扣已从 DB 扣除 totalHold，此处补充差额使总扣款等于实际费用。
+			delta := totalHold - actualCost
+			if delta > 0 {
+				// 实际费用低于预估：退还多扣部分
+				_ = billing.Refund(ctx, userID, delta)
+				upstreamDelta := upstreamCostHold - actualUpstreamCost
+				if upstreamDelta < 0 {
+					upstreamDelta = 0
+				}
+				_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, corrID, "refund", delta, upstreamDelta, model.JSON{
+					"actual_cost": actualCost,
+					"held":        totalHold,
+					"usage":       usageData,
+				})
+			} else if delta < 0 {
+				// 实际费用高于预估：补扣差额
+				_ = billing.Charge(ctx, userID, -delta)
+				upstreamExtra := actualUpstreamCost - upstreamCostHold
+				if upstreamExtra < 0 {
+					upstreamExtra = 0
+				}
+				_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, corrID, "settle", -delta, upstreamExtra, model.JSON{
+					"actual_cost": actualCost,
+					"held":        totalHold,
+					"usage":       usageData,
+				})
+			}
 		}
-		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, actualUpstreamCost, model.JSON{
-			"actual_cost": actualCost,
-			"held":        totalHold,
-			"usage":       usageData,
-		})
 	}
 	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "usage").
 		Update(&model.LLMLog{Status: "ok", Usage: model.JSON(usageData)})
@@ -475,9 +534,10 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 
 // llmRefundAndAbort 退款并终止请求（上游失败时调用）。
 // corrID 不为空时同步更新 LLMLog 的错误状态。
-func llmRefundAndAbort(c *gin.Context, corrID string, userID, credits int64, upstreamStatus int, errMsg string) {
+func llmRefundAndAbort(c *gin.Context, corrID string, userID, credits, upstreamCost int64, upstreamStatus int, errMsg string) {
 	if credits > 0 {
 		_ = billing.Refund(c.Request.Context(), userID, credits)
+		_ = service.WriteTx(c.Request.Context(), userID, 0, 0, corrID, "refund", credits, upstreamCost, model.JSON{"reason": "upstream_error"})
 	}
 	if corrID != "" {
 		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "upstream_status", "error_msg").

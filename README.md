@@ -157,23 +157,30 @@ function checkError(resp) {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/user/profile` | 查询个人资料 |
 | GET | `/user/balance` | 查询余额 |
 | GET | `/user/transactions` | 交易记录 |
-| GET | `/user/channels` | 可用频道列表 |
+| GET | `/user/channels` | 可用频道列表（含 `routing_model` 字段） |
 | GET/POST/DELETE | `/user/apikeys` | API Key 管理 |
+| PUT | `/user/password` | 修改密码 |
+| POST | `/user/bind-email` | 绑定邮筱 |
+| POST | `/user/cards/redeem` | 兑换卡密（需 JWT） |
 
 ### AI 调用接口（API Key）
 
+渠道路由通过请求体的 `model` 字段指定——将其设为渠道**名称**（即 `/user/channels` 返回的 `routing_model` 字段的值），服务端会自动解析并替换为真实的上游模型名。兼容旧客户端，也可以使用 `?channel_id=X` 查询参数指定渠道。
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/v1/chat/completions?channel_id=X` | LLM 对话（OpenAI 标准格式，支持 SSE） |
-| POST | `/v1/messages?channel_id=X` | LLM 对话（Claude 原生格式，支持 SSE） |
-| POST | `/v1/gemini?channel_id=X` | LLM 对话（Gemini 原生格式，支持 SSE） |
+| POST | `/v1/chat/completions` | LLM 对话（OpenAI 标准格式，支持 SSE） |
+| POST | `/v1/messages` | LLM 对话（Claude 原生格式，支持 SSE） |
+| POST | `/v1/gemini` | LLM 对话（Gemini 原生格式，支持 SSE） |
 | POST | `/v1/image` | 图片生成（异步） |
 | POST | `/v1/video` | 视频生成（异步） |
 | POST | `/v1/audio` | 音频生成（异步） |
 | GET | `/v1/tasks` | 任务列表 |
 | GET | `/v1/tasks/:id` | 任务状态查询 |
+| GET | `/v1/llm-logs` | LLM 请求日志 |
 
 ### 管理接口（JWT + admin 角色）
 
@@ -187,11 +194,14 @@ function checkError(resp) {
 | PUT | `/admin/users/:id/password` | 重置用户密码 |
 | GET | `/admin/transactions` | 全部交易记录 |
 | GET | `/admin/tasks` | 全部任务查询 |
+| GET | `/admin/tasks/:id` | 任务详情 |
 | GET | `/admin/stats` | 平台数据统计 |
 | POST | `/admin/cards/generate` | 批量生成卡密 |
 | GET | `/admin/cards` | 卡密列表 |
 | DELETE | `/admin/cards/:id` | 删除卡密 |
 | POST | `/user/cards/redeem` | 用户兑换卡密（需 JWT）|
+| GET | `/admin/llm-logs` | LLM 请求日志 |
+| GET | `/admin/llm-logs/:id` | LLM 请求日志详情 |
 
 ## 项目结构
 
@@ -209,8 +219,9 @@ fanapi/
 │   ├── middleware/   # 认证、鉴权中间件
 │   ├── model/        # 数据模型
 │   ├── mq/           # NATS 消息队列
-│   ├── script/       # 异步任务 worker
-│   └── service/      # 业务逻辑层
+│   ├── script/       # 异步任务 worker（仅依赖 NATS，无需 DB/Redis）
+│   ├── service/      # 业务逻辑层
+│   └── taskresult/   # 结果处理器、批量写入器、异步轮询器
 ├── pkg/
 │   └── mailer/       # 邮件发送
 ├── web/

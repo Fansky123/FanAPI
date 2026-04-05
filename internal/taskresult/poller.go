@@ -20,11 +20,12 @@ import (
 
 const (
 	pollInterval = 5 * time.Second
-	pollTimeout  = 30 * time.Second
 	maxAge       = 2 * time.Hour
 
-	// pollLockTTL must be > pollTimeout so the lock outlives the upstream HTTP call.
-	pollLockTTL = 60 * time.Second
+	// pollLockTTL must be greater than the maximum possible query_timeout_ms so the
+	// distributed lock outlives the upstream HTTP call.
+	pollLockTTL           = 120 * time.Second
+	defaultQueryTimeoutMs = 30_000 // fallback when channel.QueryTimeoutMs == 0
 )
 
 // StartPoller starts a goroutine that periodically polls upstream APIs for
@@ -86,6 +87,7 @@ func pollPendingTasks(ctx context.Context) {
 			defer cache.Client.Del(ctx, lk)
 			pollOneTask(ctx, t, c)
 		}(task, ch, lockKey)
+
 	}
 }
 
@@ -97,7 +99,11 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		method = "GET"
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, pollTimeout)
+	qtMs := ch.QueryTimeoutMs
+	if qtMs <= 0 {
+		qtMs = defaultQueryTimeoutMs
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(qtMs)*time.Millisecond)
 	defer cancel()
 
 	var bodyReader io.Reader

@@ -5,7 +5,7 @@
         <div>
           <div class="eyebrow">Interactive API Lab</div>
           <h3>在线体验与任务调试</h3>
-          <p>直接选择渠道并发起调用，支持 LLM 流式输出，以及图像/视频/音频任务轮询结果。</p>
+          <p>直接选择模型并发起调用，支持 LLM 流式输出，以及图像/视频/音频任务轮询结果。</p>
         </div>
         <div class="hero-chip">实时调试</div>
       </div>
@@ -17,7 +17,7 @@
         <el-col :span="12">
           <el-select
             v-model="selectedChannel"
-            placeholder="选择渠道（channel_id）"
+            placeholder="选择模型"
             style="width:100%"
             filterable
             @change="onChannelChange"
@@ -167,11 +167,12 @@ const groupedChannels = computed(() => {
 function onChannelChange() {
   const ch = channels.value.find(c => c.id === selectedChannel.value)
   if (!ch) return
+  // 用渠道名称作为 model 路由键，用户只需修改 model 即可切换渠道
   const templates = {
-    llm: { model: 'claude-3-5-sonnet-20241022', messages: [{ role: 'user', content: '你好，请介绍一下你自己' }], max_tokens: 500 },
-    image: { model: 'nano-banana-pro', prompt: '赛博朋克猫', size: '2k', aspect_ratio: '1:1', n: 1 },
-    video: { model: 'video-gen-pro', prompt: '海浪拍打礁石', size: '1080p', aspect_ratio: '16:9', duration: 5 },
-    audio: { model: 'music-gen', prompt: '一首轻快的爵士乐', style: 'jazz', duration: 30 },
+    llm: { model: ch.name, messages: [{ role: 'user', content: '你好，请介绍一下你自己' }], max_tokens: 500 },
+    image: { model: ch.name, prompt: '赛博朋克猫', size: '2k', aspect_ratio: '1:1', n: 1 },
+    video: { model: ch.name, prompt: '海浪拍打礁石', size: '1080p', aspect_ratio: '16:9', duration: 5 },
+    audio: { model: ch.name, prompt: '一首轻快的爵士乐', style: 'jazz', duration: 30 },
   }
   if (templates[ch.type]) {
     requestBody.value = JSON.stringify(templates[ch.type], null, 2)
@@ -256,7 +257,9 @@ async function runRequest() {
     const path = ch?.type === 'llm'
       ? (llmPathMap[ch?.protocol] ?? '/v1/chat/completions')
       : `/v1/${ch?.type ?? 'image'}`
-    const res = await fetch(`/api${path}?channel_id=${selectedChannel.value}`, {
+    // 将渠道名称注入 model 字段，服务端凭此路由；不再需要 channel_id 参数
+    body.model = ch?.name ?? body.model
+    const res = await fetch(`/api${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

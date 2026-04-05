@@ -18,6 +18,7 @@ type TaskJob struct {
 	Method         string                 `json:"method"`
 	Headers        map[string]interface{} `json:"headers"`
 	TimeoutMs      int64                  `json:"timeout_ms"`
+	QueryTimeoutMs int64                  `json:"query_timeout_ms,omitempty"`
 	RequestScript  string                 `json:"request_script,omitempty"`
 	ResponseScript string                 `json:"response_script,omitempty"`
 	ErrorScript    string                 `json:"error_script,omitempty"`

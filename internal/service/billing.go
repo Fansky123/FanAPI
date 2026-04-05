@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"fanapi/internal/db"
 	"fanapi/internal/model"
@@ -28,31 +29,41 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txT
 		Cost:      cost,
 		Metrics:   metrics,
 	}
-	_, err := db.Engine.Insert(tx)
-	if err != nil {
-		return err
-	}
 
 	// 仅以下类型同步 DB 余额：
-	// - hold    不动 DB（避免与 settle 重复扣）
-	// - settle  扣除实际费用
+	// - hold    预扣时同步扣除 DB（输入 token 在请求时即可精确计算）
+	// - settle  结算时扣除输出部分（或 input_from_response=true 时扣除差额）
 	// - charge  直接扣除（图片/视频/音频）
-	// - refund  恢复刭不应扣除的金额
+	// - refund  恢复不应扣除的金额
 	// - recharge 充値
 	var delta int64
 	switch txType {
-	case "charge", "settle":
+	case "charge", "settle", "hold":
 		delta = -credits
 	case "refund", "recharge":
 		delta = credits
-		// "hold" 不动 DB
 	}
+
 	if delta != 0 {
-		_, err = db.Engine.Exec(
-			"UPDATE users SET balance = balance + $1 WHERE id = $2",
+		// UPDATE … RETURNING balance in one round-trip; captures the resulting
+		// balance atomically for the audit trail.
+		rows, err := db.Engine.QueryString(
+			"UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance",
 			delta, userID,
 		)
+		if err != nil {
+			return err
+		}
+		if len(rows) > 0 {
+			if balStr, ok := rows[0]["balance"]; ok {
+				tx.BalanceAfter, _ = strconv.ParseInt(balStr, 10, 64)
+			}
+		}
 	}
+	// "hold" 不修改 DB 余额，balance_after 保持 0（前端显示 —），
+	// 避免与 settle 后的 DB 余额混淆。
+
+	_, err := db.Engine.Insert(tx)
 	return err
 }
 
