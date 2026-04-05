@@ -8,21 +8,45 @@
       </div>
 
       <nav class="nav">
-        <router-link v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item" :class="{ active: route.path === item.to }">
-          <el-icon><component :is="item.icon" /></el-icon>
-          <span>{{ item.label }}</span>
+        <!-- 公开页面 -->
+        <router-link to="/models" class="nav-item" :class="{ active: route.path === '/models' }">
+          <el-icon><Grid /></el-icon><span>模型列表</span>
         </router-link>
+        <router-link to="/docs" class="nav-item" :class="{ active: route.path === '/docs' }">
+          <el-icon><Document /></el-icon><span>接口文档</span>
+        </router-link>
+        <!-- 需要登录的页面 -->
+        <template v-if="isLoggedIn">
+          <router-link to="/playground" class="nav-item" :class="{ active: route.path === '/playground' }">
+            <el-icon><ChatDotRound /></el-icon><span>在线体验</span>
+          </router-link>
+          <router-link to="/keys" class="nav-item" :class="{ active: route.path === '/keys' }">
+            <el-icon><Key /></el-icon><span>API 密钥</span>
+          </router-link>
+          <router-link to="/billing" class="nav-item" :class="{ active: route.path === '/billing' }">
+            <el-icon><Wallet /></el-icon><span>钱包 & 账单</span>
+          </router-link>
+          <router-link to="/tasks" class="nav-item" :class="{ active: route.path === '/tasks' }">
+            <el-icon><List /></el-icon><span>任务日志</span>
+          </router-link>
+        </template>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="balance-mini">
-          <span class="balance-label">余额</span>
-          <span class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</span>
-        </div>
-        <div class="logout-btn" @click="logout">
-          <el-icon><SwitchButton /></el-icon>
-          <span>退出</span>
-        </div>
+        <template v-if="isLoggedIn">
+          <div class="balance-mini">
+            <span class="balance-label">余额</span>
+            <span class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</span>
+          </div>
+          <div class="logout-btn" @click="logout">
+            <el-icon><SwitchButton /></el-icon>
+            <span>退出</span>
+          </div>
+        </template>
+        <template v-else>
+          <router-link to="/login" class="auth-btn primary-btn">登录</router-link>
+          <router-link to="/register" class="auth-btn ghost-btn">注册</router-link>
+        </template>
       </div>
     </aside>
 
@@ -38,22 +62,32 @@
           <h1 class="page-title">{{ pageTitle }}</h1>
         </div>
         <div class="topbar-right">
-          <el-tag size="large" type="info" effect="plain" class="balance-tag" @click="router.push('/billing')" style="cursor:pointer">
-            <el-icon><Wallet /></el-icon>
-            余额 ¥{{ (store.balance / 1e6).toFixed(4) }}
-          </el-tag>
-          <el-dropdown @command="handleCmd">
-            <div class="avatar-btn">
-              <div class="avatar-circle">{{ userInitial }}</div>
-              <el-icon><ArrowDown /></el-icon>
-            </div>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="billing">钱包 & 账单</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <template v-if="isLoggedIn">
+            <el-tag size="large" type="info" effect="plain" class="balance-tag" @click="router.push('/billing')" style="cursor:pointer">
+              <el-icon><Wallet /></el-icon>
+              余额 ¥{{ (store.balance / 1e6).toFixed(4) }}
+            </el-tag>
+            <el-dropdown @command="handleCmd">
+              <div class="avatar-btn">
+                <div class="avatar-circle">{{ userInitial }}</div>
+                <el-icon><ArrowDown /></el-icon>
+              </div>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="billing">钱包 & 账单</el-dropdown-item>
+                  <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
+          <template v-else>
+            <router-link to="/login">
+              <el-button>登录</el-button>
+            </router-link>
+            <router-link to="/register">
+              <el-button type="primary">免费注册</el-button>
+            </router-link>
+          </template>
         </div>
       </header>
 
@@ -77,6 +111,8 @@ const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
 
+const isLoggedIn = computed(() => !!store.token)
+
 const navItems = [
   { to: '/playground', label: '在线体验',  icon: 'ChatDotRound' },
   { to: '/models',     label: '模型列表',  icon: 'Grid' },
@@ -96,11 +132,16 @@ const titles = {
 }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI')
 const userInitial = computed(() => {
-  const email = store.email || localStorage.getItem('user_email') || ''
-  return email.charAt(0).toUpperCase() || 'U'
+  const name = store.username || localStorage.getItem('user_username') || store.email || 'U'
+  return name.charAt(0).toUpperCase()
 })
 
-onMounted(() => store.fetchBalance())
+onMounted(() => {
+  if (isLoggedIn.value) {
+    store.fetchBalance()
+    store.fetchProfile()
+  }
+})
 
 function logout() {
   store.logout()
@@ -209,6 +250,28 @@ function handleCmd(cmd) {
   transition: all .15s;
 }
 .logout-btn:hover { background: rgba(255,100,100,.15); color: #ff7875; }
+
+.auth-btn {
+  display: block;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all .15s;
+}
+.primary-btn {
+  background: #1677ff;
+  color: #fff;
+}
+.primary-btn:hover { background: #4096ff; }
+.ghost-btn {
+  background: rgba(255,255,255,.07);
+  color: rgba(255,255,255,.7);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.ghost-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
 
 /* ---- 主区域 ---- */
 .main-area {

@@ -252,19 +252,27 @@ func GetAdminStats(c *gin.Context) {
 	var todayRow, totalRow sumRow
 
 	today := time.Now().Truncate(24 * time.Hour)
+	// revenue = charge(图片/视频/音频一次性扣费) + settle(LLM实际结算) - refund(退款)
+	// cost    = 对应类型的上游成本
 	db.Engine.SQL(`SELECT
-		COALESCE(SUM(credits),0) AS revenue,
-		COALESCE(SUM(cost),0)    AS cost,
-		COUNT(*)                 AS count
+		COALESCE(SUM(CASE
+			WHEN type IN ('charge','settle') THEN credits
+			WHEN type = 'refund' THEN -credits
+			ELSE 0 END),0) AS revenue,
+		COALESCE(SUM(CASE WHEN type IN ('charge','settle') THEN cost ELSE 0 END),0) AS cost,
+		COUNT(*) AS count
 	FROM billing_transactions
-	WHERE type = 'settle' AND created_at >= ?`, today).Get(&todayRow)
+	WHERE type IN ('charge','settle','refund') AND created_at >= ?`, today).Get(&todayRow)
 
 	db.Engine.SQL(`SELECT
-		COALESCE(SUM(credits),0) AS revenue,
-		COALESCE(SUM(cost),0)    AS cost,
-		COUNT(*)                 AS count
+		COALESCE(SUM(CASE
+			WHEN type IN ('charge','settle') THEN credits
+			WHEN type = 'refund' THEN -credits
+			ELSE 0 END),0) AS revenue,
+		COALESCE(SUM(CASE WHEN type IN ('charge','settle') THEN cost ELSE 0 END),0) AS cost,
+		COUNT(*) AS count
 	FROM billing_transactions
-	WHERE type = 'settle'`).Get(&totalRow)
+	WHERE type IN ('charge','settle','refund')`).Get(&totalRow)
 
 	c.JSON(http.StatusOK, gin.H{
 		"channels":        totalChannels,

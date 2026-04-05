@@ -61,6 +61,52 @@ func RunMapResponse(scriptSrc string, input map[string]interface{}) (map[string]
 	return runMapFn(scriptSrc, "mapResponse", input)
 }
 
+// RunCheckError 执行 JS 脚本中的 checkError(response) 函数，检测上游错误。
+//
+// 脚本约定：
+//   - 返回 null / undefined / false / "" → 无错误
+//   - 返回非空字符串 → 错误消息（平台将据此 failTask 并退款）
+//   - 返回 true → 通用错误（使用默认消息）
+//
+// 示例（ChatFire 格式）：
+//
+//	function checkError(resp) {
+//	    if (resp.error) return resp.error.code + ": " + resp.error.message;
+//	    return null;
+//	}
+func RunCheckError(scriptSrc string, response map[string]interface{}) (string, error) {
+	prog, err := getProgram(scriptSrc)
+	if err != nil {
+		return "", err
+	}
+	vm := goja.New()
+	if _, err := vm.RunProgram(prog); err != nil {
+		return "", fmt.Errorf("script run error: %w", err)
+	}
+	fn, ok := goja.AssertFunction(vm.Get("checkError"))
+	if !ok {
+		return "", fmt.Errorf("function \"checkError\" not found in error_script")
+	}
+	res, err := fn(goja.Undefined(), vm.ToValue(response))
+	if err != nil {
+		return "", fmt.Errorf("checkError execution error: %w", err)
+	}
+	if goja.IsNull(res) || goja.IsUndefined(res) {
+		return "", nil
+	}
+	switch v := res.Export().(type) {
+	case bool:
+		if v {
+			return "upstream returned error", nil
+		}
+		return "", nil
+	case string:
+		return v, nil
+	default:
+		return "", nil
+	}
+}
+
 func runMapFn(scriptSrc, fnName string, input map[string]interface{}) (map[string]interface{}, error) {
 	prog, err := getProgram(scriptSrc)
 	if err != nil {

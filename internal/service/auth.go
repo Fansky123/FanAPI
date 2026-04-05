@@ -15,42 +15,50 @@ import (
 	"fanapi/internal/config"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
+	"fanapi/pkg/mailer"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Register creates a new user after verifying the email code.
-func Register(ctx context.Context, email, password string) (*model.User, error) {
+// Register creates a new user with username + password (no email required).
+func Register(ctx context.Context, username, password string) (*model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
 	user := &model.User{
-		Email:        email,
+		Username:     username,
 		PasswordHash: string(hash),
 		Role:         "user",
 		IsActive:     true,
 	}
 	if _, err := db.Engine.Insert(user); err != nil {
-		return nil, fmt.Errorf("email already registered")
+		return nil, fmt.Errorf("username already taken")
 	}
 	return user, nil
 }
 
-// Login verifies credentials and returns a JWT.
-func Login(ctx context.Context, email, password string, cfg *config.ServerConfig) (string, *model.User, error) {
+// Login verifies credentials by username or email, returns a JWT.
+func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.ServerConfig) (string, *model.User, error) {
 	user := &model.User{}
-	found, err := db.Engine.Where("email = ?", email).Get(user)
-	if err != nil || !found {
-		return "", nil, fmt.Errorf("invalid email or password")
+	// try username first, then email
+	found, err := db.Engine.Where("username = ?", usernameOrEmail).Get(user)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid credentials")
+	}
+	if !found {
+		found, err = db.Engine.Where("email = ?", usernameOrEmail).Get(user)
+		if err != nil || !found {
+			return "", nil, fmt.Errorf("invalid username or password")
+		}
 	}
 	if !user.IsActive {
 		return "", nil, fmt.Errorf("account disabled")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return "", nil, fmt.Errorf("invalid email or password")
+		return "", nil, fmt.Errorf("invalid username or password")
 	}
 
 	exp := time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)
@@ -62,6 +70,58 @@ func Login(ctx context.Context, email, password string, cfg *config.ServerConfig
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(cfg.JWTSecret))
 	return signed, user, err
+}
+
+// BindEmail binds an email to an existing user after verifying the code.
+func BindEmail(ctx context.Context, userID int64, email, code string) error {
+	if err := VerifyEmailCode(ctx, email, code); err != nil {
+		return err
+	}
+	// check not already taken
+	var count int64
+	count, err := db.Engine.Where("email = ? AND id != ?", email, userID).Count(new(model.User))
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("email already bound to another account")
+	}
+	_, err = db.Engine.Where("id = ?", userID).Cols("email").Update(&model.User{Email: email})
+	return err
+}
+
+// SendPasswordResetCode sends a reset code to the given email if it's bound to an account.
+func SendPasswordResetCode(ctx context.Context, email string, m *mailer.Mailer) error {
+	var count int64
+	count, err := db.Engine.Where("email = ?", email).Count(new(model.User))
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		// Don't reveal whether email exists — just return success silently
+		return nil
+	}
+	return SendVerifyCode(ctx, email, m)
+}
+
+// ResetPasswordByEmail resets the password after verifying the email code.
+func ResetPasswordByEmail(ctx context.Context, email, code, newPassword string) error {
+	if err := VerifyEmailCode(ctx, email, code); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	affected, err := db.Engine.Where("email = ?", email).Cols("password_hash").
+		Update(&model.User{PasswordHash: string(hash)})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("email not bound to any account")
+	}
+	return nil
 }
 
 func encryptAPIKey(rawKey, secret string) (string, error) {

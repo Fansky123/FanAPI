@@ -58,6 +58,7 @@ type Channel struct {
 	BillingScript string    `xorm:"text 'billing_script'" json:"billing_script"`          // billing_type=custom 时的计费脚本
 	KeyPoolID     int64     `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"`          // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
 	Protocol      string    `xorm:"notnull default('openai') 'protocol'" json:"protocol"` // API 协议格式：openai（默认）/ claude / gemini
+	ErrorScript   string    `xorm:"text 'error_script'" json:"error_script"`              // JS 脚本：checkError(response) → 返回非空字符串=错误消息，null/false=正常
 	IsActive      bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
 	CreatedAt     time.Time `xorm:"created 'created_at'" json:"created_at"`
 	UpdatedAt     time.Time `xorm:"updated 'updated_at'" json:"updated_at"`

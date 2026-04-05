@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"fanapi/internal/billing"
 	"fanapi/internal/config"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
@@ -40,6 +41,11 @@ type taskRequest struct {
 // Each subject gets its own durable consumer so multiple specialised workers
 // can coexist on the NATS stream without conflict.
 func StartWorkers(cfg config.WorkerConfig) error {
+	// Remove stale consumers from previous runs before subscribing.
+	// Must only run in the worker process (not in the server),
+	// otherwise the server restart would kill the worker's active consumer.
+	mq.PurgeConsumers()
+
 	subjects := cfg.Subjects
 	if len(subjects) == 0 {
 		subjects = []string{"task.>"}
@@ -206,6 +212,41 @@ func handleTask(msg *nats.Msg) {
 	}
 
 	// 同步模式：将标准格式结果写入 task.result
+	// 错误检测顺序：先跐 ch.ErrorScript（肌道可配置），无配置时降级到内置通用格式检测。
+	// 这两个检测都在 response_script 映射之后的 respData 上运行。
+	errMsg, isErr := "", false
+	if ch.ErrorScript != "" {
+		var scriptErr error
+		errMsg, scriptErr = RunCheckError(ch.ErrorScript, respData)
+		if scriptErr != nil {
+			log.Printf("[worker] task %d: error_script failed: %v", task.ID, scriptErr)
+		}
+		isErr = errMsg != ""
+	} else {
+		errMsg, isErr = detectUpstreamError(respData)
+	}
+	if isErr {
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_request", "upstream_response").Update(&model.Task{
+			UpstreamRequest:  upstreamReq,
+			UpstreamResponse: upstreamResp,
+		})
+		failTask(task.ID, errMsg)
+		_ = msg.Ack()
+		return
+	}
+	// response_script 标准出参 status=3 表示业务失败
+	if statusVal, _ := respData["status"].(float64); int(statusVal) == 3 {
+		failMsg := fmt.Sprintf("%v", respData["msg"])
+		// 先保存 upstream_response，再调 failTask（failTask 只改 status/error_msg）
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_request", "upstream_response").Update(&model.Task{
+			UpstreamRequest:  upstreamReq,
+			UpstreamResponse: upstreamResp,
+		})
+		failTask(task.ID, "upstream failed: "+failMsg)
+		_ = msg.Ack()
+		return
+	}
+
 	result := model.JSON{}
 	for k, v := range respData {
 		result[k] = v
@@ -268,12 +309,92 @@ func callUpstream(ch *model.Channel, payload map[string]interface{}, poolKey *mo
 	return result, resp.StatusCode, nil
 }
 
-// failTask 将任务标记为失败，同时在 result 中写入标准错误格式，
-// 方便 handler 统一处理（也可以直接读 error_msg，但保持 result 有值更一致）。
+// failTask 将任务标记为失败并退还已扣的 credits。
+// 使用条件 UPDATE（status != 'failed'）保证幂等：即使消息重投也不会双重退款。
 func failTask(taskID int64, msg string) {
 	log.Printf("[worker] task %d failed: %s", taskID, msg)
-	db.Engine.Where("id = ?", taskID).Update(&model.Task{
-		Status:   "failed",
-		ErrorMsg: msg,
+
+	// 原子地将状态从非-failed 改为 failed，并返回受影响行数。
+	// n==0 表示任务不存在或已经是 failed 状态，直接跳出防止重复退款。
+	n, _ := db.Engine.
+		Where("id = ? AND status != ?", taskID, "failed").
+		Cols("status", "error_msg").
+		Update(&model.Task{Status: "failed", ErrorMsg: msg})
+	if n == 0 {
+		return
+	}
+
+	// 加载退款所需字段
+	ctx := context.Background()
+	task := &model.Task{}
+	found, err := db.Engine.
+		Where("id = ?", taskID).
+		Cols("user_id", "channel_id", "api_key_id", "credits_charged", "corr_id").
+		Get(task)
+	if err != nil || !found || task.CreditsCharged == 0 {
+		return // 无需退款（未扣费或加载失败）
+	}
+
+	if refundErr := billing.Refund(ctx, task.UserID, task.CreditsCharged); refundErr != nil {
+		log.Printf("[worker] task %d: refund %d credits failed: %v", taskID, task.CreditsCharged, refundErr)
+		return
+	}
+	_ = service.WriteTx(ctx, task.UserID, task.ChannelID, task.APIKeyID, task.CorrID, "refund", task.CreditsCharged, 0, model.JSON{
+		"task_id": taskID,
+		"reason":  msg,
 	})
+	log.Printf("[worker] task %d: refunded %d credits to user %d", taskID, task.CreditsCharged, task.UserID)
+}
+
+// detectUpstreamError 检测常见的厂商错误响应格式，返回错误描述和 true。
+// 若响应看起来正常则返回 ("", false)。
+//
+// 覆盖的格式：
+//   - OpenAI / 通用：{"error": {"message": "...", "code": "..."}}
+//   - 字符串错误：{"error": "some message"}
+//   - 自定义 code+message：{"code": "InvalidParameter", "message": "..."}
+//     （仅当 code 不是 2xx 数字且不为空时才视为错误，避免误判正常 status code）
+func detectUpstreamError(resp map[string]interface{}) (string, bool) {
+	// --- 模式1：顶层 "error" 字段 ---
+	if errVal, ok := resp["error"]; ok && errVal != nil {
+		switch e := errVal.(type) {
+		case map[string]interface{}:
+			msg, _ := e["message"].(string)
+			code, _ := e["code"].(string)
+			switch {
+			case code != "" && msg != "":
+				return code + ": " + msg, true
+			case msg != "":
+				return msg, true
+			case code != "":
+				return code, true
+			}
+		case string:
+			if e != "" {
+				return e, true
+			}
+		}
+		return "upstream returned error", true
+	}
+
+	// --- 模式2：顶层字符串 "code" + "message"（code 不是 2xx 且不为整数成功码）---
+	// 只有当 code 为字符串（非数字 2xx）时才判定为错误，避免误判 {"code":200, "url":"..."}
+	codeVal, hasCode := resp["code"]
+	msgStr, _ := resp["message"].(string)
+	if hasCode && msgStr != "" {
+		switch c := codeVal.(type) {
+		case string:
+			// 字符串 code 一定不是 HTTP 成功码，视为错误
+			if c != "" {
+				return c + ": " + msgStr, true
+			}
+		case float64:
+			// 数字 code：仅非2xx才报错（200/201等跳过）
+			if c < 200 || c >= 300 {
+				return fmt.Sprintf("code %d: %s", int(c), msgStr), true
+			}
+		}
+	}
+
+	return "", false
 }

@@ -80,7 +80,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { userApi } from '@/api'
+import { publicApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
 const channels = ref([])
@@ -91,7 +91,7 @@ const filterProtocol = ref('')
 
 onMounted(async () => {
   try {
-    const res = await userApi.listChannels()
+    const res = await publicApi.listChannels()
     channels.value = res.channels ?? []
   } finally {
     loading.value = false

@@ -1,10 +1,17 @@
 import http from './http'
 
+// 公开接口（无需登录）
+export const publicApi = {
+  listChannels: () => http.get('/public/channels'),
+}
+
 // 认证相关
 export const authApi = {
   sendCode: (email) => http.post('/auth/send-code', { email }),
   register: (data) => http.post('/auth/register', data),
   login: (data) => http.post('/auth/login', data),
+  forgotPassword: (email) => http.post('/auth/forgot-password', { email }),
+  resetPassword: (data) => http.post('/auth/reset-password', data),
 }
 
 // 任务相关（需 API Key）
@@ -15,6 +22,7 @@ export const taskApi = {
 
 // 用户相关（需 JWT）
 export const userApi = {
+  getProfile: () => http.get('/user/profile'),
   getBalance: () => http.get('/user/balance'),
   getTransactions: (page = 1, size = 20) =>
     http.get('/user/transactions', { params: { page, size } }),
@@ -23,4 +31,5 @@ export const userApi = {
   deleteAPIKey: (id) => http.delete(`/user/apikeys/${id}`),
   listChannels: () => http.get('/user/channels'),
   redeemCard: (code) => http.post('/user/cards/redeem', { code }),
+  bindEmail: (data) => http.post('/user/bind-email', data),
 }

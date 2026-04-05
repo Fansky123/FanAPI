@@ -1,0 +1,56 @@
+# =============================================================
+# FanAPI — docker-compose 生产部署
+#
+# 【同机部署（默认）】
+#   docker-compose up -d
+#   → 启动 api + script 两个容器
+#
+# 【仅启动 API（脚本服务另机部署）】
+#   docker-compose up -d api
+#
+# 【仅启动 Script Worker（另机单独跑）】
+#   docker-compose up -d script
+#
+# 【构建镜像】
+#   docker-compose build api
+#   docker-compose build script
+#
+# 【推送镜像到私有仓库后在另一台机器拉取】
+#   docker pull registry.example.com/fanapi-script:latest
+#   docker run -d -v /host/config.yaml:/app/config.yaml \
+#              registry.example.com/fanapi-script:latest
+#
+# =============================================================
+
+services:
+
+  # ── API 服务 + 前端静态（nginx + fanapi-server）──────────
+  api:
+    build:
+      context: .
+      target: api
+    image: fanapi-api:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Script Worker（异步任务处理）────────────────────────
+  #
+  # 同机部署：直接 up；扩容时注释掉此 service，
+  # 另开服务器单独 build --target script 部署即可。
+  script:
+    build:
+      context: .
+      target: script
+    image: fanapi-script:latest
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro

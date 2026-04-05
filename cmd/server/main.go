@@ -55,12 +55,17 @@ func main() {
 	// API 文档页面（无需认证）
 	r.GET("/docs", handler.APIDocs)
 
+	// 公开接口（无需认证）
+	r.GET("/public/channels", authH.ListModels)
+
 	// Public auth routes
 	auth := r.Group("/auth")
 	{
 		auth.POST("/send-code", authH.SendCode)
 		auth.POST("/register", authH.Register)
 		auth.POST("/login", authH.Login)
+		auth.POST("/forgot-password", authH.ForgotPassword)
+		auth.POST("/reset-password", authH.ResetPassword)
 	}
 
 	// Authenticated user routes (JWT or API Key)
@@ -69,6 +74,7 @@ func main() {
 	{
 		user := authed.Group("/user")
 		{
+			user.GET("/profile", authH.GetProfile)
 			user.GET("/balance", authH.GetBalance)
 			user.GET("/transactions", authH.GetTransactions)
 			user.GET("/channels", authH.ListModels)
@@ -76,6 +82,7 @@ func main() {
 			user.POST("/apikeys", authH.CreateAPIKey)
 			user.DELETE("/apikeys/:id", authH.DeleteAPIKey)
 			user.PUT("/password", authH.ChangePassword)
+			user.POST("/bind-email", authH.BindEmail)
 			user.POST("/cards/redeem", handler.RedeemCard)
 		}
 
@@ -105,11 +112,15 @@ func main() {
 			admin.POST("/cards/generate", handler.GenerateCards)
 			admin.GET("/cards", handler.ListCards)
 			admin.DELETE("/cards/:id", handler.DeleteCard)
+			// LLM 日志
+			admin.GET("/llm-logs", handler.AdminListLLMLogs)
+			admin.GET("/llm-logs/:id", handler.AdminGetLLMLog)
 		}
 
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)
 		authed.GET("/v1/tasks/:id", handler.GetTask)
+		authed.GET("/v1/llm-logs", handler.UserListLLMLogs)
 
 		// Public API (API Key required)
 		v1 := authed.Group("/v1")

@@ -24,7 +24,7 @@ func NewAuthHandler(cfg *config.ServerConfig, m *mailer.Mailer) *AuthHandler {
 	return &AuthHandler{cfg: cfg, mailer: m}
 }
 
-// POST /auth/send-code
+// POST /auth/send-code  — 公用：注册绑定邮箱 / 找回密码前发验证码
 func (h *AuthHandler) SendCode(c *gin.Context) {
 	var req struct {
 		Email string `json:"email" binding:"required,email"`
@@ -40,8 +40,93 @@ func (h *AuthHandler) SendCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "code sent"})
 }
 
-// POST /auth/register
+// POST /auth/register — 仅需用户名 + 密码，无需邮箱验证
 func (h *AuthHandler) Register(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required,min=3,max=32"`
+		Password string `json:"password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	user, err := service.Register(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	// 注册后自动登录
+	token, _, tokenErr := service.Login(c.Request.Context(), req.Username, req.Password, h.cfg)
+	if tokenErr != nil {
+		c.JSON(http.StatusCreated, gin.H{"id": user.ID, "username": user.Username})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
+}
+
+// POST /auth/login — 用户名或邮箱 + 密码
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req struct {
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	token, user, err := service.Login(c.Request.Context(), req.Username, req.Password, h.cfg)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "role": user.Role}})
+}
+
+// GET /user/profile
+func (h *AuthHandler) GetProfile(c *gin.Context) {
+	userID := c.MustGet("user_id").(int64)
+	user := &model.User{}
+	found, err := db.Engine.ID(userID).Get(user)
+	if err != nil || !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "role": user.Role})
+}
+
+// POST /user/bind-email — 登录后绑定邮箱（需先调 /auth/send-code 获取验证码）
+func (h *AuthHandler) BindEmail(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		Code  string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID := c.MustGet("user_id").(int64)
+	if err := service.BindEmail(c.Request.Context(), userID, req.Email, req.Code); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "email bound"})
+}
+
+// POST /auth/forgot-password — 向已绑定邮箱发送重置验证码（邮箱不存在时静默成功，防枚举）
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_ = service.SendPasswordResetCode(c.Request.Context(), req.Email, h.mailer)
+	c.JSON(http.StatusOK, gin.H{"message": "if this email is bound to an account, a reset code has been sent"})
+}
+
+// POST /auth/reset-password — 通过邮箱验证码重置密码
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
 		Code     string `json:"code" binding:"required"`
@@ -51,34 +136,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := service.VerifyEmailCode(c.Request.Context(), req.Email, req.Code); err != nil {
+	if err := service.ResetPasswordByEmail(c.Request.Context(), req.Email, req.Code, req.Password); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	user, err := service.Register(c.Request.Context(), req.Email, req.Password)
-	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusCreated, gin.H{"id": user.ID, "email": user.Email})
-}
-
-// POST /auth/login
-func (h *AuthHandler) Login(c *gin.Context) {
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	token, user, err := service.Login(c.Request.Context(), req.Email, req.Password, h.cfg)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": gin.H{"id": user.ID, "email": user.Email, "role": user.Role}})
+	c.JSON(http.StatusOK, gin.H{"message": "password reset"})
 }
 
 // POST /user/apikeys  (requires auth)

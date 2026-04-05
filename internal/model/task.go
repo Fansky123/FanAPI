@@ -18,6 +18,7 @@ type Task struct {
 	UpstreamTaskID   string    `xorm:"default('') 'upstream_task_id'" json:"upstream_task_id,omitempty"` // 异步渠道：第三方返回的任务 ID，用于轮询
 	ErrorMsg         string    `xorm:"text 'error_msg'" json:"error_msg,omitempty"`
 	CreditsCharged   int64     `xorm:"notnull default(0) 'credits_charged'" json:"credits_charged"`
+	CorrID           string    `xorm:"default('') 'corr_id'" json:"corr_id,omitempty"` // 关联计费流水的唯一 ID
 	CreatedAt        time.Time `xorm:"created 'created_at'" json:"created_at"`
 	UpdatedAt        time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
 }

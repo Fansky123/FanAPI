@@ -14,6 +14,21 @@
       </el-col>
     </el-row>
 
+    <!-- 账户安全 -->
+    <el-card style="margin-bottom:18px">
+      <template #header>账户安全</template>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="用户名">{{ store.username || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="绑定邮箱">
+          <span v-if="store.email" style="color:#67c23a">{{ store.email }}</span>
+          <template v-else>
+            <span style="color:#909399;margin-right:12px">未绑定（绑定后可找回密码）</span>
+            <el-button type="primary" size="small" @click="showBindEmail = true">绑定邮箱</el-button>
+          </template>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-card>
+
     <!-- 余额流水 -->
     <el-card>
       <template #header>余额流水</template>
@@ -58,6 +73,27 @@
         <el-button type="primary" :loading="redeeming" @click="doRedeem">立即兑换</el-button>
       </template>
     </el-dialog>
+
+    <!-- 绑定邮箱弹窗 -->
+    <el-dialog v-model="showBindEmail" title="绑定邮箱" width="420px" @close="resetBindForm">
+      <el-form label-width="80px">
+        <el-form-item label="邮箱">
+          <el-input v-model="bindForm.email" placeholder="请输入邮箱地址" />
+        </el-form-item>
+        <el-form-item label="验证码">
+          <div style="display:flex;gap:8px">
+            <el-input v-model="bindForm.code" placeholder="6位验证码" />
+            <el-button :disabled="codeCooldown > 0" @click="sendBindCode" style="flex-shrink:0">
+              {{ codeCooldown > 0 ? `${codeCooldown}s` : '获取验证码' }}
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBindEmail = false">取消</el-button>
+        <el-button type="primary" :loading="binding" @click="doBindEmail">确认绑定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -65,7 +101,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { userApi } from '@/api'
+import { authApi, userApi } from '@/api'
 
 const store = useUserStore()
 const txList = ref([])
@@ -74,6 +110,13 @@ const total = ref(0)
 const showRedeem = ref(false)
 const redeemCode = ref('')
 const redeeming = ref(false)
+
+// 绑定邮箱
+const showBindEmail = ref(false)
+const bindForm = ref({ email: '', code: '' })
+const codeCooldown = ref(0)
+const binding = ref(false)
+let cooldownTimer = null
 
 onMounted(fetchTx)
 
@@ -107,6 +150,41 @@ const txAmtClass = (t) => (['charge', 'hold', 'settle'].includes(t) ? 'amt-neg' 
 
 function fmtTime(row, col, val) {
   return val ? new Date(val).toLocaleString('zh-CN', { hour12: false }) : '—'
+}
+
+function resetBindForm() {
+  bindForm.value = { email: '', code: '' }
+  codeCooldown.value = 0
+  clearInterval(cooldownTimer)
+}
+
+async function sendBindCode() {
+  const email = bindForm.value.email.trim()
+  if (!email) return ElMessage.warning('请先输入邮箱')
+  try {
+    await authApi.sendCode(email)
+    ElMessage.success('验证码已发送，请查收邮件')
+    codeCooldown.value = 60
+    cooldownTimer = setInterval(() => {
+      if (--codeCooldown.value <= 0) clearInterval(cooldownTimer)
+    }, 1000)
+  } catch {
+    // error handled by http interceptor
+  }
+}
+
+async function doBindEmail() {
+  const { email, code } = bindForm.value
+  if (!email.trim() || !code.trim()) return ElMessage.warning('请填写邮箱和验证码')
+  binding.value = true
+  try {
+    await userApi.bindEmail({ email: email.trim(), code: code.trim() })
+    store.setEmail(email.trim())
+    ElMessage.success('邮箱绑定成功')
+    showBindEmail.value = false
+  } finally {
+    binding.value = false
+  }
 }
 </script>
 

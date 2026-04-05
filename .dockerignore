@@ -1,0 +1,10 @@
+.git
+.gitignore
+.devcontainer
+*.md
+Dockerfile.dev
+web/user/node_modules
+web/user/dist
+/tmp
+*.log
+*.pid

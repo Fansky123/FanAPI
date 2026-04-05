@@ -149,7 +149,33 @@
         <!-- ===== 图片计费价格 ===== -->
         <template v-if="form.billing_type === 'image'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">图片价格（单位：credits / 张·基准分辨率）</span>
+            <span style="font-size:13px;color:#666">图片价格（credits / 张）</span>
+          </el-divider>
+          <!-- 按档位定价表格（size_prices / size_costs） -->
+          <el-form-item label="按档位定价">
+            <div style="font-size:12px;color:#999;margin-bottom:8px">填写后按 size 档位精确定价，覆盖下方基础价格；留空则使用基础价格 + 分辨率倍率模式。</div>
+            <el-table :data="sizeTierRows" border size="small" style="width:480px">
+              <el-table-column prop="label" label="档位" width="60" align="center" />
+              <el-table-column label="售价（credits）" align="center">
+                <template #default="{ row }">
+                  <el-input-number v-model="form.bp.size_prices[row.key]" :min="0" :step="1000" size="small" style="width:140px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="进价（credits）" align="center">
+                <template #default="{ row }">
+                  <el-input-number v-model="form.bp.size_costs[row.key]" :min="0" :step="1000" size="small" style="width:140px" />
+                </template>
+              </el-table-column>
+            </el-table>
+            <div style="margin-top:8px;display:flex;gap:24px;align-items:center">
+              <span style="font-size:12px;color:#666">兜底售价（size 不在表中时）：</span>
+              <el-input-number v-model="form.bp.default_size_price" :min="0" :step="1000" size="small" style="width:150px" />
+              <span style="font-size:12px;color:#666">兜底进价：</span>
+              <el-input-number v-model="form.bp.default_size_cost" :min="0" :step="1000" size="small" style="width:150px" />
+            </div>
+          </el-form-item>
+          <el-divider content-position="left" style="margin:4px 0 12px">
+            <span style="font-size:12px;color:#aaa">基础价格（像素分档模式，档位定价留空时生效）</span>
           </el-divider>
           <el-form-item label="售价 · 基础">
             <el-input-number v-model="form.bp.base_price" :min="0" :step="1000" style="width:200px" />
@@ -233,6 +259,15 @@
         <el-form-item label="轮询映射脚本">
           <el-input v-model="form.query_script" type="textarea" :rows="8" placeholder="// 将第三方轮询响应映射为标准格式&#10;// status: 2=成功 3=失败 其他=进行中&#10;function MapResponse(input) {&#10;    return input&#10;}" style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
+        <el-form-item label="错误检测脚本">
+          <div style="font-size:12px;color:#999;margin-bottom:4px">
+            checkError(response) — 返回非空字符串表示错误（平台将退费并标记失败），返回 null/false 表示正常。<br>
+            未填时使用内置通用检测（自动识别 <code>{"error":{...}}</code> 等常见格式）。
+          </div>
+          <el-input v-model="form.error_script" type="textarea" :rows="8"
+            placeholder="function checkError(resp) {&#10;    // 示例：ChatFire / OpenAI 格式&#10;    if (resp.error) return resp.error.code + ': ' + resp.error.message;&#10;    return null;&#10;}"
+            style="font-family:monospace;font-size:.82rem" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -256,11 +291,14 @@ const emptyForm = () => ({
   headersStr: '{}', timeout_ms: 30000,
   billing_type: 'token', billingConfigStr: '{}',
   request_script: '', response_script: '',
-  query_url: '', query_method: 'GET', query_script: '',
+  query_url: '', query_method: 'GET', query_script: '', error_script: '',
   key_pool_id: 0,
   is_active: true,
   bp: emptyBp(),
 })
+
+const SIZE_TIERS = ['1k', '2k', '3k', '4k']
+const sizeTierRows = SIZE_TIERS.map(k => ({ key: k, label: k }))
 
 function emptyBp() {
   return {
@@ -268,8 +306,13 @@ function emptyBp() {
     input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0,
     input_cost_per_1m_tokens: 0, output_cost_per_1m_tokens: 0,
     input_from_response: false,
-    // image
+    // image - 基础价格（像素分档模式）
     base_price: 0, base_cost: 0,
+    // image - 按档位直接定价（size_prices 模式，优先级更高）
+    size_prices: { '1k': 0, '2k': 0, '3k': 0, '4k': 0 },
+    size_costs:  { '1k': 0, '2k': 0, '3k': 0, '4k': 0 },
+    default_size_price: 0,
+    default_size_cost: 0,
     // video / audio
     price_per_second: 0, cost_per_second: 0,
     // count
@@ -282,7 +325,13 @@ function extractBp(cfg) {
   const bp = emptyBp()
   const keys = Object.keys(bp)
   for (const k of keys) {
-    if (cfg[k] !== undefined) bp[k] = cfg[k]
+    if (cfg[k] === undefined) continue
+    // 对象类型深拷贝（size_prices / size_costs），避免引用污染
+    if (typeof cfg[k] === 'object' && cfg[k] !== null && !Array.isArray(cfg[k])) {
+      bp[k] = { ...bp[k], ...cfg[k] }
+    } else {
+      bp[k] = cfg[k]
+    }
   }
   return bp
 }
@@ -292,6 +341,13 @@ function mergeBpToConfig(bp, baseConfigStr) {
   let cfg = {}
   try { cfg = JSON.parse(baseConfigStr || '{}') } catch { cfg = {} }
   for (const [k, v] of Object.entries(bp)) {
+    // size_prices / size_costs：只有任意档位非零时才写入
+    if (k === 'size_prices' || k === 'size_costs') {
+      const anyNonZero = typeof v === 'object' && v !== null && Object.values(v).some(x => x > 0)
+      if (anyNonZero) cfg[k] = v
+      else delete cfg[k]
+      continue
+    }
     if (v !== 0 && v !== false) cfg[k] = v
     else if (cfg[k] !== undefined) cfg[k] = v // 已有字段置为 0/false 也要保留
   }
@@ -348,6 +404,7 @@ async function saveChannel() {
     billing_config: billingConfig, request_script: form.request_script,
     response_script: form.response_script,
     query_url: form.query_url, query_method: form.query_method, query_script: form.query_script,
+    error_script: form.error_script,
     key_pool_id: form.key_pool_id ?? 0,
     is_active: form.is_active,
   }
@@ -377,7 +434,13 @@ function formatPrice(row) {
   if (row.billing_type === 'token') {
     return `输入 ${c.input_price_per_1m_tokens ?? 0} / 输出 ${c.output_price_per_1m_tokens ?? 0}`
   }
-  if (row.billing_type === 'image') return `基础 ${c.base_price ?? 0}`
+  if (row.billing_type === 'image') {
+    if (c.size_prices) {
+      const parts = SIZE_TIERS.filter(k => c.size_prices[k]).map(k => `${k}:${c.size_prices[k]}`)
+      return parts.length ? parts.join(' / ') : `基础 ${c.base_price ?? 0}`
+    }
+    return `基础 ${c.base_price ?? 0}`
+  }
   if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.price_per_second ?? 0} /秒`
   if (row.billing_type === 'count') return `${c.price_per_call ?? 0} /次`
   return '—'
@@ -388,7 +451,13 @@ function formatCost(row) {
   if (row.billing_type === 'token') {
     return `输入 ${c.input_cost_per_1m_tokens ?? 0} / 输出 ${c.output_cost_per_1m_tokens ?? 0}`
   }
-  if (row.billing_type === 'image') return `基础 ${c.base_cost ?? 0}`
+  if (row.billing_type === 'image') {
+    if (c.size_costs) {
+      const parts = SIZE_TIERS.filter(k => c.size_costs[k]).map(k => `${k}:${c.size_costs[k]}`)
+      return parts.length ? parts.join(' / ') : `基础 ${c.base_cost ?? 0}`
+    }
+    return `基础 ${c.base_cost ?? 0}`
+  }
   if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.cost_per_second ?? 0} /秒`
   if (row.billing_type === 'count') return `${c.cost_per_call ?? 0} /次`
   return '—'

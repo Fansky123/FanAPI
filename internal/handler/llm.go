@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fanapi/internal/billing"
+	"fanapi/internal/db"
 	"fanapi/internal/model"
 	"fanapi/internal/script"
 	"fanapi/internal/service"
@@ -34,11 +35,14 @@ func effectiveProtocol(ch *model.Channel) string {
 }
 
 // usageState 在 SSE 流中收集 token 用量，支持 OpenAI / Claude / Gemini 三种协议。
-// 最终通过 normalized() 统一输出 {prompt_tokens, completion_tokens} 格式供计费使用。
+// promptTokens / completTokens 从响应尾部的 usage 字段读取（最精确）。
+// outputChars 在流式传输过程中实时累计输出文本字节数，作为用户中断时的兜底估算依据
+// （约 4 字节 ≈ 1 token）。
 type usageState struct {
 	protocol      string
 	promptTokens  int64
 	completTokens int64
+	outputChars   int64  // 实时累计输出字符数（兜底估算）
 	lastEvent     string // Claude 专用：记录上一个 "event:" 行的值
 }
 
@@ -57,7 +61,6 @@ func (u *usageState) processLine(line string) {
 			}
 			switch u.lastEvent {
 			case "message_start":
-				// {"message": {"usage": {"input_tokens": N}}}
 				if msg, ok := chunk["message"].(map[string]interface{}); ok {
 					if usg, ok := msg["usage"].(map[string]interface{}); ok {
 						if n, _ := usg["input_tokens"].(float64); n > 0 {
@@ -66,10 +69,16 @@ func (u *usageState) processLine(line string) {
 					}
 				}
 			case "message_delta":
-				// {"usage": {"output_tokens": M}}
 				if usg, ok := chunk["usage"].(map[string]interface{}); ok {
 					if n, _ := usg["output_tokens"].(float64); n > 0 {
 						u.completTokens = int64(n)
+					}
+				}
+			case "content_block_delta":
+				// 实时累计输出字符（兜底）
+				if delta, ok := chunk["delta"].(map[string]interface{}); ok {
+					if text, _ := delta["text"].(string); text != "" {
+						u.outputChars += int64(len(text))
 					}
 				}
 			}
@@ -82,13 +91,28 @@ func (u *usageState) processLine(line string) {
 			if json.Unmarshal([]byte(payload), &chunk) != nil {
 				return
 			}
-			// 每片 Gemini SSE chunk 都可能携带 usageMetadata，以最后一片为准
 			if meta, ok := chunk["usageMetadata"].(map[string]interface{}); ok {
 				if n, _ := meta["promptTokenCount"].(float64); n > 0 {
 					u.promptTokens = int64(n)
 				}
 				if n, _ := meta["candidatesTokenCount"].(float64); n > 0 {
 					u.completTokens = int64(n)
+				}
+			}
+			// 实时累计输出字符（兜底）
+			if candidates, ok := chunk["candidates"].([]interface{}); ok && len(candidates) > 0 {
+				if cand, ok := candidates[0].(map[string]interface{}); ok {
+					if content, ok := cand["content"].(map[string]interface{}); ok {
+						if parts, ok := content["parts"].([]interface{}); ok {
+							for _, p := range parts {
+								if pm, ok := p.(map[string]interface{}); ok {
+									if text, _ := pm["text"].(string); text != "" {
+										u.outputChars += int64(len(text))
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -111,19 +135,44 @@ func (u *usageState) processLine(line string) {
 					u.completTokens = int64(n)
 				}
 			}
+			// 实时累计输出字符（用户中断时兜底）
+			if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if delta, ok := choice["delta"].(map[string]interface{}); ok {
+						if content, _ := delta["content"].(string); content != "" {
+							u.outputChars += int64(len(content))
+						}
+					}
+				}
+			}
 		}
 	}
 }
 
-// normalized 返回标准化的 usage map（prompt_tokens / completion_tokens）。
-// 若未收到任何用量数据则返回 nil。
-func (u *usageState) normalized() map[string]interface{} {
-	if u.promptTokens == 0 && u.completTokens == 0 {
+// normalized 返回标准化的 usage map（prompt_tokens / completion_tokens）供计费使用。
+// 优先使用响应尾部精确的 usage 字段；若流被中断（无 usage），则根据实时累计的
+// outputChars 估算 completion_tokens，并从请求消息内容估算 prompt_tokens，
+// 确保用户中断时仍按实际消耗计费，不会全额退款。
+func (u *usageState) normalized(req map[string]interface{}) map[string]interface{} {
+	if u.promptTokens > 0 || u.completTokens > 0 {
+		// 精确值：来自响应尾部 usage 字段
+		return map[string]interface{}{
+			"prompt_tokens":     u.promptTokens,
+			"completion_tokens": u.completTokens,
+		}
+	}
+	if u.outputChars == 0 {
+		// 完全没有数据（连接失败等），不作结算
 		return nil
 	}
+	// 兜底估算：用于用户中断或上游未返回 usage 的场景
+	// 4 字节 ≈ 1 token，乘以 1.1 留出余量
+	estimatedOutput := int64(float64(u.outputChars)/4.0*1.1) + 1
+	estimatedInput := billing.EstimateTokensFromRequest(req)
 	return map[string]interface{}{
-		"prompt_tokens":     u.promptTokens,
-		"completion_tokens": u.completTokens,
+		"prompt_tokens":     estimatedInput,
+		"completion_tokens": estimatedOutput,
+		"estimated":         true, // 标记为估算值，便于排查
 	}
 }
 
@@ -192,6 +241,22 @@ func llmProxy(c *gin.Context) {
 		mappedReq = mapped
 	}
 
+	// 判断客户端是否请求流式输出
+	isStream := false
+	if sv, ok := mappedReq["stream"].(bool); ok {
+		isStream = sv
+	}
+
+	// 流式：强制注入 include_usage，确保结尾 chunk 携带精确 token 数
+	if isStream && effectiveProtocol(ch) == protocolOpenAI {
+		mappedReq["stream"] = true
+		if _, hasOpts := mappedReq["stream_options"]; !hasOpts {
+			mappedReq["stream_options"] = map[string]interface{}{"include_usage": true}
+		} else if opts, ok := mappedReq["stream_options"].(map[string]interface{}); ok {
+			opts["include_usage"] = true
+		}
+	}
+
 	// 计算预扣金额并原子扣除
 	inputHold, outputHold, calcErr := billing.Calc(ch, reqData)
 	if calcErr != nil {
@@ -209,12 +274,28 @@ func llmProxy(c *gin.Context) {
 	}
 
 	corrID := uuid.New().String()
+	// 返回给客户端，用于关联计费流水（与 billing_transactions.corr_id 一致）
+	c.Header("X-Corr-Id", corrID)
 	if totalHold > 0 {
 		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "hold", totalHold, upstreamCostHold, model.JSON{
 			"input_hold":  inputHold,
 			"output_hold": outputHold,
 		})
 	}
+
+	// 写入 LLM 请求日志（pending 状态，请求完成后更新）
+	modelName, _ := mappedReq["model"].(string)
+	llmLog := &model.LLMLog{
+		UserID:          userID,
+		ChannelID:       channelID,
+		APIKeyID:        apiKeyIDVal,
+		CorrID:          corrID,
+		Model:           modelName,
+		IsStream:        isStream,
+		UpstreamRequest: model.JSON(mappedReq),
+		Status:          "pending",
+	}
+	_, _ = db.Engine.Insert(llmLog)
 
 	// 号池 Sticky Key 分配
 	entityID := apiKeyIDVal
@@ -225,7 +306,7 @@ func llmProxy(c *gin.Context) {
 	if ch.KeyPoolID > 0 {
 		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, entityID)
 		if pkErr != nil {
-			llmRefundAndAbort(c, userID, totalHold, "key pool error: "+pkErr.Error())
+			llmRefundAndAbort(c, corrID, userID, totalHold, 0, "key pool error: "+pkErr.Error())
 			return
 		}
 		poolKey = pk
@@ -234,7 +315,7 @@ func llmProxy(c *gin.Context) {
 	// 发送上游请求（429 时轮转 Key 重试一次）
 	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 	if err != nil {
-		llmRefundAndAbort(c, userID, totalHold, "上游请求失败: "+err.Error())
+		llmRefundAndAbort(c, corrID, userID, totalHold, 0, "上游请求失败: "+err.Error())
 		return
 	}
 
@@ -245,7 +326,7 @@ func llmProxy(c *gin.Context) {
 			poolKey = newKey
 			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
 			if err != nil {
-				llmRefundAndAbort(c, userID, totalHold, "上游请求失败(重试): "+err.Error())
+				llmRefundAndAbort(c, corrID, userID, totalHold, 0, "上游请求失败(重试): "+err.Error())
 				return
 			}
 		}
@@ -255,11 +336,41 @@ func llmProxy(c *gin.Context) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyErr, _ := io.ReadAll(resp.Body)
-		llmRefundAndAbort(c, userID, totalHold, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, string(bodyErr)))
+		llmRefundAndAbort(c, corrID, userID, totalHold, resp.StatusCode, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, string(bodyErr)))
 		return
 	}
 
-	// SSE 响应头
+	// ---- 同步响应 ----
+	if !isStream {
+		respBytes, _ := io.ReadAll(resp.Body)
+
+		// 从响应 JSON 的 usage 字段精确取 token 数
+		var respJSON map[string]interface{}
+		var syncUsage map[string]interface{}
+		if json.Unmarshal(respBytes, &respJSON) == nil {
+			if usg, ok := respJSON["usage"].(map[string]interface{}); ok {
+				pt, _ := usg["prompt_tokens"].(float64)
+				ct, _ := usg["completion_tokens"].(float64)
+				syncUsage = map[string]interface{}{
+					"prompt_tokens":     int64(pt),
+					"completion_tokens": int64(ct),
+				}
+			}
+		}
+
+		// 透传给客户端
+		c.Data(http.StatusOK, resp.Header.Get("Content-Type"), respBytes)
+
+		// 同步模式：把完整响应体也存入日志
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
+			Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON(respJSON)})
+
+		// 结算
+		llmSettle(c, ch, reqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, corrID)
+		return
+	}
+
+	// ---- 流式 SSE 响应 ----
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
@@ -277,29 +388,44 @@ func llmProxy(c *gin.Context) {
 		return true
 	})
 
-	lastUsageData := usage.normalized()
+	// 流式：把结尾的 usage chunk 存入日志（没精确 usage 时也留存已收到的分析信息）
+	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status").
+		Update(&model.LLMLog{UpstreamStatus: http.StatusOK})
 
-	// ---- 结算阶段 ----
-	if lastUsageData != nil {
-		respData := map[string]interface{}{"usage": lastUsageData}
-		actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
-		actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
-		if settleErr == nil {
-			delta := totalHold - actualCost
-			if delta > 0 {
-				_ = billing.Refund(c.Request.Context(), userID, delta)
-			} else if delta < 0 {
-				_ = billing.Charge(c.Request.Context(), userID, -delta)
-			}
-			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, actualUpstreamCost, model.JSON{
-				"actual_cost": actualCost,
-				"held":        totalHold,
-				"usage":       lastUsageData,
-			})
+	llmSettle(c, ch, reqData, usage.normalized(reqData), totalHold, userID, channelID, apiKeyIDVal, corrID)
+}
+
+// llmSettle 执行结算：与预扣金额对比，退还多扣或补扣差额，并写计费流水。
+// usageData 为精确或估算的 {prompt_tokens, completion_tokens}；
+// 为 nil 时（连接在任何输出前断开）全额退款。
+func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]interface{},
+	totalHold, userID, channelID, apiKeyIDVal int64, corrID string) {
+	if usageData == nil {
+		if totalHold > 0 {
+			_ = billing.Refund(c.Request.Context(), userID, totalHold)
 		}
-	} else if totalHold > 0 {
-		_ = billing.Refund(c.Request.Context(), userID, totalHold)
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status").
+			Update(&model.LLMLog{Status: "refunded"})
+		return
 	}
+	respData := map[string]interface{}{"usage": usageData}
+	actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
+	actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
+	if settleErr == nil {
+		delta := totalHold - actualCost
+		if delta > 0 {
+			_ = billing.Refund(c.Request.Context(), userID, delta)
+		} else if delta < 0 {
+			_ = billing.Charge(c.Request.Context(), userID, -delta)
+		}
+		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "settle", actualCost, actualUpstreamCost, model.JSON{
+			"actual_cost": actualCost,
+			"held":        totalHold,
+			"usage":       usageData,
+		})
+	}
+	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "usage").
+		Update(&model.LLMLog{Status: "ok", Usage: model.JSON(usageData)})
 }
 
 // sendLLMRequest 构建并发送对上游 LLM 的 HTTP 请求。
@@ -348,9 +474,14 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 }
 
 // llmRefundAndAbort 退款并终止请求（上游失败时调用）。
-func llmRefundAndAbort(c *gin.Context, userID, credits int64, errMsg string) {
+// corrID 不为空时同步更新 LLMLog 的错误状态。
+func llmRefundAndAbort(c *gin.Context, corrID string, userID, credits int64, upstreamStatus int, errMsg string) {
 	if credits > 0 {
 		_ = billing.Refund(c.Request.Context(), userID, credits)
+	}
+	if corrID != "" {
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "upstream_status", "error_msg").
+			Update(&model.LLMLog{Status: "error", UpstreamStatus: upstreamStatus, ErrorMsg: errMsg})
 	}
 	c.JSON(http.StatusBadGateway, gin.H{"error": errMsg})
 }

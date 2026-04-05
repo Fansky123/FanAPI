@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"fanapi/internal/model"
 )
@@ -65,7 +66,7 @@ func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64,
 	// 从响应获取实际输出 token 数，默认路径兼容 OpenAI / chatfire 格式
 	outputPath := getStr(cfg, "metric_paths.output_tokens", "response.usage.completion_tokens")
 	outputTokens, _ := getInt64FromData(data, outputPath)
-	outputCost := int64(math.Ceil(float64(outputTokens)/1000000) * float64(outputPricePer1m))
+	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputPricePer1m) / 1000000))
 
 	if !getBool(cfg, "input_from_response") {
 		// 输入费用已在请求时精确扣除，结算只需返回实际输出费用
@@ -75,7 +76,7 @@ func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64,
 	// input_from_response=true：从响应 usage 中获取实际输入 token 数
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputPricePer1m))
+	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
 
 	return inputCost + outputCost, nil
 }
@@ -90,12 +91,12 @@ func calcToken(cfg map[string]interface{}, data map[string]map[string]interface{
 	// 获取 max_tokens（用于预扣输出费）
 	maxTokensPath := getStr(cfg, "metric_paths.max_tokens", "request.max_tokens")
 	maxTokens, _ := getInt64FromData(data, maxTokensPath)
-	outputHold := int64(math.Ceil(float64(maxTokens)/1000000) * float64(outputPricePer1m))
+	outputHold := int64(math.Ceil(float64(maxTokens) * float64(outputPricePer1m) / 1000000))
 
 	if getBool(cfg, "input_from_response") {
 		// 输入费延迟到响应结算，预扣时用消息内容长度估算，避免余额不足风险
 		inputEst := estimateTokensFromMessages(data["request"])
-		inputHold := int64(math.Ceil(float64(inputEst)/1000000) * float64(inputPricePer1m))
+		inputHold := int64(math.Ceil(float64(inputEst) * float64(inputPricePer1m) / 1000000))
 		return inputHold, outputHold, nil
 	}
 
@@ -106,24 +107,66 @@ func calcToken(cfg map[string]interface{}, data map[string]map[string]interface{
 		// 路径不存在时降级为消息估算
 		inputTokens = estimateTokensFromMessages(data["request"])
 	}
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputPricePer1m))
+	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
 	return inputCost, outputHold, nil
 }
 
 // calcImage 根据请求中的 size 档位、宽高比、数量计算图片生成费用。
-// size（"1k"/"2k"...）与 aspect_ratio（如 "16:9"）共同决定实际像素数，再匹配分辨率倍率表。
+//
+// 支持两种定价模式（billing_config 示例见下）：
+//
+// 模式一：size_prices（按档位字符串直接定价，推荐用于各档位成本明确的场景）
+//
+//	{
+//	  "size_prices": { "1k": 5000, "2k": 15000, "4k": 50000 },
+//	  "default_size_price": 50000,   // size 不在映射中时的兜底价
+//	  "metric_paths": { "size": "request.size", "count": "request.n" }
+//	}
+//
+// 模式二：base_price + resolution_tiers（按像素总数分档乘以倍率）
+//
+//	{
+//	  "base_price": 10000,
+//	  "resolution_tiers": [{"max_pixels":1048576,"multiplier":1.0}, ...],
+//	  "metric_paths": { "size": "request.size", "aspect_ratio": "request.aspect_ratio", "count": "request.n" }
+//	}
 func calcImage(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, error) {
 	sizePath := getStr(cfg, "metric_paths.size", "request.size")
-	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
 	countPath := getStr(cfg, "metric_paths.count", "request.n")
 
 	sizeStr := getStrFromData(data, sizePath)
-	ratioStr := getStrFromData(data, ratioPath)
 	count, err := getInt64FromData(data, countPath)
 	if err != nil || count == 0 {
 		count = 1
 	}
 
+	// 模式一：size_prices 映射表（按 size 字符串直接定价）
+	if sizePricesRaw, ok := cfg["size_prices"]; ok {
+		b, _ := json.Marshal(sizePricesRaw)
+		var sizePrices map[string]int64
+		if json.Unmarshal(b, &sizePrices) == nil {
+			sizeKey := strings.ToLower(strings.TrimSpace(sizeStr))
+			if price, found := sizePrices[sizeKey]; found {
+				return price * count, nil
+			}
+			// 兜底：default_size_price
+			if def := getInt64Val(cfg, "default_size_price"); def > 0 {
+				return def * count, nil
+			}
+			// 取映射中最大的价格作为最终兜底
+			var maxPrice int64
+			for _, p := range sizePrices {
+				if p > maxPrice {
+					maxPrice = p
+				}
+			}
+			return maxPrice * count, nil
+		}
+	}
+
+	// 模式二：base_price + resolution_tiers（原有逻辑，按像素分档乘倍率）
+	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
+	ratioStr := getStrFromData(data, ratioPath)
 	pixels := ParseSizeToPixels(sizeStr, ratioStr)
 	multiplier := resolutionMultiplier(cfg, pixels)
 	basePrice := getInt64Val(cfg, "base_price")
@@ -208,6 +251,12 @@ func estimateTokensFromMessages(req map[string]interface{}) int64 {
 	}
 	// 4 字符估算为 1 token，并乘以 1.2 留出余量
 	return int64(math.Ceil(float64(totalChars) / 4.0 * 1.2))
+}
+
+// EstimateTokensFromRequest 是 estimateTokensFromMessages 的公开版本，供 handler 层在
+// 用户中断时基于请求内容估算 prompt_tokens。
+func EstimateTokensFromRequest(req map[string]interface{}) int64 {
+	return estimateTokensFromMessages(req)
 }
 
 // countStringLen 递归统计任意 JSON 结构中所有字符串值的字节长度。
@@ -353,7 +402,7 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 
 	outputPath := getStr(cfg, "metric_paths.output_tokens", "response.usage.completion_tokens")
 	outputTokens, _ := getInt64FromData(data, outputPath)
-	outputCost := int64(math.Ceil(float64(outputTokens)/1000000) * float64(outputCostPer1m))
+	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputCostPer1m) / 1000000))
 
 	if !getBool(cfg, "input_from_response") {
 		return outputCost, nil
@@ -361,7 +410,7 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputCostPer1m))
+	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputCostPer1m) / 1000000))
 
 	return inputCost + outputCost, nil
 }
@@ -372,11 +421,11 @@ func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]in
 
 	maxTokensPath := getStr(cfg, "metric_paths.max_tokens", "request.max_tokens")
 	maxTokens, _ := getInt64FromData(data, maxTokensPath)
-	outputHold := int64(math.Ceil(float64(maxTokens)/1000000) * float64(outputCostPer1m))
+	outputHold := int64(math.Ceil(float64(maxTokens) * float64(outputCostPer1m) / 1000000))
 
 	if getBool(cfg, "input_from_response") {
 		inputEst := estimateTokensFromMessages(data["request"])
-		inputHold := int64(math.Ceil(float64(inputEst)/1000000) * float64(inputCostPer1m))
+		inputHold := int64(math.Ceil(float64(inputEst) * float64(inputCostPer1m) / 1000000))
 		return inputHold, outputHold, nil
 	}
 
@@ -385,22 +434,45 @@ func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]in
 	if err != nil {
 		inputTokens = estimateTokensFromMessages(data["request"])
 	}
-	inputCost := int64(math.Ceil(float64(inputTokens)/1000000) * float64(inputCostPer1m))
+	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputCostPer1m) / 1000000))
 	return inputCost, outputHold, nil
 }
 
 func calcUpstreamImage(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, error) {
 	sizePath := getStr(cfg, "metric_paths.size", "request.size")
-	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
 	countPath := getStr(cfg, "metric_paths.count", "request.n")
 
 	sizeStr := getStrFromData(data, sizePath)
-	ratioStr := getStrFromData(data, ratioPath)
 	count, err := getInt64FromData(data, countPath)
 	if err != nil || count == 0 {
 		count = 1
 	}
 
+	// 模式一：size_costs 映射表（按档位直接定进价）
+	if sizeCostsRaw, ok := cfg["size_costs"]; ok {
+		b, _ := json.Marshal(sizeCostsRaw)
+		var sizeCosts map[string]int64
+		if json.Unmarshal(b, &sizeCosts) == nil {
+			sizeKey := strings.ToLower(strings.TrimSpace(sizeStr))
+			if cost, found := sizeCosts[sizeKey]; found {
+				return cost * count, nil
+			}
+			if def := getInt64Val(cfg, "default_size_cost"); def > 0 {
+				return def * count, nil
+			}
+			var maxCost int64
+			for _, p := range sizeCosts {
+				if p > maxCost {
+					maxCost = p
+				}
+			}
+			return maxCost * count, nil
+		}
+	}
+
+	// 模式二：base_cost + resolution_tiers（原有逻辑）
+	ratioPath := getStr(cfg, "metric_paths.aspect_ratio", "request.aspect_ratio")
+	ratioStr := getStrFromData(data, ratioPath)
 	pixels := ParseSizeToPixels(sizeStr, ratioStr)
 	multiplier := resolutionMultiplier(cfg, pixels)
 	baseCost := getInt64Val(cfg, "base_cost")

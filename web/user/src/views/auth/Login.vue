@@ -19,8 +19,8 @@
       <div class="login-box">
         <h3>登录账户</h3>
         <el-form :model="form" @submit.prevent="handleLogin" label-position="top">
-          <el-form-item label="邮箱">
-            <el-input v-model="form.email" placeholder="your@email.com" clearable />
+          <el-form-item label="用户名 / 邮箱">
+            <el-input v-model="form.username" placeholder="用户名或绑定邮箱" clearable />
           </el-form-item>
           <el-form-item label="密码">
             <el-input v-model="form.password" type="password" show-password />
@@ -29,6 +29,9 @@
             进入控制台
           </el-button>
         </el-form>
+        <div class="forgot-row">
+          <router-link to="/forgot-password" class="forgot-link">忘记密码？</router-link>
+        </div>
         <div class="link-row">
           还没有账号？<router-link to="/register">立即注册</router-link>
         </div>
@@ -42,19 +45,22 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { authApi } from '@/api'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const store = useUserStore()
 const loading = ref(false)
-const form = reactive({ email: '', password: '' })
+const form = reactive({ username: '', password: '' })
 
 async function handleLogin() {
   loading.value = true
   try {
     const res = await authApi.login(form)
     store.setToken(res.token)
-    store.setEmail(form.email)
-    router.push('/playground')
+    store.setUsername(res.user?.username || form.username)
+    router.push('/models')
+  } catch {
+    // error already shown by http interceptor
   } finally {
     loading.value = false
   }
@@ -138,7 +144,15 @@ async function handleLogin() {
   text-align: center;
   color: #909399;
 }
-
+.forgot-row {
+  margin-top: 10px;
+  text-align: right;
+}
+.forgot-link {
+  font-size: .82rem;
+  color: #909399;
+}
+.forgot-link:hover { color: #1677ff; }
 @media (max-width: 900px) {
   .login-shell {
     grid-template-columns: 1fr;

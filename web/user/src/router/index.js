@@ -14,17 +14,21 @@ const routes = [
     meta: { guest: true }
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/views/auth/ForgotPassword.vue'),
+  },
+  {
     path: '/',
     component: () => import('@/views/dashboard/Layout.vue'),
-    meta: { requiresAuth: true },
     children: [
-      { path: '', redirect: '/playground' },
-      { path: 'playground', name: 'Playground', component: () => import('@/views/playground/Index.vue') },
+      { path: '', redirect: '/models' },
+      { path: 'playground', name: 'Playground', component: () => import('@/views/playground/Index.vue'), meta: { requiresAuth: true } },
       { path: 'models', name: 'Models', component: () => import('@/views/dashboard/Channels.vue') },
-      { path: 'keys', name: 'APIKeys', component: () => import('@/views/keys/Index.vue') },
+      { path: 'keys', name: 'APIKeys', component: () => import('@/views/keys/Index.vue'), meta: { requiresAuth: true } },
       { path: 'docs', name: 'Docs', component: () => import('@/views/docs/Index.vue') },
-      { path: 'tasks', name: 'Tasks', component: () => import('@/views/tasks/Index.vue') },
-      { path: 'billing', name: 'Billing', component: () => import('@/views/billing/Index.vue') },
+      { path: 'tasks', name: 'Tasks', component: () => import('@/views/tasks/Index.vue'), meta: { requiresAuth: true } },
+      { path: 'billing', name: 'Billing', component: () => import('@/views/billing/Index.vue'), meta: { requiresAuth: true } },
     ]
   },
   // 管理端路由
@@ -46,6 +50,7 @@ const routes = [
       { path: 'billing', component: () => import('@/views/admin/billing/Index.vue') },
       { path: 'tasks', component: () => import('@/views/admin/tasks/Index.vue') },
       { path: 'cards', component: () => import('@/views/admin/cards/Index.vue') },
+      { path: 'llm-logs', component: () => import('@/views/admin/llm-logs/Index.vue') },
     ]
   },
   { path: '/:pathMatch(.*)*', redirect: '/' }
@@ -61,7 +66,7 @@ router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const adminToken = localStorage.getItem('admin_token')
   if (to.meta.requiresAuth && !token) return '/login'
-  if (to.meta.guest && token) return '/'
+  if (to.meta.guest && token) return '/models'
   if (to.meta.requiresAdmin && !adminToken) return '/admin/login'
   if (to.meta.adminGuest && adminToken) return '/admin/dashboard'
 })

@@ -4,12 +4,18 @@ import { userApi } from '@/api'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
+  const username = ref(localStorage.getItem('user_username') || '')
   const email = ref(localStorage.getItem('user_email') || '')
   const balance = ref(0)
 
   function setToken(t) {
     token.value = t
     localStorage.setItem('token', t)
+  }
+
+  function setUsername(u) {
+    username.value = u
+    localStorage.setItem('user_username', u)
   }
 
   function setEmail(e) {
@@ -19,8 +25,10 @@ export const useUserStore = defineStore('user', () => {
 
   function logout() {
     token.value = ''
+    username.value = ''
     email.value = ''
     localStorage.removeItem('token')
+    localStorage.removeItem('user_username')
     localStorage.removeItem('user_email')
   }
 
@@ -29,5 +37,15 @@ export const useUserStore = defineStore('user', () => {
     balance.value = res.balance_credits ?? 0
   }
 
-  return { token, email, balance, setToken, setEmail, logout, fetchBalance }
+  async function fetchProfile() {
+    try {
+      const res = await userApi.getProfile()
+      if (res.username) setUsername(res.username)
+      if (res.email) setEmail(res.email)
+    } catch {
+      // ignore — may not be logged in
+    }
+  }
+
+  return { token, username, email, balance, setToken, setUsername, setEmail, logout, fetchBalance, fetchProfile }
 })

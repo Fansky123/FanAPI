@@ -6,9 +6,11 @@
 
 - **多渠道代理** — 通过 goja（JS 运行时）动态脚本映射请求/响应格式，灵活接入各类上游 API
 - **多协议支持** — 同时支持 OpenAI、Claude、Gemini 三种协议格式（含 SSE 流式）
-- **LLM 对话** — 支持流式（SSE）和非流式代理，双阶段计费（预扣 + 结算）
-- **异步任务** — 图片、视频、音频生成任务，支持异步轮询状态查询
+- **LLM 对话** — 支持流式（SSE）和非流式代理，双阶段计费（预扣 + 结算），用户中断时按实际输出字符兜底估算
+- **请求追踪** — LLM 响应头返回 `X-Corr-Id`，可与计费流水 `corr_id` 字段精确对应，用户可查询哪笔对话扣了多少费
+- **异步任务** — 图片、视频、音频生成任务，支持异步轮询状态查询，失败自动退款
 - **计费系统** — 多维度计费模型（按 token / 图片 / 视频 / 音频 / 自定义脚本），余额管理与交易记录
+- **自动退费** — 任务失败（HTTP 错误、第三方业务失败、NATS 发布失败）均自动退还已扣 credits 并写退费流水
 - **卡密充值** — 管理员生成卡密，用户凭码充值
 - **用户系统** — 邮件验证码注册、JWT 登录、API Key 管理
 - **管理后台** — 渠道 CRUD、号池管理、用户充值、交易查询、卡密管理，与用户端共享同一前端入口
@@ -69,8 +71,71 @@ bash scripts/start.sh
 ### 4. 数据库种子数据（可选）
 
 ```bash
+# ChatFire 渠道预置数据
 psql -U <user> -d <db> -f scripts/seed_chatfire.sql
 ```
+
+### 5. 数据库迁移（非首次部署）
+
+若数据库由旧版升级，需执行迁移脚本补充新字段（新部署由 xorm `Sync2` 自动处理，无需手动执行）：
+
+```bash
+psql -U <user> -d <db> -f scripts/migrate_20260405_add_error_script_corr_id.sql
+```
+
+## 渠道脚本系统
+
+每个渠道可配置最多 4 个 JS 脚本，均通过管理后台编辑：
+
+| 字段 | 函数名 | 说明 |
+|------|--------|------|
+| `request_script` | `mapRequest(input)` | 将平台标准请求转换为第三方 API 格式 |
+| `response_script` | `mapResponse(output)` | 将第三方同步响应映射为平台标准格式（同步任务）或提取 `upstream_task_id`（异步任务） |
+| `query_script` | `mapResponse(output)` | 将异步轮询响应映射为平台标准格式（`status`: 2=成功, 3=失败, 其他=进行中） |
+| `error_script` | `checkError(response)` | 自定义错误检测，返回非空字符串=错误消息（触发退费），返回 `null`/`false`=正常 |
+
+### error_script 示例
+
+**ChatFire / OpenAI 错误格式：**
+```js
+function checkError(resp) {
+    if (resp.error) return resp.error.code + ': ' + resp.error.message;
+    return null;
+}
+```
+
+**自定义 code+message 格式：**
+```js
+function checkError(resp) {
+    if (resp.code !== 0 && resp.code !== 200) return resp.message || 'error code: ' + resp.code;
+    return null;
+}
+```
+
+> 未填写 `error_script` 时，平台会使用内置通用检测（自动识别 `{"error":{...}}` 和字符串类型错误码格式）。
+
+## 计费说明
+
+1 CNY = 1,000,000 credits
+
+### LLM 双阶段计费
+
+| 阶段 | 时机 | 说明 |
+|------|------|------|
+| `hold`（预扣） | 请求发出前 | 按最大上下文 + 最大输出 token 保守估算，原子扣除避免超额 |
+| `settle`（结算） | 响应完成后 | 用精确 usage 重新计算，退还多扣或补扣差额 |
+
+- 用户中断流式响应时，按实时累计字符数估算，不全额退款
+- 每次 LLM 请求响应头携带 `X-Corr-Id`，可在计费记录中通过 `corr_id` 字段追溯
+
+### 异步任务计费
+
+| 事件 | 流水类型 | 说明 |
+|------|----------|------|
+| 任务创建成功 | `charge` | 任务参数已知，一次性精确扣费 |
+| 任务失败（任意原因）| `refund` | 自动退还全部已扣 credits，`metrics.reason` 记录失败原因 |
+
+失败场景覆盖：NATS 发布失败、上游 HTTP 错误、`error_script` 检测到错误、`response_script/query_script` 输出 `status=3`、任务超时（>2小时）。
 
 ## API 文档
 

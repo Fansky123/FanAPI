@@ -45,3 +45,8 @@ export const cardApi = {
   list: (params = {}) => http.get('/admin/cards', { params }),
   remove: (id) => http.delete(`/admin/cards/${id}`),
 }
+
+export const llmLogApi = {
+  list: (params = {}) => http.get('/admin/llm-logs', { params }),
+  get: (id) => http.get(`/admin/llm-logs/${id}`),
+}

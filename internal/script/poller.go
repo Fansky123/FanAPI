@@ -161,6 +161,28 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	for k, v := range rawResp {
 		upstreamResp[k] = v
 	}
+
+	// 厂商错误兜底检测：query_script 未覆盖的错误格式（如 {"error":{...}}）不应循环轮询至超时
+	{
+		var detectedErr string
+		var isErr bool
+		if ch.ErrorScript != "" {
+			var scriptErr error
+			detectedErr, scriptErr = RunCheckError(ch.ErrorScript, mappedResp)
+			if scriptErr != nil {
+				log.Printf("[poller] task %d: error_script failed: %v", task.ID, scriptErr)
+			}
+			isErr = detectedErr != ""
+		} else {
+			detectedErr, isErr = detectUpstreamError(mappedResp)
+		}
+		if isErr {
+			db.Engine.Where("id = ?", task.ID).Cols("upstream_response").Update(&model.Task{UpstreamResponse: upstreamResp})
+			failTask(task.ID, detectedErr)
+			return
+		}
+	}
+
 	switch int(statusVal) {
 	case 2: // 成功
 		result := model.JSON{}
@@ -176,6 +198,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		log.Printf("[poller] task %d done", task.ID)
 
 	case 3: // 失败
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_response").Update(&model.Task{UpstreamResponse: upstreamResp})
 		msg := fmt.Sprintf("%v", mappedResp["msg"])
 		failTask(task.ID, "upstream failed: "+msg)
 

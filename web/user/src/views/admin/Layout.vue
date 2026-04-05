@@ -15,6 +15,7 @@
         <el-menu-item index="/admin/users"><el-icon><User /></el-icon>用户管理</el-menu-item>
         <el-menu-item index="/admin/billing"><el-icon><Tickets /></el-icon>账单流水</el-menu-item>
         <el-menu-item index="/admin/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
+        <el-menu-item index="/admin/llm-logs"><el-icon><ChatLineSquare /></el-icon>LLM 日志</el-menu-item>
         <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
@@ -67,7 +68,7 @@ import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
-const titles = { '/admin/dashboard': '数据概览', '/admin/channels': '渠道管理', '/admin/key-pools': '号池管理', '/admin/users': '用户管理', '/admin/billing': '账单流水', '/admin/tasks': '任务中心', '/admin/cards': '卡密管理' }
+const titles = { '/admin/dashboard': '数据概览', '/admin/channels': '渠道管理', '/admin/key-pools': '号池管理', '/admin/users': '用户管理', '/admin/billing': '账单流水', '/admin/tasks': '任务中心', '/admin/cards': '卡密管理', '/admin/llm-logs': 'LLM 日志' }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
 
 // 账户菜单

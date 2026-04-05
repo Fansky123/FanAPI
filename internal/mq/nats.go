@@ -3,7 +3,6 @@ package mq
 import (
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"fanapi/internal/config"
@@ -71,23 +70,10 @@ func EnsureStream() error {
 		log.Printf("[mq] JetStream stream %q confirmed", streamName)
 	}
 
-	// Clean up any stale consumers whose filter subjects no longer match
-	// (e.g. old "script-workers" bound to "task.image.*" after migrating to "task.>").
-	for info := range JS.Consumers(streamName) {
-		name := info.Name
-		filter := info.Config.FilterSubject
-		// A consumer is stale if it claims to be a workers-* consumer but its filter
-		// no longer matches any of the expected patterns.
-		if strings.HasPrefix(name, "workers-") && filter != "" && filter != streamSubj {
-			expected := "workers-" + strings.NewReplacer(
-				"task.", "", ".*", "", ".", "-", ">", "all", "*", "any",
-			).Replace(filter)
-			if name != expected {
-				_ = JS.DeleteConsumer(streamName, name)
-				log.Printf("[mq] deleted stale consumer %q (filter: %q)", name, filter)
-			}
-		}
-	}
+	// Note: consumer cleanup is intentionally NOT done here.
+	// Only the worker process should purge stale consumers (via mq.PurgeConsumers)
+	// before subscribing. Running cleanup here would delete the worker's active
+	// consumer whenever the server restarts.
 	return nil
 }
 
@@ -98,20 +84,62 @@ func Publish(subject string, data []byte) error {
 	return err
 }
 
-// QueueSubscribe creates a durable JetStream push consumer shared across a queue group.
-// Each message is delivered to exactly one subscriber. If the subscriber crashes without
-// calling msg.Ack(), the message is automatically redelivered after workerAckWait.
+// QueueSubscribe creates a durable JetStream pull consumer and starts a background goroutine
+// to continuously fetch messages. Pull consumers work correctly on WorkQueue streams and
+// survive worker restarts without the "filtered consumer not unique" error that push
+// consumers suffer on WorkQueue streams.
+//
+// Each fetched message is dispatched in its own goroutine (safe: handler is idempotent
+// and operates on independent task IDs). The goroutine exits when the subscription is
+// closed (sub.Unsubscribe / server shutdown).
 func QueueSubscribe(subject, queue string, handler nats.MsgHandler) (*nats.Subscription, error) {
-	return JS.QueueSubscribe(
-		subject, queue, handler,
-		nats.Durable(queue),
+	sub, err := JS.PullSubscribe(
+		subject,
+		queue,
 		nats.AckExplicit(),
 		nats.AckWait(workerAckWait),
 		nats.MaxDeliver(workerMaxDeliver),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("pull subscribe %s/%s: %w", subject, queue, err)
+	}
+
+	go func() {
+		for {
+			msgs, fetchErr := sub.Fetch(10, nats.MaxWait(5*time.Second))
+			if fetchErr != nil {
+				if !sub.IsValid() {
+					return // subscription closed, exit cleanly
+				}
+				// ErrTimeout is normal when the queue is empty
+				if fetchErr != nats.ErrTimeout {
+					log.Printf("[mq] fetch error (%s): %v", subject, fetchErr)
+					time.Sleep(time.Second)
+				}
+				continue
+			}
+			for _, msg := range msgs {
+				go handler(msg)
+			}
+		}
+	}()
+
+	return sub, nil
 }
 
 // Subscribe creates a core NATS subscription (non-persistent, for ancillary use cases).
 func Subscribe(subject string, handler nats.MsgHandler) (*nats.Subscription, error) {
 	return Conn.Subscribe(subject, handler)
+}
+
+// PurgeConsumers removes all consumers from the TASKS stream.
+// Must be called once from the worker process before QueueSubscribe to clear stale
+// consumers left over from previous runs (prevents "filtered consumer not unique"
+// on WorkQueue streams). Must NOT be called from the server process.
+func PurgeConsumers() {
+	for info := range JS.Consumers(streamName) {
+		if delErr := JS.DeleteConsumer(streamName, info.Name); delErr == nil {
+			log.Printf("[mq] purged stale consumer %q from stream %s", info.Name, streamName)
+		}
+	}
 }

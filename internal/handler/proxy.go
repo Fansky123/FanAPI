@@ -147,6 +147,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	for k, v := range reqData {
 		reqJSON[k] = v
 	}
+	corrID := uuid.New().String()
 	task := &model.Task{
 		UserID:         userID,
 		ChannelID:      channelID,
@@ -155,6 +156,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		Status:         "pending",
 		Request:        reqJSON,
 		CreditsCharged: cost,
+		CorrID:         corrID,
 	}
 	if _, err := db.Engine.Insert(task); err != nil {
 		_ = billing.Refund(c.Request.Context(), userID, cost)
@@ -163,7 +165,6 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 
 	// 写计费流水
-	corrID := uuid.New().String()
 	_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "charge", cost, upstreamCost, model.JSON{
 		"task_id": task.ID,
 		"type":    taskType,
@@ -179,7 +180,14 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 	msgBytes, _ := json.Marshal(msg)
 	if pubErr := mq.Publish(natSubject, msgBytes); pubErr != nil {
-		db.Engine.Where("id = ?", task.ID).Update(&model.Task{Status: "failed", ErrorMsg: "publish error"})
+		db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "publish error"})
+		if cost > 0 {
+			_ = billing.Refund(c.Request.Context(), userID, cost)
+			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, 0, model.JSON{
+				"task_id": task.ID,
+				"reason":  "publish error",
+			})
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue task"})
 		return
 	}

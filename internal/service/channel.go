@@ -67,9 +67,9 @@ func UpdateChannel(ctx context.Context, ch *model.Channel) error {
 	return err
 }
 
-// DeleteChannel soft-disables a channel.
+// DeleteChannel permanently removes a channel from the database.
 func DeleteChannel(ctx context.Context, channelID int64) error {
-	_, err := db.Engine.Where("id = ?", channelID).Update(&model.Channel{IsActive: false})
+	_, err := db.Engine.Where("id = ?", channelID).Delete(new(model.Channel))
 	if err == nil {
 		InvalidateChannelCache(ctx, channelID)
 	}
