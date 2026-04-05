@@ -67,7 +67,54 @@ func Init(cfg *config.DBConfig, migrate bool) error {
 	if err := seedAdmin(); err != nil {
 		return err
 	}
-	return seedChannels()
+	if err := seedChannels(); err != nil {
+		return err
+	}
+	return ensureIndexes()
+}
+
+// ensureIndexes creates performance indexes if they don't already exist.
+// Uses CONCURRENTLY so it won't lock tables on a live database.
+func ensureIndexes() error {
+	indexes := []struct {
+		name string
+		ddl  string
+	}{
+		{
+			"idx_tasks_processing_upstream",
+			`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_processing_upstream
+			ON tasks (status, upstream_task_id)
+			WHERE status = 'processing' AND upstream_task_id != ''`,
+		},
+		{
+			"idx_tasks_user_id_created",
+			`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_user_id_created
+			ON tasks (user_id, id DESC)`,
+		},
+		{
+			"idx_tasks_type_status_created",
+			`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_type_status_created
+			ON tasks (type, status, created_at DESC)`,
+		},
+		{
+			"idx_billing_tx_user_created",
+			`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_billing_tx_user_created
+			ON billing_transactions (user_id, created_at DESC)`,
+		},
+		{
+			"idx_billing_tx_corr_id",
+			`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_billing_tx_corr_id
+			ON billing_transactions (corr_id)
+			WHERE corr_id != ''`,
+		},
+	}
+	for _, idx := range indexes {
+		if _, err := Engine.Exec(idx.ddl); err != nil {
+			return fmt.Errorf("create index %s: %w", idx.name, err)
+		}
+		log.Printf("[db] index ensured: %s", idx.name)
+	}
+	return nil
 }
 
 const (
