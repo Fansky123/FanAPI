@@ -83,6 +83,12 @@ psql -U <user> -d <db> -f scripts/seed_chatfire.sql
 psql -U <user> -d <db> -f scripts/migrate_20260405_add_error_script_corr_id.sql
 ```
 
+高并发场景建议同时执行索引优化脚本（使用 `CONCURRENTLY`，不锁表，可在线执行）：
+
+```bash
+psql -U <user> -d <db> -f scripts/migrate_20260405_add_indexes.sql
+```
+
 ## 渠道脚本系统
 
 每个渠道可配置最多 4 个 JS 脚本，均通过管理后台编辑：
