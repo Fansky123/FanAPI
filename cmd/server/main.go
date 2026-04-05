@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -11,6 +12,7 @@ import (
 	"fanapi/internal/handler"
 	"fanapi/internal/middleware"
 	"fanapi/internal/mq"
+	"fanapi/internal/taskresult"
 	"fanapi/pkg/mailer"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +43,16 @@ func main() {
 	}
 
 	_ = billing.SyncBalanceToRedis // available for use
+
+	// Start result processor: subscribes to RESULTS stream, writes DB + billing
+	if err := taskresult.StartResultProcessor(cfg.Worker); err != nil {
+		log.Fatalf("result processor: %v", err)
+	}
+
+	// Start async-task poller (polls DB for processing tasks with upstream_task_id)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	taskresult.StartPoller(ctx)
 
 	m := mailer.New(&cfg.SMTP)
 	authH := handler.NewAuthHandler(&cfg.Server, m)

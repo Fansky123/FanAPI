@@ -65,16 +65,26 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // POST /auth/login — 用户名或邮箱 + 密码
+// 接受 {username, password} 或 {email, password}，兼容两种调用方
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, user, err := service.Login(c.Request.Context(), req.Username, req.Password, h.cfg)
+	usernameOrEmail := req.Username
+	if usernameOrEmail == "" {
+		usernameOrEmail = req.Email
+	}
+	if usernameOrEmail == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username or email required"})
+		return
+	}
+	token, user, err := service.Login(c.Request.Context(), usernameOrEmail, req.Password, h.cfg)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return

@@ -14,6 +14,9 @@ const (
 	streamName = "TASKS"
 	streamSubj = "task.>"
 
+	resultStreamName = "RESULTS"
+	resultStreamSubj = "result.>"
+
 	// workerAckWait: worker must ACK within this window or the message is redelivered.
 	// Set to well above the longest expected task processing time.
 	workerAckWait = 10 * time.Minute
@@ -40,41 +43,51 @@ func Init(cfg *config.NATSConfig) error {
 	return nil
 }
 
-// EnsureStream creates or updates the persistent TASKS stream.
-// Must be called once on startup in every process that publishes or subscribes to task subjects.
+// EnsureStream creates or updates the persistent TASKS and RESULTS JetStream streams.
+// Must be called once on startup in every process that uses NATS.
 func EnsureStream() error {
-	cfg := &nats.StreamConfig{
-		Name:     streamName,
-		Subjects: []string{streamSubj},
-		// WorkQueuePolicy: each message is delivered to exactly one consumer and deleted on ACK.
+	if err := ensureOneStream(&nats.StreamConfig{
+		Name:      streamName,
+		Subjects:  []string{streamSubj},
 		Retention: nats.WorkQueuePolicy,
-		// FileStorage: messages survive NATS server restarts.
-		Storage: nats.FileStorage,
-		// Drop messages older than 24h to prevent unbounded backlog on extended outages.
-		MaxAge:   24 * time.Hour,
-		Replicas: 1,
+		Storage:   nats.FileStorage,
+		MaxAge:    24 * time.Hour,
+		Replicas:  1,
+	}); err != nil {
+		return err
 	}
+	return ensureOneStream(&nats.StreamConfig{
+		Name:      resultStreamName,
+		Subjects:  []string{resultStreamSubj},
+		Retention: nats.WorkQueuePolicy,
+		Storage:   nats.FileStorage,
+		MaxAge:    24 * time.Hour,
+		Replicas:  1,
+	})
+}
 
-	_, err := JS.StreamInfo(streamName)
+func ensureOneStream(cfg *nats.StreamConfig) error {
+	_, err := JS.StreamInfo(cfg.Name)
 	if err == nats.ErrStreamNotFound {
 		if _, err = JS.AddStream(cfg); err != nil {
-			return fmt.Errorf("create TASKS stream: %w", err)
+			return fmt.Errorf("create %s stream: %w", cfg.Name, err)
 		}
-		log.Printf("[mq] JetStream stream %q created (FileStorage, WorkQueuePolicy)", streamName)
+		log.Printf("[mq] JetStream stream %q created", cfg.Name)
 	} else if err != nil {
-		return fmt.Errorf("stream info: %w", err)
+		return fmt.Errorf("stream info (%s): %w", cfg.Name, err)
 	} else {
 		if _, err = JS.UpdateStream(cfg); err != nil {
-			return fmt.Errorf("update TASKS stream: %w", err)
+			return fmt.Errorf("update %s stream: %w", cfg.Name, err)
 		}
-		log.Printf("[mq] JetStream stream %q confirmed", streamName)
+		log.Printf("[mq] JetStream stream %q confirmed", cfg.Name)
 	}
-
-	// Note: consumer cleanup is intentionally NOT done here.
-	// Only the worker process should purge stale consumers (via mq.PurgeConsumers)
-	// before subscribing. Running cleanup here would delete the worker's active
-	// consumer whenever the server restarts.
 	return nil
+}
+
+// PublishResult durably publishes a worker result to the RESULTS stream.
+func PublishResult(subject string, data []byte) error {
+	_, err := JS.Publish(subject, data)
+	return err
 }
 
 // Publish persists a message durably to JetStream before returning.

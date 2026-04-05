@@ -17,16 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// asyncTaskMsg 是通过 NATS 发送给 script worker 的消息结构。
-// Payload 存储平台标准格式（size="4k", aspect_ratio="9:16"），
-// worker 在执行时调用 channel.RequestScript（JS 脚本）将其转换为 vendor 格式。
-type asyncTaskMsg struct {
-	TaskID    int64                  `json:"task_id"`
-	ChannelID int64                  `json:"channel_id"`
-	UserID    int64                  `json:"user_id"`
-	Payload   map[string]interface{} `json:"payload"`
-}
-
 // bindImageRequest 将请求 body 解析为 ImageRequest。
 // 先按结构体绑定固定字段（做必填校验），再将原始 JSON 中其余字段写入 Extra，
 // Extra 字段经 ToMap() 合并后透传给 JS 映射脚本。
@@ -170,15 +160,52 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		"type":    taskType,
 	})
 
-	// 发布到 NATS；subject 格式：task.{image|video|audio}.{channel_id}
-	natSubject := fmt.Sprintf("task.%s.%d", taskType, channelID)
-	msg := asyncTaskMsg{
-		TaskID:    task.ID,
-		ChannelID: channelID,
-		UserID:    userID,
-		Payload:   reqData,
+	// 解析号池 Key（原来在 worker 内做，现在移到这里，worker 无需访问 Redis）
+	var poolKeyID int64
+	var poolKeyValue string
+	if ch.KeyPoolID > 0 {
+		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, userID)
+		if pkErr != nil {
+			db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "key pool error"})
+			if cost > 0 {
+				_ = billing.Refund(c.Request.Context(), userID, cost)
+				_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, 0, model.JSON{
+					"task_id": task.ID,
+					"reason":  "key pool error",
+				})
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "key pool error: " + pkErr.Error()})
+			return
+		}
+		poolKeyID = pk.ID
+		poolKeyValue = pk.Value
 	}
-	msgBytes, _ := json.Marshal(msg)
+
+	// 发布到 NATS；消息携带渠道完整配置，worker 只需 NATS 连接
+	natSubject := fmt.Sprintf("task.%s.%d", taskType, channelID)
+	job := &model.TaskJob{
+		TaskID:         task.ID,
+		TaskType:       taskType,
+		UserID:         userID,
+		APIKeyID:       apiKeyIDVal,
+		CorrID:         corrID,
+		CreditsCharged: cost,
+		ChannelID:      channelID,
+		BaseURL:        ch.BaseURL,
+		Method:         ch.Method,
+		Headers:        ch.Headers,
+		TimeoutMs:      ch.TimeoutMs,
+		RequestScript:  ch.RequestScript,
+		ResponseScript: ch.ResponseScript,
+		ErrorScript:    ch.ErrorScript,
+		QueryURL:       ch.QueryURL,
+		QueryMethod:    ch.QueryMethod,
+		QueryScript:    ch.QueryScript,
+		PoolKeyID:      poolKeyID,
+		PoolKeyValue:   poolKeyValue,
+		Payload:        reqData,
+	}
+	msgBytes, _ := json.Marshal(job)
 	if pubErr := mq.Publish(natSubject, msgBytes); pubErr != nil {
 		db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "publish error"})
 		if cost > 0 {
@@ -191,6 +218,9 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue task"})
 		return
 	}
+
+	// 标记为处理中（worker 收到后即开始执行）
+	db.Engine.Where("id = ?", task.ID).Cols("status").Update(&model.Task{Status: "processing"})
 
 	c.JSON(http.StatusAccepted, gin.H{"task_id": task.ID})
 }

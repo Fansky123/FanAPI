@@ -9,7 +9,7 @@
       <div class="login-box">
         <h3>管理员登录</h3>
         <el-form :model="form" @submit.prevent="handleLogin" label-position="top">
-          <el-form-item label="邮箱"><el-input v-model="form.email" /></el-form-item>
+          <el-form-item label="邮箱 / 用户名"><el-input v-model="form.username" /></el-form-item>
           <el-form-item label="密码"><el-input v-model="form.password" type="password" show-password /></el-form-item>
           <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;height:42px">进入后台</el-button>
         </el-form>
@@ -26,7 +26,7 @@ import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const loading = ref(false)
-const form = reactive({ email: '', password: '' })
+const form = reactive({ username: '', password: '' })
 
 async function handleLogin() {
   loading.value = true

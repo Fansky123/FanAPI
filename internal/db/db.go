@@ -69,12 +69,13 @@ const (
 // Safe to call on every startup — uses INSERT ... WHERE NOT EXISTS.
 func seedAdmin() error {
 	accounts := []struct {
+		username string
 		email    string
 		password string
 		role     string
 	}{
-		{defaultAdminEmail, defaultAdminPassword, "admin"},
-		{defaultTestEmail, defaultTestPassword, "user"},
+		{"admin", defaultAdminEmail, defaultAdminPassword, "admin"},
+		{"test", defaultTestEmail, defaultTestPassword, "user"},
 	}
 	for _, a := range accounts {
 		exists, err := Engine.Where("email = ?", a.email).Exist(&model.User{})
@@ -82,14 +83,19 @@ func seedAdmin() error {
 			return fmt.Errorf("seed check %s: %w", a.email, err)
 		}
 		if exists {
-			// Ensure the pre-existing account has the correct role (e.g., if admin
-			// registered through the public endpoint before the seed ran).
+			// Ensure correct role and backfill username (for accounts seeded before username field was added).
+			patch := &model.User{}
+			cols := []string{}
 			if a.role == "admin" {
-				if _, err := Engine.Where("email = ? AND role != 'admin'", a.email).
-					Cols("role", "is_active").
-					Update(&model.User{Role: "admin", IsActive: true}); err != nil {
-					return fmt.Errorf("seed fix role %s: %w", a.email, err)
-				}
+				patch.Role = "admin"
+				patch.IsActive = true
+				cols = append(cols, "role", "is_active")
+			}
+			patch.Username = a.username
+			cols = append(cols, "username")
+			if len(cols) > 0 {
+				Engine.Where("email = ? AND (username IS NULL OR username = '')", a.email).
+					Cols(cols...).Update(patch)
 			}
 			continue
 		}
@@ -98,6 +104,7 @@ func seedAdmin() error {
 			return fmt.Errorf("seed hash %s: %w", a.email, err)
 		}
 		if _, err := Engine.Insert(&model.User{
+			Username:     a.username,
 			Email:        a.email,
 			PasswordHash: string(hash),
 			Role:         a.role,
