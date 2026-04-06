@@ -243,6 +243,341 @@ fanapi/
 └── scripts/          # 数据库初始化脚本
 ```
 
+---
+
+## 管理员操作手册
+
+> 访问地址：`http://localhost:3000/admin`（或生产域名 `/admin`）
+> 需使用拥有 admin 角色的账号登录。
+
+---
+
+### 一、渠道管理
+
+路径：**管理后台 → Channels**
+
+每个渠道代表一个第三方 API 接入点。字段说明如下：
+
+#### 基础信息
+
+| 字段 | 说明 |
+|------|------|
+| 模型名称（路由键） | 用户调用 API 时在请求体 `model` 字段填写的值，如 `gpt-4o`、`nano-1001`。必须唯一 |
+| 标准模型名 | 用于前端分组展示，可以是同一个上游模型的多个渠道共享同一个值 |
+| 接口类型 | `llm`（对话）/ `image`（图片）/ `video`（视频）/ `audio`（音频） |
+| API 协议 | `openai`（默认）/ `claude`（Anthropic 原生）/ `gemini`（Google 原生）。无入参脚本时平台自动转换格式；有入参脚本时脚本优先 |
+| 上游 URL | 第三方 API 完整地址，如 `https://api.openai.com/v1/chat/completions` |
+| 请求头（JSON）| 固定请求头，通常用于写 API Key，如 `{"Authorization": "Bearer sk-xxx"}` |
+| 超时（ms）| 请求提交超时，LLM 建议 60000，图片建议 180000，视频建议 300000 |
+
+---
+
+#### 计费类型与价格配置
+
+> **单位换算：1 元 = 1,000,000 credits**
+> 所有价格字段均为 credits 数值。
+
+##### token 计费（LLM 对话）
+
+| 字段 | 含义 |
+|------|------|
+| 售价 · 输入 | 用户每消耗 100 万输入 token 被扣多少 credits |
+| 售价 · 输出 | 用户每消耗 100 万输出 token 被扣多少 credits |
+| 进价 · 输入 / 输出 | 平台支付给上游的成本，仅用于利润统计，不影响用户扣费 |
+| 输入从响应取 | 开启后输入 token 数从响应 `usage` 字段读取（更精确），适合上游不在请求中返回 token 计数的场景 |
+
+示例（¥15/M 输入，¥60/M 输出）：
+```
+售价 · 输入 = 15000000
+售价 · 输出 = 60000000
+```
+
+##### image 计费（图片生成）
+
+有两种模式，**档位定价优先级高于基础价格**：
+
+**模式一：按档位定价（推荐）**
+在表格中按 `1k`/`2k`/`3k`/`4k` 档位填入售价和进价（credits/张）。如果档位不在表中，使用"兜底价格"。
+
+**模式二：基础价格 + 分辨率倍率**
+填写"售价 · 基础"，在"高级配置（JSON）"中配置 `resolution_tiers` 倍率表。
+
+##### video / audio 计费（视频 / 音频）
+
+| 字段 | 含义 |
+|------|------|
+| 售价 · 每秒 | 用户每生成 1 秒内容被扣多少 credits |
+| 进价 · 每秒 | 平台成本，仅用于统计 |
+
+##### count 计费（按次）
+
+| 字段 | 含义 |
+|------|------|
+| 售价 · 每次 | 每次调用扣多少 credits |
+| 进价 · 每次 | 平台成本 |
+
+##### custom 计费（自定义脚本）
+
+在"高级配置（JSON）"旁边的脚本框中填写 JS 脚本，函数签名：
+```js
+function calcBilling(request) {
+    // request 为请求体 JSON
+    // 返回值为整数 credits 数
+    return 10000;
+}
+```
+
+---
+
+#### 高级配置（JSON）
+
+这个文本框用于配置**无法用上方表单表达**的高级参数，保存时会自动和上方价格字段合并。
+
+常用字段：
+
+```json
+{
+  "metric_paths": {
+    "input_tokens":  "response.usage.prompt_tokens",
+    "output_tokens": "response.usage.completion_tokens",
+    "size":          "request.size",
+    "duration":      "request.duration"
+  },
+  "resolution_tiers": [
+    { "max_pixels": 1048576, "multiplier": 1.0 },
+    { "max_pixels": 4194304, "multiplier": 2.0 },
+    { "max_pixels": 99999999, "multiplier": 4.0 }
+  ],
+  "input_from_response": true,
+  "pricing_groups": {
+    "vip": {
+      "input_price_per_1m_tokens":  8000000,
+      "output_price_per_1m_tokens": 32000000
+    },
+    "premium": {
+      "price_per_second": 6000
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `metric_paths` | 告诉计费引擎从请求/响应的哪个 JSON 路径取字段值，格式 `"来源.字段"` |
+| `resolution_tiers` | 图片分辨率分档倍率，按像素总数从小到大排列 |
+| `input_from_response` | 同表单中"输入从响应取"开关，二选一 |
+| `pricing_groups` | **分组定价**，见下一节 |
+
+---
+
+#### 分组定价（pricing_groups）
+
+`pricing_groups` 支持对不同用户群体设置不同价格。
+
+**原理**：`pricing_groups` 下的 key 是用户 group 名，value 是想覆盖的价格字段（浅合并到基础配置上）。用户 group 为空时使用顶层基础价格。
+
+**各计费类型对应的 key：**
+
+| 计费类型 | 可覆盖的字段 |
+|----------|-------------|
+| `token` | `input_price_per_1m_tokens`、`output_price_per_1m_tokens` |
+| `image`（档位模式） | `size_prices`（需完整 map）、`default_size_price` |
+| `image`（基础价格模式） | `base_price` |
+| `video` / `audio` | `price_per_second` |
+| `count` | `price_per_call` |
+
+**示例（LLM token 渠道）：**
+```json
+{
+  "metric_paths": {
+    "input_tokens":  "response.usage.prompt_tokens",
+    "output_tokens": "response.usage.completion_tokens"
+  },
+  "pricing_groups": {
+    "vip": {
+      "input_price_per_1m_tokens":  8000000,
+      "output_price_per_1m_tokens": 32000000
+    }
+  }
+}
+```
+
+**示例（图片渠道，size_prices 模式）：**
+```json
+{
+  "pricing_groups": {
+    "vip": {
+      "size_prices": { "1k": 3000, "2k": 9000, "4k": 30000 }
+    }
+  }
+}
+```
+
+> ⚠️ 注意：`size_prices` 是浅合并，分组里必须写**完整的 map**，不能只写想改的档位。
+
+---
+
+#### 脚本配置
+
+每个渠道最多可配置 4 个 JS 脚本（均通过管理后台编辑）：
+
+| 字段 | 函数签名 | 触发时机 | 说明 |
+|------|----------|----------|------|
+| 入参映射脚本 | `function MapRequest(input)` | 请求发出前 | 将平台标准格式转换为第三方 API 所需格式；`input` 为请求体 JSON，返回值作为实际发送的请求体 |
+| 出参映射脚本 | `function MapResponse(input)` | 响应返回后 | 同步任务：返回 `{code:200, url:'...', status:2}`；异步任务：返回 `{upstream_task_id:'xxx'}` 触发轮询 |
+| 轮询映射脚本 | `function MapResponse(input)` | 每次轮询响应后 | 将第三方轮询响应映射为平台标准格式，`status` 字段：`2`=成功，`3`=失败，其他=仍在处理中 |
+| 错误检测脚本 | `function checkError(resp)` | 每次响应后 | 返回非空字符串=错误（触发退费），返回 `null`/`false`=正常。未填时使用内置通用检测 |
+
+**错误检测脚本示例：**
+```js
+// OpenAI / ChatFire 格式
+function checkError(resp) {
+    if (resp.error) return resp.error.code + ': ' + resp.error.message;
+    return null;
+}
+
+// 自定义 code 格式
+function checkError(resp) {
+    if (resp.code !== 0 && resp.code !== 200) return resp.message || 'error: ' + resp.code;
+    return null;
+}
+```
+
+---
+
+#### 认证方式
+
+| 类型 | 适用场景 | 说明 |
+|------|----------|------|
+| `bearer`（默认） | 大多数 OpenAI 兼容 API | Header 中 `Authorization: Bearer <key>` |
+| `query_param` | Gemini 原生格式等 | Key 附加到 URL 查询参数，需填写"参数名"（如 `key`） |
+| `basic` | HTTP Basic Auth | Key 格式为 `user:password`（或仅密码，user 为空） |
+| `sigv4` | AWS Bedrock 等 | Key 格式为 `ACCESS_KEY_ID:SECRET_ACCESS_KEY`，需填写 Region 和 Service |
+
+---
+
+#### 异步轮询配置（视频 / 音频）
+
+适用于接口只返回任务 ID、需要轮询查询结果的场景。
+
+1. **出参映射脚本**返回 `{ upstream_task_id: "xxx" }` → 触发异步模式
+2. **轮询 URL** 填写轮询地址，支持 `{id}` 占位符（会被 `upstream_task_id` 替换），如 `https://api.example.com/v1/tasks/{id}`
+3. **轮询映射脚本**将第三方响应转换为标准格式（`status: 2/3/其他`）
+4. 超时 2 小时后任务自动标记失败并退款
+
+---
+
+#### 负载均衡（多渠道分流）
+
+同一个"模型名称"可以对应多个渠道，系统按以下规则选择：
+
+1. **先按优先级**（Priority）降序排列，优先级高的先选
+2. **同优先级内**按权重（Weight）加权随机分流
+3. **近期错误率过高**的渠道自动跳过（错误率 > 50% 且请求数 ≥ 5 次时降级）
+4. 请求失败时自动换下一个渠道重试
+
+---
+
+#### 号池绑定（多 Key 轮转）
+
+适用于同一渠道需要使用多个 API Key 轮转的场景（如防止单 Key 限速）。
+
+1. 先在**号池管理**中创建号池并添加 Key
+2. 编辑渠道时在"绑定号池"下拉中选择
+3. 绑定后，Headers 中的 `Authorization` 字段会被号池中分配的 Key 覆盖
+4. 系统使用**粘性分配**（Sticky Assignment）：同一用户/任务 ID 固定分配同一个 Key，Key 被标记为耗尽时自动轮转到下一个
+
+> 新建渠道时"绑定号池"不可选，需先保存渠道后再编辑绑定。
+
+---
+
+### 二、号池管理
+
+路径：**管理后台 → Key Pools**
+
+号池是多个第三方 API Key 的集合，供渠道轮转使用。
+
+| 操作 | 说明 |
+|------|------|
+| 新增号池 | 填写名称，绑定到渠道（在渠道编辑页操作） |
+| 添加 Key | 在号池详情中添加，填写 Key 值（明文，加密存储） |
+| 删除 Key | 软删除，不影响历史记录 |
+
+---
+
+### 三、用户管理
+
+路径：**管理后台 → Users**
+
+| 操作 | 说明 |
+|------|------|
+| 查看用户列表 | 显示 ID、用户名、邮箱、余额、分组、注册时间 |
+| 充值 | 点击"充值"，输入 credits 数量（1 元 = 1,000,000 credits） |
+| 重置密码 | 点击"重置密码"，直接设置新密码（无需旧密码） |
+| 设置分组 | 点击"设置分组"，输入分组名（需与渠道 `pricing_groups` 中的 key 一致） |
+
+**分组功能说明：**
+- 分组名区分大小写，必须与 `billing_config.pricing_groups` 中的 key 完全一致
+- 用户 group 为空 = 使用默认价格（顶层 billing_config 字段）
+- 修改分组立即生效，不影响已完成的历史扣费
+
+---
+
+### 四、卡密管理
+
+路径：**管理后台 → Cards**
+
+| 操作 | 说明 |
+|------|------|
+| 生成卡密 | 填写数量、每张 credits 数、备注，批量生成 |
+| 查看列表 | 可按状态筛选（未使用 / 已使用） |
+| 删除卡密 | 只能删除未使用的卡密 |
+
+用户在**充值页面**输入卡号兑换，格式：`FANAPI-XXXXXXXXXXXXXXXX`（16 位大写 hex）。
+
+---
+
+### 五、账单管理
+
+路径：**管理后台 → Billing**
+
+查看全平台所有用户的交易流水，支持分页。流水类型说明：
+
+| 类型 | 触发时机 | credits 方向 |
+|------|----------|-------------|
+| `hold` | LLM 预扣（请求发出前） | 扣除（Redis 原子扣，仅记录流水） |
+| `settle` | LLM 结算（响应完成后） | 补扣或退还差额 |
+| `charge` | 异步任务（图片/视频/音频）一次性扣费 | 扣除 |
+| `refund` | 任务失败自动退款 | 退还 |
+| `recharge` | 管理员充值 / 用户卡密兑换 | 增加 |
+
+---
+
+### 六、任务管理
+
+路径：**管理后台 → Tasks**
+
+查看所有异步任务（图片/视频/音频生成请求），支持按状态、用户筛选。
+
+| 字段 | 说明 |
+|------|------|
+| 状态 | `pending`=等待处理，`processing`=处理中，`done`=完成，`failed`=失败 |
+| upstream_task_id | 第三方返回的任务 ID |
+| 结果 | 任务完成后的标准化响应（含 `url`、`status` 等） |
+
+---
+
+### 七、统计面板
+
+路径：**管理后台 → Dashboard**
+
+实时展示：
+- 总用户数、活跃渠道数
+- 今日总收入（credits）、今日总成本（credits）、今日利润
+- 今日请求数（LLM + 异步任务）
+
+---
+
 ## 参与贡献
 
 1. Fork 本仓库
