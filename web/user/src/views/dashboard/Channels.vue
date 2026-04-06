@@ -43,9 +43,14 @@
             <span class="proto-badge" :class="row.protocol">{{ row.protocol || 'openai' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="价格" min-width="220">
+        <el-table-column label="价格" min-width="240">
           <template #default="{ row }">
-            <span class="price-text">{{ row.price_display || '免费' }}</span>
+            <template v-if="row.group_price">
+              <span class="price-text price-group">{{ row.group_price }}</span>
+              <el-tag size="small" type="warning" effect="light" style="margin-left:6px">专属</el-tag>
+              <div class="price-origin">原价 {{ row.price_display || '免费' }}</div>
+            </template>
+            <span v-else class="price-text">{{ row.price_display || '免费' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="调用" width="160" fixed="right">
@@ -83,9 +88,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { publicApi } from '@/api'
+import { publicApi, userApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 
+const store = useUserStore()
 const channels = ref([])
 const loading = ref(true)
 const filterType = ref('')
@@ -94,7 +101,10 @@ const filterProtocol = ref('')
 
 onMounted(async () => {
   try {
-    const res = await publicApi.listChannels()
+    // 登录用户使用 /user/channels 获取含分组价格的数据
+    const res = store.token
+      ? await userApi.listChannels()
+      : await publicApi.listChannels()
     channels.value = res.channels ?? []
   } finally {
     loading.value = false
@@ -134,6 +144,8 @@ function copyName(name) {
 .table-card { margin-bottom: 14px; }
 .name-text { font-weight: 500; color: #0d1526; }
 .price-text { font-size: .82rem; color: #1677ff; }
+.price-group { color: #e6a23c; font-weight: 600; }
+.price-origin { font-size: .75rem; color: #c0c4cc; text-decoration: line-through; margin-top: 2px; }
 .proto-badge {
   display: inline-block;
   padding: 1px 8px;

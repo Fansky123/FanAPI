@@ -150,13 +150,34 @@ func ListUsers(c *gin.Context) {
 	}
 
 	var users []model.User
-	total, err := db.Engine.Cols("id", "email", "role", "balance", "created_at").
+	total, err := db.Engine.Cols("id", "username", "email", "role", "group", "balance", "is_active", "created_at").
 		Limit(size, (page-1)*size).FindAndCount(&users)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+}
+
+// PUT /admin/users/:id/group — 设置用户定价分组
+func SetUserGroup(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Group string `json:"group"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := db.Engine.ID(id).Cols("group").Update(&model.User{Group: req.Group}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "group updated"})
 }
 
 // GET /admin/transactions — 全局账单流水（分页）

@@ -12,7 +12,7 @@ import (
 
 const balanceKeyFmt = "user:balance:%d"
 
-// SyncBalanceToRedis loads a user's DB balance into Redis (call on startup / cache miss).
+// SyncBalanceToRedis 将用户的 DB 余额加载到 Redis（在启动时或缓存错过时调用）。
 func SyncBalanceToRedis(ctx context.Context, userID int64) (int64, error) {
 	var result struct{ Balance int64 }
 	_, err := db.Engine.SQL("SELECT balance FROM users WHERE id = ?", userID).Get(&result)
@@ -24,7 +24,7 @@ func SyncBalanceToRedis(ctx context.Context, userID int64) (int64, error) {
 	return result.Balance, nil
 }
 
-// GetBalance returns the Redis-cached balance, syncing from DB on miss.
+// GetBalance 返回 Redis 缓存的余额，缓存未命中时自动从 DB 同步。
 func GetBalance(ctx context.Context, userID int64) (int64, error) {
 	key := fmt.Sprintf(balanceKeyFmt, userID)
 	val, err := cache.Client.Get(ctx, key).Int64()
@@ -34,7 +34,7 @@ func GetBalance(ctx context.Context, userID int64) (int64, error) {
 	return SyncBalanceToRedis(ctx, userID)
 }
 
-// luaCharge atomically deducts credits, failing if insufficient.
+// luaCharge 原子地扣减 credits，余额不足时返回失败。
 var luaCharge = redis.NewScript(`
 local bal = tonumber(redis.call("GET", KEYS[1]))
 if not bal then return -2 end
@@ -42,13 +42,13 @@ if bal < tonumber(ARGV[1]) then return -1 end
 return redis.call("DECRBY", KEYS[1], ARGV[1])
 `)
 
-// Charge deducts credits atomically. Returns error if balance insufficient.
+// Charge 原子扣减 credits。余额不足时返回错误。
 func Charge(ctx context.Context, userID, credits int64) error {
 	if credits <= 0 {
 		return nil
 	}
 	key := fmt.Sprintf(balanceKeyFmt, userID)
-	// Ensure key exists in Redis
+	// 确保 Redis 中存在该键
 	if _, err := cache.Client.Get(ctx, key).Int64(); err != nil {
 		if _, syncErr := SyncBalanceToRedis(ctx, userID); syncErr != nil {
 			return syncErr
@@ -67,14 +67,14 @@ func Charge(ctx context.Context, userID, credits int64) error {
 	return nil
 }
 
-// Refund adds credits back (for LLM output over-hold refund).
+// Refund 退还 credits（用于 LLM 输出实际量少于预扣时的差额退款）。
 func Refund(ctx context.Context, userID, credits int64) error {
 	if credits <= 0 {
 		return nil
 	}
 	key := fmt.Sprintf(balanceKeyFmt, userID)
-	// Ensure key exists in Redis so IncrBy doesn't create a new key with just
-	// the refund amount instead of (actual_balance + refund_amount).
+	// 确保 Redis 键存在，避免 IncrBy 在键不存在时创建只含退款金额的新键
+	// （正确行为应为：实际余额 + 退款金额）。
 	if _, err := cache.Client.Get(ctx, key).Int64(); err != nil {
 		if _, syncErr := SyncBalanceToRedis(ctx, userID); syncErr != nil {
 			return syncErr

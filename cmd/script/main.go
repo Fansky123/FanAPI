@@ -29,7 +29,7 @@ func main() {
 		log.Fatalf("start workers: %v", err)
 	}
 
-	// Block until signal
+	// 阻塞直到收到退出信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

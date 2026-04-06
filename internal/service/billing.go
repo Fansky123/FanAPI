@@ -9,7 +9,7 @@ import (
 	"fanapi/internal/model"
 )
 
-// WriteTx writes a billing transaction and syncs the user's DB balance.
+// WriteTx 写入一条计费流水并同步更新用户的 DB 余额。
 // cost 为支付给上游的进价成本（若暂不记录可传 0）。
 //
 // DB 余额权威笪略：
@@ -45,8 +45,7 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txT
 	}
 
 	if delta != 0 {
-		// UPDATE … RETURNING balance in one round-trip; captures the resulting
-		// balance atomically for the audit trail.
+		// 单条 SQL 内原子地更新并返回新余额，用于审计日志。
 		rows, err := db.Engine.QueryString(
 			"UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance",
 			delta, userID,
@@ -67,7 +66,7 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID int64, corrID, txT
 	return err
 }
 
-// GetBalance returns the user's current balance from DB.
+// GetBalance 从 DB 返回用户的当前余额。
 func GetBalance(ctx context.Context, userID int64) (int64, error) {
 	user := &model.User{}
 	found, err := db.Engine.Where("id = ?", userID).Cols("balance").Get(user)
@@ -80,13 +79,13 @@ func GetBalance(ctx context.Context, userID int64) (int64, error) {
 	return user.Balance, nil
 }
 
-// Recharge adds credits to a user's balance (admin operation).
-// Balance update is handled inside WriteTx; do NOT update here separately.
+// Recharge 为用户增加 credits（管理员操作）。
+// 余额更新已在 WriteTx 内完成，请勿在此处重复更新 DB。
 func Recharge(ctx context.Context, userID, adminID, credits int64) error {
 	return WriteTx(ctx, userID, 0, 0, "", "recharge", credits, 0, nil)
 }
 
-// ListTransactions returns paginated billing history for a user.
+// ListTransactions 返回用户的分页计费历史。
 func ListTransactions(ctx context.Context, userID int64, page, pageSize int) ([]model.BillingTransaction, error) {
 	var txs []model.BillingTransaction
 	err := db.Engine.Where("user_id = ?", userID).
@@ -96,7 +95,7 @@ func ListTransactions(ctx context.Context, userID int64, page, pageSize int) ([]
 	return txs, err
 }
 
-// CountTransactions returns the total number of billing records for a user.
+// CountTransactions 返回用户的计费记录总数。
 func CountTransactions(ctx context.Context, userID int64) (int64, error) {
 	count, err := db.Engine.Where("user_id = ?", userID).Count(&model.BillingTransaction{})
 	return count, err

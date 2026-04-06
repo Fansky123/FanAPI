@@ -60,7 +60,7 @@ async function handleLogin() {
     store.setUsername(res.user?.username || form.username)
     router.push('/models')
   } catch {
-    // error already shown by http interceptor
+    // 错误已由 HTTP 拦截器展示
   } finally {
     loading.value = false
   }

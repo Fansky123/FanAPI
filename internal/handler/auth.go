@@ -101,7 +101,13 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "role": user.Role})
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"role":     user.Role,
+		"group":    user.Group,
+	})
 }
 
 // POST /user/bind-email — 登录后绑定邮箱（需先调 /auth/send-code 获取验证码）
@@ -209,9 +215,8 @@ func (h *AuthHandler) GetTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"transactions": txs, "total": total})
 }
 
-// GET /user/channels — 返回所有启用渠道的公开信息（含简化价格），
-// 用户据此选择渠道并决定传哪个 channel_id。
-// 同一模型可有多个渠道（如 nano-1001 / nano-1002），价格不同，用户按预算选择。
+// GET /public/channels  — 公开（无需登录），显示默认价格
+// GET /user/channels    — 登录用户，按其 group 显示专属价格
 func (h *AuthHandler) ListModels(c *gin.Context) {
 	var channels []model.Channel
 	if err := db.Engine.Where("is_active = true").
@@ -221,21 +226,35 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		return
 	}
 
-	// channelInfo 是暴露给用户的渠道公开信息，隐藏脚本/密钥/上游地址。
-	// RoutingModel 字段即为调用 API 时 model 参数应填写的值（等于渠道名称）。
+	// 已登录时从 context 取用户分组，用于展示专属价格
+	userGroup := ""
+	if raw, ok := c.Get("user_group"); ok {
+		userGroup, _ = raw.(string)
+	}
+
 	type channelInfo struct {
 		ID           int64  `json:"id"`
 		Name         string `json:"name"`
-		RoutingModel string `json:"routing_model"` // 在 API 请求的 model 字段填写此值即可路由到本渠道
+		RoutingModel string `json:"routing_model"`
 		Model        string `json:"model"`
 		Type         string `json:"type"`
 		Protocol     string `json:"protocol"`
 		BillingType  string `json:"billing_type"`
-		PriceDisplay string `json:"price_display"`
+		PriceDisplay string `json:"price_display"`         // 默认价格
+		GroupPrice   string `json:"group_price,omitempty"` // 用户专属价格（与默认不同时才返回）
 	}
 
 	result := make([]channelInfo, 0, len(channels))
 	for _, ch := range channels {
+		defaultPrice := buildPriceDisplay(ch.BillingType, ch.BillingConfig)
+		groupPrice := ""
+		if userGroup != "" {
+			groupCfg := applyGroupPricingMap(map[string]interface{}(ch.BillingConfig), userGroup)
+			gp := buildPriceDisplay(ch.BillingType, groupCfg)
+			if gp != defaultPrice {
+				groupPrice = gp
+			}
+		}
 		result = append(result, channelInfo{
 			ID:           ch.ID,
 			Name:         ch.Name,
@@ -244,10 +263,34 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 			Type:         ch.Type,
 			Protocol:     ch.Protocol,
 			BillingType:  ch.BillingType,
-			PriceDisplay: buildPriceDisplay(ch.BillingType, ch.BillingConfig),
+			PriceDisplay: defaultPrice,
+			GroupPrice:   groupPrice,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"channels": result})
+}
+
+// applyGroupPricingMap 与 billing.applyGroupPricing 逻辑相同，此处避免包循环依赖而内联。
+func applyGroupPricingMap(cfg map[string]interface{}, group string) model.JSON {
+	if group == "" || cfg == nil {
+		return model.JSON(cfg)
+	}
+	pgs, ok := cfg["pricing_groups"].(map[string]interface{})
+	if !ok {
+		return model.JSON(cfg)
+	}
+	overrides, ok := pgs[group].(map[string]interface{})
+	if !ok {
+		return model.JSON(cfg)
+	}
+	merged := make(map[string]interface{}, len(cfg))
+	for k, v := range cfg {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return model.JSON(merged)
 }
 
 // buildPriceDisplay 根据计费类型和配置生成人类可读的价格描述字符串。

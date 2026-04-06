@@ -23,18 +23,18 @@ const (
 type doneItem struct {
 	msg            *nats.Msg
 	taskID         int64
-	status         string // "done" | "processing" (async)
+	status         string // "done" | "processing"(异步)
 	progress       int
 	result         model.JSON
 	upstreamReq    model.JSON
 	upstreamResp   model.JSON
-	upstreamTaskID string // non-empty for async
+	upstreamTaskID string // 异步任务时非空
 }
 
 var writeCh chan doneItem
 
-// StartBatchWriter starts the background goroutine that batches task status
-// updates into PostgreSQL. Call once from the server process.
+// StartBatchWriter 启动后台 goroutine，将任务状态更新批量写入 PostgreSQL。
+// 在服务器进程中只应调用一次。
 func StartBatchWriter(ctx context.Context) {
 	writeCh = make(chan doneItem, writerChanCap)
 	go runWriter(ctx)
@@ -45,7 +45,7 @@ func enqueueDoneUpdate(item doneItem) {
 	select {
 	case writeCh <- item:
 	default:
-		// Channel full — write immediately to avoid blocking the NATS handler goroutine.
+		// 通道已满，立即写入避免阻塞 NATS 处理器 goroutine
 		log.Printf("[result-writer] channel full, flushing task %d immediately", item.taskID)
 		flushBatch([]doneItem{item})
 	}
@@ -72,7 +72,7 @@ func runWriter(ctx context.Context) {
 			}
 
 		case <-ctx.Done():
-			// Drain whatever is already in the channel before exiting.
+			// 退出前排尽通道中剩余消息。
 		drain:
 			for {
 				select {
@@ -108,13 +108,13 @@ func flushBatch(items []doneItem) {
 	if len(asyncItems) > 0 {
 		batchUpdateAsync(asyncItems)
 	}
-	// ACK all NATS messages after DB writes complete.
+	// DB 写入完成后统一 ACK 所有 NATS 消息。
 	for _, item := range items {
 		_ = item.msg.Ack()
 	}
 }
 
-// batchUpdateDone issues a single UPDATE … FROM (VALUES …) for all done tasks.
+// batchUpdateDone 对所有完成任务执行一条 UPDATE … FROM (VALUES …)。
 func batchUpdateDone(items []doneItem) {
 	args := make([]interface{}, 0, len(items)*6)
 	placeholders := make([]string, 0, len(items))
@@ -151,7 +151,7 @@ WHERE t.id = v.id`, strings.Join(placeholders, ","))
 	}
 }
 
-// batchUpdateAsync issues a single UPDATE … FROM (VALUES …) for all async tasks.
+// batchUpdateAsync 对所有异步任务执行一条 UPDATE … FROM (VALUES …)，将状态更新为 processing 并记录上游任务 ID。
 func batchUpdateAsync(items []doneItem) {
 	args := make([]interface{}, 0, len(items)*4)
 	placeholders := make([]string, 0, len(items))

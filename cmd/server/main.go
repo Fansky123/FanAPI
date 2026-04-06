@@ -42,14 +42,14 @@ func main() {
 		log.Fatalf("nats ensure stream: %v", err)
 	}
 
-	_ = billing.SyncBalanceToRedis // available for use
+	_ = billing.SyncBalanceToRedis // 预留：可在启动时手动同步余额到 Redis
 
-	// Start result processor: subscribes to RESULTS stream, writes DB + billing
+	// 启动结果处理器：订阅 RESULTS 流，写入 DB 并完成计费结算
 	if err := taskresult.StartResultProcessor(cfg.Worker); err != nil {
 		log.Fatalf("result processor: %v", err)
 	}
 
-	// Start async-task poller (polls DB for processing tasks with upstream_task_id)
+	// 启动异步任务轮询器（轮询 DB 中含 upstream_task_id 的 processing 状态任务）
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	taskresult.StartBatchWriter(ctx)
@@ -71,7 +71,7 @@ func main() {
 	// 公开接口（无需认证）
 	r.GET("/public/channels", authH.ListModels)
 
-	// Public auth routes
+	// 公开认证路由（注册/登录/发验证码等）
 	auth := r.Group("/auth")
 	{
 		auth.POST("/send-code", authH.SendCode)
@@ -81,7 +81,7 @@ func main() {
 		auth.POST("/reset-password", authH.ResetPassword)
 	}
 
-	// Authenticated user routes (JWT or API Key)
+	// 需认证的用户路由（JWT 或 API Key）
 	authed := r.Group("/")
 	authed.Use(middleware.Auth(&cfg.Server))
 	{
@@ -99,7 +99,7 @@ func main() {
 			user.POST("/cards/redeem", handler.RedeemCard)
 		}
 
-		// Admin routes (JWT or API Key + admin role)
+		// 管理员路由（JWT 或 API Key + admin 角色）
 		admin := authed.Group("/admin")
 		admin.Use(middleware.Admin())
 		{
@@ -117,6 +117,7 @@ func main() {
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)
 			admin.PUT("/users/:id/password", handler.ResetUserPassword)
+			admin.PUT("/users/:id/group", handler.SetUserGroup)
 			admin.GET("/transactions", handler.ListAllTransactions)
 			admin.GET("/tasks", handler.ListTasks)
 			admin.GET("/tasks/:id", handler.GetAdminTask)
@@ -135,7 +136,7 @@ func main() {
 		authed.GET("/v1/tasks/:id", handler.GetTask)
 		authed.GET("/v1/llm-logs", handler.UserListLLMLogs)
 
-		// Public API (API Key required)
+		// 公开 API（需要 API Key）
 		v1 := authed.Group("/v1")
 		v1.Use(middleware.APIKeyOnly())
 		{

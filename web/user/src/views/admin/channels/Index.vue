@@ -46,6 +46,11 @@
           <span v-else style="color:#ccc;font-size:12px">—</span>
         </template>
       </el-table-column>
+      <el-table-column label="优先级/权重" width="100" align="center">
+        <template #default="{ row }">
+          <span style="font-size:12px">P{{ row.priority ?? 0 }} / W{{ row.weight ?? 1 }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="is_active" label="状态" width="80" align="center">
         <template #default="{ row }">
           <el-switch v-model="row.is_active" @change="toggleActive(row)" />
@@ -218,9 +223,15 @@
         </template>
 
         <el-form-item label="高级配置（JSON）">
-          <el-input v-model="form.billingConfigStr" type="textarea" :rows="4"
-            placeholder="其余计费参数，如 metric_paths、resolution_tiers 等" style="font-family:monospace;font-size:12px" />
-          <div style="font-size:11px;color:#aaa;margin-top:4px">上方价格字段优先级更高，保存时自动合并到此 JSON</div>
+          <el-input v-model="form.billingConfigStr" type="textarea" :rows="6"
+            placeholder='{&#10;  "pricing_groups": {&#10;    "vip":     { "price_per_second": 6000 },&#10;    "premium": { "price_per_second": 4000 }&#10;  },&#10;  "metric_paths": { "size": "request.size" }&#10;}'
+            style="font-family:monospace;font-size:12px" />
+          <div style="font-size:11px;color:#aaa;margin-top:4px">
+            上方价格字段优先级更高，保存时自动合并到此 JSON。<br>
+            <b>分组定价</b>：在 <code>pricing_groups</code> 中按用户组覆盖任意价格字段，token 类型用
+            <code>input/output_price_per_1m_tokens</code>，image/video/audio/count 类型分别用
+            <code>size_prices</code> / <code>price_per_second</code> / <code>price_per_call</code>。
+          </div>
         </el-form-item>
 
         <el-divider content-position="left" style="margin:8px 0 12px">
@@ -272,6 +283,41 @@
             placeholder="function checkError(resp) {&#10;    // 示例：ChatFire / OpenAI 格式&#10;    if (resp.error) return resp.error.code + ': ' + resp.error.message;&#10;    return null;&#10;}"
             style="font-family:monospace;font-size:.82rem" />
         </el-form-item>
+
+        <!-- 认证扩展 -->
+        <el-divider content-position="left" style="margin:16px 0 8px">认证方式</el-divider>
+        <el-form-item label="认证类型">
+          <el-select v-model="form.auth_type" style="width:180px">
+            <el-option label="Bearer Token（默认）" value="bearer" />
+            <el-option label="Query Param（如 Gemini 原生）" value="query_param" />
+            <el-option label="HTTP Basic Auth" value="basic" />
+            <el-option label="AWS SigV4" value="sigv4" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.auth_type === 'query_param'" label="参数名">
+          <el-input v-model="form.auth_param_name" placeholder="key" style="width:200px" />
+          <span style="margin-left:8px;color:#999;font-size:12px">API Key 将附加到 URL 查询参数，如 ?key=xxx</span>
+        </el-form-item>
+        <template v-if="form.auth_type === 'sigv4'">
+          <el-form-item label="Region">
+            <el-input v-model="form.auth_region" placeholder="us-east-1" style="width:200px" />
+          </el-form-item>
+          <el-form-item label="Service">
+            <el-input v-model="form.auth_service" placeholder="execute-api" style="width:200px" />
+          </el-form-item>
+          <div style="margin:-4px 0 12px 120px;font-size:12px;color:#999">Key 格式：ACCESS_KEY_ID:SECRET_ACCESS_KEY</div>
+        </template>
+
+        <!-- 负载均衡 -->
+        <el-divider content-position="left" style="margin:16px 0 8px">负载均衡</el-divider>
+        <el-form-item label="优先级">
+          <el-input-number v-model="form.priority" :min="0" :step="1" style="width:160px" />
+          <span style="margin-left:8px;color:#999;font-size:12px">同模型多渠道时，优先级高的渠道优先被选中（默认 0）</span>
+        </el-form-item>
+        <el-form-item label="权重">
+          <el-input-number v-model="form.weight" :min="1" :step="1" style="width:160px" />
+          <span style="margin-left:8px;color:#999;font-size:12px">同优先级内按权重随机分流（默认 1）</span>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -302,6 +348,10 @@ const emptyForm = () => ({
   query_url: '', query_method: 'GET', query_timeout_ms: defaultQueryTimeoutByType.llm, query_script: '', error_script: '',
   key_pool_id: 0,
   is_active: true,
+  // 负载均衡
+  weight: 1, priority: 0,
+  // 认证扫展
+  auth_type: 'bearer', auth_param_name: '', auth_region: '', auth_service: '',
   bp: emptyBp(),
 })
 
@@ -310,20 +360,20 @@ const sizeTierRows = SIZE_TIERS.map(k => ({ key: k, label: k }))
 
 function emptyBp() {
   return {
-    // token
+    // token 类型
     input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0,
     input_cost_per_1m_tokens: 0, output_cost_per_1m_tokens: 0,
     input_from_response: false,
     // image - 基础价格（像素分档模式）
     base_price: 0, base_cost: 0,
-    // image - 按档位直接定价（size_prices 模式，优先级更高）
+    // image - 按模档直接定价（size_prices 模式，优先级更高）
     size_prices: { '1k': 0, '2k': 0, '3k': 0, '4k': 0 },
     size_costs:  { '1k': 0, '2k': 0, '3k': 0, '4k': 0 },
     default_size_price: 0,
     default_size_cost: 0,
-    // video / audio
+    // video / audio 类型
     price_per_second: 0, cost_per_second: 0,
-    // count
+    // count 类型
     price_per_call: 0, cost_per_call: 0,
   }
 }
@@ -417,6 +467,14 @@ async function saveChannel() {
     error_script: form.error_script,
     key_pool_id: form.key_pool_id ?? 0,
     is_active: form.is_active,
+    // 躺证扩展
+    auth_type: form.auth_type || 'bearer',
+    auth_param_name: form.auth_param_name || '',
+    auth_region: form.auth_region || '',
+    auth_service: form.auth_service || '',
+    // 负载均衡
+    weight: form.weight ?? 1,
+    priority: form.priority ?? 0,
   }
 
   if (editRow.value) {

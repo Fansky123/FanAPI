@@ -16,9 +16,14 @@
 
     <!-- 账户安全 -->
     <el-card style="margin-bottom:18px">
-      <template #header>账户安全</template>
+      <template #header>账户信息</template>
       <el-descriptions :column="1" border>
         <el-descriptions-item label="用户名">{{ store.username || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="定价分组">
+          <el-tag v-if="store.group" type="warning" effect="light">{{ store.group }}</el-tag>
+          <span v-else style="color:#909399">默认</span>
+          <span style="color:#c0c4cc;font-size:12px;margin-left:8px">影响模型调用的实际计费价格</span>
+        </el-descriptions-item>
         <el-descriptions-item label="绑定邮箱">
           <span v-if="store.email" style="color:#67c23a">{{ store.email }}</span>
           <template v-else>
@@ -177,7 +182,7 @@ async function sendBindCode() {
       if (--codeCooldown.value <= 0) clearInterval(cooldownTimer)
     }, 1000)
   } catch {
-    // error handled by http interceptor
+    // 错误已由 HTTP 拦截器处理
   }
 }
 

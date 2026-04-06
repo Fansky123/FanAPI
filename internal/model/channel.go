@@ -50,19 +50,30 @@ type Channel struct {
 	// 异步轮询配置（video/audio 等异步接口使用）：
 	// 提交请求后从 response_script 映射结果中取 upstream_task_id，
 	// 然后定期请求 QueryURL（支持 {id} 占位符）获取最终状态。
-	QueryURL       string    `xorm:"text default('') 'query_url'" json:"query_url"`                     // 轮询 URL，如 https://api.example.com/v1/tasks/{id}
-	QueryMethod    string    `xorm:"notnull default('GET') 'query_method'" json:"query_method"`         // 轮询 HTTP 方法，默认 GET
-	QueryTimeoutMs int64     `xorm:"notnull default(30000) 'query_timeout_ms'" json:"query_timeout_ms"` // 轮询单次请求超时（ms）
-	QueryScript    string    `xorm:"text 'query_script'" json:"query_script"`                           // JS 脚本：mapResponse(input) → 将轮询响应映射为标准格式
-	BillingType    string    `xorm:"notnull 'billing_type'" json:"billing_type"`                        // 计费类型：token / image / video / audio / count / custom
-	BillingConfig  JSON      `xorm:"jsonb 'billing_config'" json:"billing_config"`
-	BillingScript  string    `xorm:"text 'billing_script'" json:"billing_script"`          // billing_type=custom 时的计费脚本
-	KeyPoolID      int64     `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"`          // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
-	Protocol       string    `xorm:"notnull default('openai') 'protocol'" json:"protocol"` // API 协议格式：openai（默认）/ claude / gemini
-	ErrorScript    string    `xorm:"text 'error_script'" json:"error_script"`              // JS 脚本：checkError(response) → 返回非空字符串=错误消息，null/false=正常
-	IsActive       bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
-	CreatedAt      time.Time `xorm:"created 'created_at'" json:"created_at"`
-	UpdatedAt      time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
+	QueryURL       string `xorm:"text default('') 'query_url'" json:"query_url"`                     // 轮询 URL，如 https://api.example.com/v1/tasks/{id}
+	QueryMethod    string `xorm:"notnull default('GET') 'query_method'" json:"query_method"`         // 轮询 HTTP 方法，默认 GET
+	QueryTimeoutMs int64  `xorm:"notnull default(30000) 'query_timeout_ms'" json:"query_timeout_ms"` // 轮询单次请求超时（ms）
+	QueryScript    string `xorm:"text 'query_script'" json:"query_script"`                           // JS 脚本：mapResponse(input) → 将轮询响应映射为标准格式
+	BillingType    string `xorm:"notnull 'billing_type'" json:"billing_type"`                        // 计费类型：token / image / video / audio / count / custom
+	BillingConfig  JSON   `xorm:"jsonb 'billing_config'" json:"billing_config"`
+	BillingScript  string `xorm:"text 'billing_script'" json:"billing_script"`          // billing_type=custom 时的计费脚本
+	KeyPoolID      int64  `xorm:"default(0) 'key_pool_id'" json:"key_pool_id"`          // 号池 ID（0=不启用），启用后用号池 Key 覆盖 Headers 中的静态 Authorization
+	Protocol       string `xorm:"notnull default('openai') 'protocol'" json:"protocol"` // API 协议格式：openai（默认）/ claude / gemini
+	ErrorScript    string `xorm:"text 'error_script'" json:"error_script"`              // JS 脚本：checkError(response) → 返回非空字符串=错误消息，null/false=正常
+	// 认证扩展
+	// auth_type 取值：bearer（默认）/ query_param / basic / sigv4
+	AuthType string `xorm:"notnull default('bearer') 'auth_type'" json:"auth_type"`
+	// query_param 认证时的参数名，如 Gemini 原生接口使用 "key"
+	AuthParamName string `xorm:"default('') 'auth_param_name'" json:"auth_param_name"`
+	// sigv4 认证所需：region 和 service（可选，默认 us-east-1 / execute-api）
+	AuthRegion  string `xorm:"default('') 'auth_region'" json:"auth_region"`
+	AuthService string `xorm:"default('') 'auth_service'" json:"auth_service"`
+	// 负载均衡
+	Weight    int       `xorm:"notnull default(1) 'weight'" json:"weight"`     // 加权随机权重，越大被选中概率越高
+	Priority  int       `xorm:"notnull default(0) 'priority'" json:"priority"` // 优先级，越大越优先（同模型多渠道时）
+	IsActive  bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
+	CreatedAt time.Time `xorm:"created 'created_at'" json:"created_at"`
+	UpdatedAt time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
 }
 
 func (*Channel) TableName() string { return "channels" }

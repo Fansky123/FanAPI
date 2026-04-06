@@ -8,6 +8,7 @@ type User struct {
 	Email        string    `xorm:"unique 'email' null" json:"email"`  // 绑定邮箱（可空，用于找回密码）
 	PasswordHash string    `xorm:"notnull 'password_hash'" json:"-"`
 	Role         string    `xorm:"notnull default('user') 'role'" json:"role"`
+	Group        string    `xorm:"notnull default('') 'group'" json:"group"` // 用户分组，用于差异化定价（空=默认定价）
 	IsActive     bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
 	Balance      int64     `xorm:"notnull default(0) 'balance'" json:"balance"`
 	CreatedAt    time.Time `xorm:"created 'created_at'" json:"created_at"`

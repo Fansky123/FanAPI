@@ -1,10 +1,10 @@
 package model
 
-// TaskJob is the fat message published by the API server to NATS for a worker to execute.
-// It embeds everything the worker needs, so the worker only requires a NATS connection —
-// no direct access to PostgreSQL or Redis.
+// TaskJob 是 API 服务器发布到 NATS 中供 Worker 执行的完整任务消息。
+// 嵌入了 Worker 所需的全部信息，Worker 只需 NATS 连接，
+// 无需直接访问 PostgreSQL 或 Redis。
 type TaskJob struct {
-	// Task identity & billing (needed by result handler for refund on failure)
+	// 任务身丽与计费信息（结果处理器在失败退款时需要）
 	TaskID         int64  `json:"task_id"`
 	TaskType       string `json:"task_type"` // image / video / audio
 	UserID         int64  `json:"user_id"`
@@ -13,7 +13,7 @@ type TaskJob struct {
 	CreditsCharged int64  `json:"credits_charged"`
 	ChannelID      int64  `json:"channel_id"`
 
-	// Channel execution config (embedded so worker doesn't need DB/Redis)
+	// 渠道执行配置（嵌入以免 Worker 访问 DB/Redis）
 	BaseURL        string                 `json:"base_url"`
 	Method         string                 `json:"method"`
 	Headers        map[string]interface{} `json:"headers"`
@@ -26,27 +26,27 @@ type TaskJob struct {
 	QueryMethod    string                 `json:"query_method,omitempty"`
 	QueryScript    string                 `json:"query_script,omitempty"`
 
-	// Pre-resolved pool key (if channel uses a key pool)
+	// 预分配的号池 Key（渠道已设置号池时嵌入）
 	PoolKeyID    int64  `json:"pool_key_id,omitempty"`
 	PoolKeyValue string `json:"pool_key_value,omitempty"`
 
-	// Request payload (platform standard format — request_script not yet applied)
+	// 请求载荷（平台标准格式，尚未应用 request_script）
 	Payload map[string]interface{} `json:"payload"`
 
-	// Retry counter — incremented by the server on 429 key-rotation retries
+	// 重试计数器——服务器在 429 轮转 Key 重试时递增
 	RetryCount int `json:"retry_count,omitempty"`
 }
 
-// WorkerResult outcome constants.
+// WorkerResult 结果常量。
 const (
 	OutcomeDone        = "done"
 	OutcomeFailed      = "failed"
-	OutcomeAsync       = "async"        // upstream returned an async task ID; poller will finish it
-	OutcomeRateLimited = "rate_limited" // HTTP 429; server should rotate pool key and retry
+	OutcomeAsync       = "async"        // 上游返回了异步任务 ID，由轮询器完成后续处理
+	OutcomeRateLimited = "rate_limited" // HTTP 429；服务器应轮转号池 Key 并重试
 )
 
-// WorkerResult is published by the worker to NATS after executing a task.
-// The API server subscribes and handles DB writes + billing.
+// WorkerResult 是 Worker 执行完成后发布到 NATS 的结果消息。
+// API 服务器订阅并处理 DB 写入与计费结算。
 type WorkerResult struct {
 	TaskID         int64  `json:"task_id"`
 	TaskType       string `json:"task_type"`
@@ -57,22 +57,22 @@ type WorkerResult struct {
 	ChannelID      int64  `json:"channel_id"`
 	PoolKeyID      int64  `json:"pool_key_id,omitempty"`
 
-	Outcome string `json:"outcome"` // one of the Outcome* constants
+	Outcome string `json:"outcome"` // 取値为 Outcome* 常量之一
 
-	// OutcomeDone
+	// OutcomeDone 时填充
 	Result map[string]interface{} `json:"result,omitempty"`
 
-	// OutcomeAsync
+	// OutcomeAsync 时填充
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"`
 
-	// OutcomeFailed / OutcomeRateLimited
+	// OutcomeFailed / OutcomeRateLimited 时填充
 	ErrorMsg string `json:"error_msg,omitempty"`
 
-	// Debug info
+	// 调试信息
 	UpstreamRequest  map[string]interface{} `json:"upstream_request,omitempty"`
 	UpstreamResponse map[string]interface{} `json:"upstream_response,omitempty"`
 
-	// Passed back so server can re-publish on OutcomeRateLimited
+	// 传回给服务器以便在 OutcomeRateLimited 时重新发布
 	RetryCount int                    `json:"retry_count,omitempty"`
 	Payload    map[string]interface{} `json:"payload,omitempty"`
 }

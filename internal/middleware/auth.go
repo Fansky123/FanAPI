@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"fanapi/internal/config"
+	"fanapi/internal/db"
+	"fanapi/internal/model"
 	"fanapi/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +27,11 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 			c.Set("user_id", apiKey.UserID)
 			c.Set("api_key_id", apiKey.ID)
 			c.Set("auth_type", "apikey")
+			// 加载用户以获取 group（分组定价）
+			user := &model.User{}
+			if found, _ := db.Engine.ID(apiKey.UserID).Get(user); found {
+				c.Set("user_group", user.Group)
+			}
 			c.Next()
 			return
 		}
@@ -50,8 +57,10 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 			}
 			userID := int64(claims["sub"].(float64))
 			role, _ := claims["role"].(string)
+			group, _ := claims["group"].(string)
 			c.Set("user_id", userID)
 			c.Set("role", role)
+			c.Set("user_group", group)
 			c.Set("auth_type", "jwt")
 			c.Next()
 			return

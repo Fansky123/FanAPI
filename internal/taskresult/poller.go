@@ -22,15 +22,14 @@ const (
 	pollInterval = 5 * time.Second
 	maxAge       = 2 * time.Hour
 
-	// pollLockTTL must be greater than the maximum possible query_timeout_ms so the
-	// distributed lock outlives the upstream HTTP call.
+	// pollLockTTL 必须大于最大可能的 query_timeout_ms，保证分布式锁在上游 HTTP 调用期间不过期。
 	pollLockTTL           = 120 * time.Second
-	defaultQueryTimeoutMs = 30_000 // fallback when channel.QueryTimeoutMs == 0
+	defaultQueryTimeoutMs = 30_000 // channel.QueryTimeoutMs 为 0 时的默认分钟
 )
 
-// StartPoller starts a goroutine that periodically polls upstream APIs for
-// async tasks (status=processing with an upstream_task_id).
-// Call this from the API server process only.
+// StartPoller 启动一个 goroutine 定期轮询上游 API 的异步任务
+// （即含 upstream_task_id 的 processing 状态任务）。
+// 只应在 API 服务器进程中调用。
 func StartPoller(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(pollInterval)
@@ -158,7 +157,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	statusVal, _ := mappedResp["status"].(float64)
 	upstreamResp := toJSON(rawResp)
 
-	// Error detection
+	// 错误检测
 	{
 		var detectedErr string
 		var isErr bool
@@ -181,7 +180,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	}
 
 	switch int(statusVal) {
-	case 2: // success
+	case 2: // 成功
 		result := toJSON(mappedResp)
 		db.Engine.Where("id = ?", task.ID).
 			Cols("status", "progress", "result", "upstream_response").
@@ -193,14 +192,14 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 			})
 		log.Printf("[poller] task %d done", task.ID)
 
-	case 3: // failed
+	case 3: // 失败
 		db.Engine.Where("id = ?", task.ID).Cols("upstream_response").
 			Update(&model.Task{UpstreamResponse: upstreamResp})
 		failMsg := fmt.Sprintf("%v", mappedResp["msg"])
 		failTaskDB(ctx, task.ID, task.UserID, task.ChannelID, task.APIKeyID, task.CorrID, task.CreditsCharged,
 			"upstream failed: "+failMsg)
 
-	default: // still in progress
+	default: // 仍在处理中
 		log.Printf("[poller] task %d still processing (status=%d)", task.ID, int(statusVal))
 	}
 }

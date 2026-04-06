@@ -17,10 +17,17 @@
     <el-card>
     <el-table :data="users" stripe border>
       <el-table-column prop="id" label="ID" width="60" />
+      <el-table-column prop="username" label="用户名" width="120" />
       <el-table-column prop="email" label="邮箱" />
       <el-table-column prop="role" label="角色" width="80">
         <template #default="{ row }">
           <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">{{ row.role }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="定价分组" width="130" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.group" type="warning" size="small" style="cursor:pointer" @click="openSetGroup(row)">{{ row.group }}</el-tag>
+          <el-button v-else size="small" text @click="openSetGroup(row)">默认（点击设置）</el-button>
         </template>
       </el-table-column>
       <el-table-column label="余额（¥）" width="140">
@@ -29,10 +36,11 @@
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="注册时间" :formatter="fmtTime" />
-      <el-table-column label="操作" width="180" align="center">
+      <el-table-column label="操作" width="240" align="center">
         <template #default="{ row }">
           <el-button size="small" type="success" @click="openRecharge(row)">充值</el-button>
           <el-button size="small" type="warning" @click="openResetPwd(row)">改密</el-button>
+          <el-button size="small" @click="openSetGroup(row)">分组</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -75,6 +83,17 @@
         <el-button type="primary" @click="doResetPwd">确认修改</el-button>
       </template>
     </el-dialog>
+
+    <!-- 设置定价分组弹窗 -->
+    <el-dialog v-model="showSetGroup" title="设置定价分组" width="400px">
+      <p style="margin-bottom:12px">用户 <b>{{ groupUser?.username || groupUser?.email }}</b></p>
+      <el-input v-model="groupInput" placeholder="留空=默认定价，如 vip / premium" clearable />
+      <p style="color:#909399;font-size:.82rem;margin-top:8px">分组名须与渠道 billing_config.pricing_groups 中的键对应</p>
+      <template #footer>
+        <el-button @click="showSetGroup = false">取消</el-button>
+        <el-button type="primary" @click="doSetGroup">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -105,6 +124,11 @@ const pwdRules = {
     trigger: 'blur'
   }]
 }
+
+// 设置分组
+const showSetGroup = ref(false)
+const groupUser = ref(null)
+const groupInput = ref('')
 
 onMounted(fetchUsers)
 
@@ -138,6 +162,19 @@ async function doResetPwd() {
   await userApi.resetPassword(resetPwdUser.value.id, pwdForm.value.password)
   ElMessage.success(`已重置 ${resetPwdUser.value.email} 的密码`)
   showResetPwd.value = false
+}
+
+function openSetGroup(user) {
+  groupUser.value = user
+  groupInput.value = user.group || ''
+  showSetGroup.value = true
+}
+
+async function doSetGroup() {
+  await userApi.setGroup(groupUser.value.id, groupInput.value)
+  ElMessage.success('已更新定价分组')
+  showSetGroup.value = false
+  fetchUsers()
 }
 
 function fmtTime(row, col, val) {

@@ -23,7 +23,21 @@ import (
 // 对于其他类型（image/video/audio/count/custom）：
 //   - 在请求时即可精确计算全部费用，outputHold 始终为 0，无需结算退差。
 func Calc(ch *model.Channel, req map[string]interface{}) (inputHold int64, outputHold int64, err error) {
-	cfg := map[string]interface{}(ch.BillingConfig)
+	return CalcForUser(ch, req, "")
+}
+
+// CalcForUser 与 Calc 相同，但支持用户分组定价。
+// userGroup 为空时使用渠道默认价。billing_config 中可通过 "pricing_groups" 字段覆盖：
+//
+//	{
+//	  "input_price_per_1m_tokens": 15,
+//	  "output_price_per_1m_tokens": 60,
+//	  "pricing_groups": {
+//	    "vip": {"input_price_per_1m_tokens": 8, "output_price_per_1m_tokens": 32}
+//	  }
+//	}
+func CalcForUser(ch *model.Channel, req map[string]interface{}, userGroup string) (inputHold int64, outputHold int64, err error) {
+	cfg := applyGroupPricing(map[string]interface{}(ch.BillingConfig), userGroup)
 	data := map[string]map[string]interface{}{"request": req}
 
 	switch ch.BillingType {
@@ -49,16 +63,44 @@ func Calc(ch *model.Channel, req map[string]interface{}) (inputHold int64, outpu
 	}
 }
 
+// applyGroupPricing merges group-specific pricing fields on top of the base cfg.
+func applyGroupPricing(cfg map[string]interface{}, group string) map[string]interface{} {
+	if group == "" {
+		return cfg
+	}
+	pgs, ok := cfg["pricing_groups"].(map[string]interface{})
+	if !ok {
+		return cfg
+	}
+	overrides, ok := pgs[group].(map[string]interface{})
+	if !ok {
+		return cfg
+	}
+	// shallow merge: override only the pricing keys present in the group config
+	merged := make(map[string]interface{}, len(cfg))
+	for k, v := range cfg {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return merged
+}
+
 // CalcActualCost 根据请求 + SSE 响应中的实际用量计算真实总费用（仅用于 LLM token 类型结算）。
 //
 // 无论 input_from_response 如何，结算值始终包含输入 + 输出两部分：
 //   - input_from_response=false：输入 token 数从请求中计算，与 hold 保持一致
 //   - input_from_response=true：输入 token 数从响应 usage 字段读取（更精确）
 func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64, error) {
+	return CalcActualCostForUser(ch, req, resp, "")
+}
+
+func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, userGroup string) (int64, error) {
 	if ch.BillingType != "token" {
 		return 0, nil
 	}
-	cfg := map[string]interface{}(ch.BillingConfig)
+	cfg := applyGroupPricing(map[string]interface{}(ch.BillingConfig), userGroup)
 	data := map[string]map[string]interface{}{"request": req, "response": resp}
 
 	outputPricePer1m := getInt64Val(cfg, "output_price_per_1m_tokens")

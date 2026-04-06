@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Register creates a new user with username + password (no email required).
+// Register 创建新用户（用户名 + 密码，无需邀算验证）。
 func Register(ctx context.Context, username, password string) (*model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -40,10 +40,10 @@ func Register(ctx context.Context, username, password string) (*model.User, erro
 	return user, nil
 }
 
-// Login verifies credentials by username or email, returns a JWT.
+// Login 验证用户名或邂算密码，验证成功返回 JWT。
 func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.ServerConfig) (string, *model.User, error) {
 	user := &model.User{}
-	// try username first, then email
+	// 先尝试用户名登录，失败再尝试邂算
 	found, err := db.Engine.Where("username = ?", usernameOrEmail).Get(user)
 	if err != nil {
 		return "", nil, fmt.Errorf("invalid credentials")
@@ -63,21 +63,22 @@ func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.Se
 
 	exp := time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)
 	claims := jwt.MapClaims{
-		"sub":  user.ID,
-		"role": user.Role,
-		"exp":  exp.Unix(),
+		"sub":   user.ID,
+		"role":  user.Role,
+		"group": user.Group,
+		"exp":   exp.Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(cfg.JWTSecret))
 	return signed, user, err
 }
 
-// BindEmail binds an email to an existing user after verifying the code.
+// BindEmail 验证代码后将邂算绑定到已登录用户。
 func BindEmail(ctx context.Context, userID int64, email, code string) error {
 	if err := VerifyEmailCode(ctx, email, code); err != nil {
 		return err
 	}
-	// check not already taken
+	// 检查邂算是否已被其他账户绑定
 	var count int64
 	count, err := db.Engine.Where("email = ? AND id != ?", email, userID).Count(new(model.User))
 	if err != nil {
@@ -90,7 +91,7 @@ func BindEmail(ctx context.Context, userID int64, email, code string) error {
 	return err
 }
 
-// SendPasswordResetCode sends a reset code to the given email if it's bound to an account.
+// SendPasswordResetCode 如果邂算已绑定账户，就向该邂算发送重置验证码。
 func SendPasswordResetCode(ctx context.Context, email string, m *mailer.Mailer) error {
 	var count int64
 	count, err := db.Engine.Where("email = ?", email).Count(new(model.User))
@@ -98,13 +99,13 @@ func SendPasswordResetCode(ctx context.Context, email string, m *mailer.Mailer) 
 		return err
 	}
 	if count == 0 {
-		// Don't reveal whether email exists — just return success silently
+		// 不透露邂算是否存在，静默返回成功防止枚举
 		return nil
 	}
 	return SendVerifyCode(ctx, email, m)
 }
 
-// ResetPasswordByEmail resets the password after verifying the email code.
+// ResetPasswordByEmail 通过邂算验证码重置密码。
 func ResetPasswordByEmail(ctx context.Context, email, code, newPassword string) error {
 	if err := VerifyEmailCode(ctx, email, code); err != nil {
 		return err
@@ -172,7 +173,7 @@ func DecryptAPIKey(cipherText, secret string) (string, error) {
 	return string(plain), nil
 }
 
-// GenerateAPIKey creates a new API key and stores an encrypted copy for later viewing.
+// GenerateAPIKey 创建新 API Key 并将加密副本存入 DB（供用户后续查看）。
 func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -199,16 +200,16 @@ func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (str
 	return rawHex, nil
 }
 
-// LookupAPIKey finds an active APIKey by raw key value (via hash). Caches in Redis.
+// LookupAPIKey 通过哈希查找活跃的 APIKey（Redis 缓存加速）。
 func LookupAPIKey(ctx context.Context, rawKey string) (*model.APIKey, error) {
 	h := sha256.Sum256([]byte(rawKey))
 	keyHash := hex.EncodeToString(h[:])
 	cacheKey := fmt.Sprintf("apikey:%s", keyHash)
 
-	// Try Redis cache first
+	// 先查 Redis 缓存
 	userIDStr, err := cache.Client.Get(ctx, cacheKey).Result()
 	if err == nil && userIDStr != "" {
-		// Parse cached user_id
+		// 解析缓存的 user_id
 		var userID int64
 		fmt.Sscanf(userIDStr, "%d", &userID)
 		now := time.Now()
@@ -222,7 +223,7 @@ func LookupAPIKey(ctx context.Context, rawKey string) (*model.APIKey, error) {
 		return nil, fmt.Errorf("invalid api key")
 	}
 
-	// Cache {userID} for 30 minutes
+	// 缓存 {userID} 30 分钟
 	cache.Client.Set(ctx, cacheKey, fmt.Sprintf("%d", apiKey.UserID), 30*time.Minute)
 	now := time.Now()
 	apiKey.LastUsedAt = &now

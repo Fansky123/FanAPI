@@ -966,13 +966,73 @@ console.log("Result:", resultUrl);</pre>
     </div>
   </div>
 
-  <!-- BALANCE -->
+  <!-- GROUP PRICING & CHANNELS -->
   <div class="section">
-    <div class="section-title">6 · 余额查询</div>
+    <div class="section-title">6 · 用户分组定价 &amp; 渠道列表</div>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method GET">GET</span>
-        <span class="ep-path">/user/balance</span>
+        <span class="ep-path">/user/channels</span>
+        <span style="margin-left:8px;color:#555">获取当前用户可用渠道列表（含专属定价）</span>
+      </div>
+      <div class="ep-body">
+        <p>登录用户调用此接口时，如果其所在定价分组对某渠道设置了优惠价，响应中的 <code>group_price</code> 字段会返回该专属单价；否则省略该字段，以 <code>price</code> 为准。</p>
+        <p>匿名用户请使用 <span class="ep-path">/public/channels</span>（无需认证，不含分组价）。</p>
+        <table>
+          <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+          <tr><td>id</td><td>int</td><td>渠道 ID</td></tr>
+          <tr><td>name</td><td>string</td><td>渠道显示名</td></tr>
+          <tr><td>routing_model</td><td>string</td><td>请求时填入 <code>model</code> 的路由标识</td></tr>
+          <tr><td>price</td><td>float64</td><td>默认单价（每 1K tokens，CNY）</td></tr>
+          <tr><td>group_price</td><td>float64</td><td>（可选）当前分组专属单价；存在时优先生效</td></tr>
+          <tr><td>type</td><td>string</td><td>渠道类型，如 <code>openai</code> / <code>claude</code> / <code>gemini</code></td></tr>
+        </table>
+      </div>
+    </div>
+    <p class="note" style="margin-top:12px">
+      <b>定价分组配置方式：</b>在渠道的 <code>billing_config</code> JSON 中添加 <code>pricing_groups</code> 对象，
+      键为分组名（如 <code>vip</code>），值为该分组的覆盖价格：
+      <pre>{"input_price": 0.002, "output_price": 0.008, "pricing_groups": {"vip": {"input_price": 0.001, "output_price": 0.004}}}</pre>
+    </p>
+  </div>
+
+  <!-- LOAD BALANCING -->
+  <div class="section">
+    <div class="section-title">7 · 渠道权重 &amp; 负载均衡</div>
+    <p>
+      系统根据每条渠道的 <strong>priority（优先级）</strong>和 <strong>weight（权重）</strong>自动选路：
+    </p>
+    <ol>
+      <li>优先使用 <code>priority</code> 最高的渠道组（同值为一组）。</li>
+      <li>同组内按 <code>weight</code> 比例加权随机选取。</li>
+      <li>若某渠道 5 分钟内请求次数 ≥ 5 且错误率 ≥ 50%，视为不健康，自动跳过（降级到下一优先级组）。</li>
+      <li>最多重试 3 条渠道，全部失败则返回 503。</li>
+    </ol>
+    <p>渠道字段说明：</p>
+    <table>
+      <tr><th>字段</th><th>默认值</th><th>说明</th></tr>
+      <tr><td>priority</td><td>0</td><td>数值越高越优先；相同 priority 的渠道同组竞争</td></tr>
+      <tr><td>weight</td><td>1</td><td>同组内的流量权重比例，如 3:1 表示前者承接 75% 流量</td></tr>
+    </table>
+  </div>
+
+  <!-- AUTH TYPES -->
+  <div class="section">
+    <div class="section-title">8 · 渠道认证类型（auth_type）</div>
+    <p>创建/更新渠道时可指定 <code>auth_type</code>，系统据此自动构造上游鉴权头：</p>
+    <table>
+      <tr><th>auth_type</th><th>说明</th><th>附加字段</th></tr>
+      <tr><td>bearer <em>（默认）</em></td><td>在 HTTP 头中发送 <code>Authorization: Bearer &lt;key&gt;</code></td><td>—</td></tr>
+      <tr><td>query_param</td><td>将 key 附加到请求 URL 的查询参数中</td><td><code>auth_param_name</code>：参数名，如 <code>api_key</code></td></tr>
+      <tr><td>basic</td><td>HTTP Basic Auth，key 格式为 <code>user:pass</code></td><td>—</td></tr>
+      <tr><td>sigv4</td><td>AWS Signature Version 4（Bedrock 等服务）</td><td><code>auth_region</code>：AWS 区域；<code>auth_service</code>：服务名，如 <code>bedrock</code></td></tr>
+    </table>
+    <p class="note">sigv4 模式下 key 字段存储 <code>ACCESS_KEY_ID:SECRET_ACCESS_KEY</code>。</p>
+  </div>
+
+  <!-- BALANCE -->
+  <div class="section">
+    <div class="section-title">9 · 余额查询</div>
         <span class="ep-desc">查询当前 API Key 对应账户的剩余余额</span>
       </div>
       <div class="ep-body open">

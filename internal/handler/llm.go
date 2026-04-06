@@ -3,10 +3,14 @@ package handler
 import (
 	"bufio"
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +18,7 @@ import (
 	"fanapi/internal/billing"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
+	"fanapi/internal/protocol"
 	"fanapi/internal/script"
 	"fanapi/internal/service"
 
@@ -117,7 +122,7 @@ func (u *usageState) processLine(line string) {
 			}
 		}
 
-	default: // openai
+	default: // OpenAI 协议
 		if strings.HasPrefix(line, "data: ") {
 			payload := strings.TrimPrefix(line, "data: ")
 			if payload == "[DONE]" {
@@ -189,15 +194,24 @@ func ClaudeProxy(c *gin.Context) { llmProxy(c) }
 func GeminiProxy(c *gin.Context) { llmProxy(c) }
 
 // llmProxy 是三条 LLM 路由的共同实现。
-// 设计原则：请求体原样透传给上游，响应体原样返回给客户端，无任何格式转换。
-// Channel.Protocol 仅用于决定上游认证头的写法和从 SSE 流提取 usage 的方式（计费用）。
-// 如需格式转换，请在渠道配置中填写 request_script / response_script。
+// 支持：
+//   - 多渠道负载均衡（加权随机 + 优先级 + 错误率自动屏蔽）
+//   - 格式互转（OpenAI ↔ Claude / Gemini）
+//   - 认证扩展（bearer / query_param / basic / sigv4）
+//   - 用户分组定价
+//   - 失败自动重试（最多 3 个不同渠道）
 func llmProxy(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	apiKeyID, _ := c.Get("api_key_id")
 	var apiKeyIDVal int64
 	if apiKeyID != nil {
 		apiKeyIDVal = apiKeyID.(int64)
+	}
+
+	// 获取用户 group（用于分组定价）
+	var userGroup string
+	if raw, ok := c.Get("user_group"); ok {
+		userGroup, _ = raw.(string)
 	}
 
 	channelIDStr := c.Query("channel_id")
@@ -213,9 +227,12 @@ func llmProxy(c *gin.Context) {
 		return
 	}
 
-	// 渠道解析：优先 channel_id 查询参数（兼容旧客户端），否则用请求体中的 model 字段按渠道名路由。
+	// 渠道选择
 	var ch *model.Channel
+	var triedIDs []int64
+
 	if channelIDStr != "" {
+		// 直接指定 channel_id，不走负载均衡
 		channelID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
 		if parseErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
@@ -229,26 +246,40 @@ func llmProxy(c *gin.Context) {
 	} else {
 		routingModel, _ := reqData["model"].(string)
 		if routingModel == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "请在请求体 model 字段填写渠道名称，或通过 channel_id 参数指定渠道"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请在请求体 model 字段填写模型名称，或通过 channel_id 参数指定渠道"})
 			return
 		}
-		ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+		ch, err = service.SelectChannel(c.Request.Context(), routingModel)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
-			return
+			// 兜底：按 name 精确查找（兼容旧行为）
+			ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+				return
+			}
 		}
 	}
-	channelID := ch.ID
 
-	// 用渠道配置的真实模型名覆盖用户传入的路由键，确保上游收到正确的 model 字段。
-	// ch.Model 为空时保留用户传入值（兼容渠道未填 model 字段的情况）。
+	llmProxyWithChannel(c, ch, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+}
+
+// llmProxyWithChannel 执行实际的上游请求，支持失败重试（换渠道）。
+func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]interface{},
+	userID, apiKeyIDVal int64, userGroup string, triedIDs []int64) {
+
+	const maxRetries = 3
+
+	channelID := ch.ID
+	triedIDs = append(triedIDs, channelID)
+
+	// 用渠道配置的真实模型名覆盖用户传入的路由键
 	if ch.Model != "" {
 		reqData["model"] = ch.Model
 	}
 
-	protocol := effectiveProtocol(ch)
+	proto := effectiveProtocol(ch)
 
-	// 请求映射：仅当渠道配置了 request_script 时执行脚本转换，否则原样透传。
+	// 1. request_script（JS）映射（在协议转换之前，允许微调原始请求）
 	mappedReq := reqData
 	if ch.RequestScript != "" {
 		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData)
@@ -259,14 +290,24 @@ func llmProxy(c *gin.Context) {
 		mappedReq = mapped
 	}
 
-	// 判断客户端是否请求流式输出
+	// 2. 协议格式转换（OpenAI 入参 → 目标协议格式）
+	// 注意：仅当目标协议不是 openai 且没有 request_script 的情况下才自动转换；
+	// 如果配置了 request_script，认为脚本已经处理了格式，直接透传。
+	if proto != protocolOpenAI && ch.RequestScript == "" {
+		converted, convErr := protocol.ConvertRequest(mappedReq, proto)
+		if convErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "请求格式转换错误: " + convErr.Error()})
+			return
+		}
+		mappedReq = converted
+	}
+
+	// 3. 流式注入 include_usage（OpenAI 协议专用）
 	isStream := false
 	if sv, ok := mappedReq["stream"].(bool); ok {
 		isStream = sv
 	}
-
-	// 流式：强制注入 include_usage，确保结尾 chunk 携带精确 token 数
-	if isStream && effectiveProtocol(ch) == protocolOpenAI {
+	if isStream && proto == protocolOpenAI {
 		mappedReq["stream"] = true
 		if _, hasOpts := mappedReq["stream_options"]; !hasOpts {
 			mappedReq["stream_options"] = map[string]interface{}{"include_usage": true}
@@ -275,8 +316,8 @@ func llmProxy(c *gin.Context) {
 		}
 	}
 
-	// 计算预扣金额并原子扣除
-	inputHold, outputHold, calcErr := billing.Calc(ch, reqData)
+	// 4. 计算预扣金额（含用户分组定价）
+	inputHold, outputHold, calcErr := billing.CalcForUser(ch, reqData, userGroup)
 	if calcErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "计费计算错误: " + calcErr.Error()})
 		return
@@ -292,16 +333,16 @@ func llmProxy(c *gin.Context) {
 	}
 
 	corrID := uuid.New().String()
-	// 返回给客户端，用于关联计费流水（与 billing_transactions.corr_id 一致）
 	c.Header("X-Corr-Id", corrID)
 	if totalHold > 0 {
 		_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "hold", totalHold, upstreamCostHold, model.JSON{
 			"input_hold":  inputHold,
 			"output_hold": outputHold,
+			"user_group":  userGroup,
 		})
 	}
 
-	// 写入 LLM 请求日志（pending 状态，请求完成后更新）
+	// 5. 写入 LLM 请求日志
 	modelName, _ := mappedReq["model"].(string)
 	llmLog := &model.LLMLog{
 		UserID:          userID,
@@ -315,7 +356,7 @@ func llmProxy(c *gin.Context) {
 	}
 	_, _ = db.Engine.Insert(llmLog)
 
-	// 号池 Sticky Key 分配
+	// 6. 号池 Sticky Key 分配
 	entityID := apiKeyIDVal
 	if entityID == 0 {
 		entityID = userID
@@ -330,20 +371,37 @@ func llmProxy(c *gin.Context) {
 		poolKey = pk
 	}
 
-	// 发送上游请求（429 时轮转 Key 重试一次）
-	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
+	// 7. 发送上游请求
+	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto)
 	if err != nil {
+		service.RecordChannelError(c.Request.Context(), channelID)
+		// 尝试换渠道重试
+		if len(triedIDs) < maxRetries {
+			if nextCh := selectNextChannel(c, reqData, triedIDs); nextCh != nil {
+				// 退回已扣的 hold
+				if totalHold > 0 {
+					_ = billing.Refund(c.Request.Context(), userID, totalHold)
+					_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "channel_retry"})
+					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
+						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
+				}
+				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+				return
+			}
+		}
 		llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "上游请求失败: "+err.Error())
 		return
 	}
 
+	// 429 时轮转 Key 重试一次（同渠道）
 	if resp.StatusCode == http.StatusTooManyRequests && ch.KeyPoolID > 0 && poolKey != nil {
 		resp.Body.Close()
 		newKey, rotErr := service.MarkExhaustedAndRotate(c.Request.Context(), ch.KeyPoolID, poolKey.ID, entityID)
 		if rotErr == nil {
 			poolKey = newKey
-			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, protocol)
+			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto)
 			if err != nil {
+				service.RecordChannelError(c.Request.Context(), channelID)
 				llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "上游请求失败(重试): "+err.Error())
 				return
 			}
@@ -354,37 +412,51 @@ func llmProxy(c *gin.Context) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyErr, _ := io.ReadAll(resp.Body)
+		service.RecordChannelError(c.Request.Context(), channelID)
+		// 5xx 时尝试换渠道
+		if resp.StatusCode >= 500 && len(triedIDs) < maxRetries {
+			if nextCh := selectNextChannel(c, reqData, triedIDs); nextCh != nil {
+				if totalHold > 0 {
+					_ = billing.Refund(c.Request.Context(), userID, totalHold)
+					_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "channel_retry"})
+					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
+						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
+				}
+				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+				return
+			}
+		}
 		llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, resp.StatusCode, fmt.Sprintf("上游返回 %d: %s", resp.StatusCode, string(bodyErr)))
 		return
 	}
+
+	service.RecordChannelSuccess(c.Request.Context(), channelID)
 
 	// ---- 同步响应 ----
 	if !isStream {
 		respBytes, _ := io.ReadAll(resp.Body)
 
-		// 从响应 JSON 的 usage 字段精确取 token 数
-		var respJSON map[string]interface{}
-		var syncUsage map[string]interface{}
-		if json.Unmarshal(respBytes, &respJSON) == nil {
-			if usg, ok := respJSON["usage"].(map[string]interface{}); ok {
-				pt, _ := usg["prompt_tokens"].(float64)
-				ct, _ := usg["completion_tokens"].(float64)
-				syncUsage = map[string]interface{}{
-					"prompt_tokens":     int64(pt),
-					"completion_tokens": int64(ct),
-				}
+		// 协议反转：将上游响应统一转换回 OpenAI 格式
+		if proto != protocolOpenAI && ch.ResponseScript == "" {
+			converted, convErr := protocol.ConvertSyncResponse(respBytes, proto)
+			if convErr == nil {
+				respBytes = converted
 			}
 		}
 
-		// 透传给客户端
-		c.Data(http.StatusOK, resp.Header.Get("Content-Type"), respBytes)
+		// 从响应 JSON 提取 usage（支持多协议）
+		var respJSON map[string]interface{}
+		var syncUsage map[string]interface{}
+		if json.Unmarshal(respBytes, &respJSON) == nil {
+			syncUsage = protocol.NormalizeUsage(respJSON, proto)
+		}
 
-		// 同步模式：把完整响应体也存入日志
+		c.Data(http.StatusOK, "application/json", respBytes)
+
 		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
 			Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON(respJSON)})
 
-		// 结算
-		llmSettle(c, ch, reqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, corrID)
+		llmSettle(c, ch, reqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, corrID, userGroup)
 		return
 	}
 
@@ -393,8 +465,7 @@ func llmProxy(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
 
-	// 流式透传并按协议提取 usage（用于结算）
-	usage := &usageState{protocol: protocol}
+	usage := &usageState{protocol: proto}
 	scanner := bufio.NewScanner(resp.Body)
 	c.Stream(func(w io.Writer) bool {
 		if !scanner.Scan() {
@@ -406,18 +477,30 @@ func llmProxy(c *gin.Context) {
 		return true
 	})
 
-	// 流式：把结尾的 usage chunk 存入日志（没精确 usage 时也留存已收到的分析信息）
 	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status").
 		Update(&model.LLMLog{UpstreamStatus: http.StatusOK})
 
-	llmSettle(c, ch, reqData, usage.normalized(reqData), totalHold, userID, channelID, apiKeyIDVal, corrID)
+	llmSettle(c, ch, reqData, usage.normalized(reqData), totalHold, userID, channelID, apiKeyIDVal, corrID, userGroup)
+}
+
+// selectNextChannel 为重试选择下一个渠道，排除已尝试过的渠道 ID。
+func selectNextChannel(c *gin.Context, reqData map[string]interface{}, excludeIDs []int64) *model.Channel {
+	routingModel, _ := reqData["model"].(string)
+	if routingModel == "" {
+		return nil
+	}
+	nextCh, err := service.SelectChannel(c.Request.Context(), routingModel, excludeIDs...)
+	if err != nil {
+		return nil
+	}
+	return nextCh
 }
 
 // llmSettle 执行结算：与预扣金额对比，退还多扣或补扣差额，并写计费流水。
 // usageData 为精确或估算的 {prompt_tokens, completion_tokens}；
 // 为 nil 时（连接在任何输出前断开）全额退款。
 func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]interface{},
-	totalHold, userID, channelID, apiKeyIDVal int64, corrID string) {
+	totalHold, userID, channelID, apiKeyIDVal int64, corrID string, userGroup string) {
 	ctx := c.Request.Context()
 	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
 	if usageData == nil {
@@ -430,7 +513,7 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 		return
 	}
 	respData := map[string]interface{}{"usage": usageData}
-	actualCost, settleErr := billing.CalcActualCost(ch, reqData, respData)
+	actualCost, settleErr := billing.CalcActualCostForUser(ch, reqData, respData, userGroup)
 	actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
 	if settleErr == nil {
 		inputFromResponse, _ := ch.BillingConfig["input_from_response"].(bool)
@@ -488,10 +571,12 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 }
 
 // sendLLMRequest 构建并发送对上游 LLM 的 HTTP 请求。
-// protocol 决定认证头格式：
-//   - openai / gemini：标准 "Authorization: Bearer KEY"
-//   - claude：改为 "x-api-key: KEY" + "anthropic-version: 2023-06-01"
-func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, protocol string) (*http.Response, error) {
+// proto 决定认证默认方式，ch.AuthType 可覆盖为：
+//   - "bearer"     (默认) Authorization: Bearer KEY
+//   - "query_param" 将 KEY 作为查询参数附加到 URL
+//   - "basic"      HTTP Basic Auth，KEY 格式为 "user:pass"
+//   - "sigv4"      AWS Signature V4，KEY 格式为 "ACCESS_KEY:SECRET_KEY"
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string) (*http.Response, error) {
 	body, _ := json.Marshal(reqData)
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
@@ -517,19 +602,142 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	// 号池 Key 覆盖静态 Key
 	if poolKey != nil {
 		apiKey = poolKey.Value
-		upReq.Header.Set("Authorization", "Bearer "+poolKey.Value)
 	}
 
-	// Claude 协议：x-api-key 替换 Authorization: Bearer
-	if protocol == protocolClaude {
+	// ---------- 认证方式 ----------
+	authType := ch.AuthType
+	if authType == "" {
+		authType = "bearer" // 默认
+	}
+	// Claude 协议默认使用 x-api-key，可被 auth_type 覆盖
+	if proto == protocolClaude && authType == "bearer" {
+		authType = "claude"
+	}
+
+	switch authType {
+	case "bearer":
+		if apiKey != "" {
+			upReq.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+	case "claude":
 		upReq.Header.Del("Authorization")
 		if apiKey != "" {
 			upReq.Header.Set("x-api-key", apiKey)
 		}
 		upReq.Header.Set("anthropic-version", "2023-06-01")
+	case "query_param":
+		upReq.Header.Del("Authorization")
+		if apiKey != "" {
+			paramName := ch.AuthParamName
+			if paramName == "" {
+				paramName = "key"
+			}
+			q := upReq.URL.Query()
+			q.Set(paramName, apiKey)
+			upReq.URL.RawQuery = q.Encode()
+		}
+	case "basic":
+		upReq.Header.Del("Authorization")
+		if apiKey != "" {
+			// KEY 格式："user:pass"（或仅密码，此时 user 为空）
+			encoded := base64.StdEncoding.EncodeToString([]byte(apiKey))
+			upReq.Header.Set("Authorization", "Basic "+encoded)
+		}
+	case "sigv4":
+		upReq.Header.Del("Authorization")
+		if apiKey != "" {
+			region := ch.AuthRegion
+			if region == "" {
+				region = "us-east-1"
+			}
+			service := ch.AuthService
+			if service == "" {
+				service = "execute-api"
+			}
+			if signErr := signSigV4(upReq, apiKey, region, service, body); signErr != nil {
+				return nil, fmt.Errorf("sigv4 签名失败: %w", signErr)
+			}
+		}
 	}
 
 	return httpClient.Do(upReq)
+}
+
+// signSigV4 为请求添加 AWS Signature Version 4 认证头。
+// credentialKey 格式："ACCESS_KEY_ID:SECRET_ACCESS_KEY"。
+// 实现了标准 AWS SigV4 流程（仅支持 POST + JSON body）。
+func signSigV4(req *http.Request, credentialKey, region, svc string, body []byte) error {
+	parts := strings.SplitN(credentialKey, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("sigv4 key 格式应为 ACCESS_KEY_ID:SECRET_ACCESS_KEY")
+	}
+	accessKeyID := parts[0]
+	secretKey := parts[1]
+
+	now := time.Now().UTC()
+	datestamp := now.Format("20060102")
+	amzDate := now.Format("20060102T150405Z")
+
+	req.Header.Set("x-amz-date", amzDate)
+
+	// 构建规范化请求字符串
+	parsedURL, _ := url.Parse(req.URL.String())
+	canonicalURI := parsedURL.EscapedPath()
+	if canonicalURI == "" {
+		canonicalURI = "/"
+	}
+	canonicalQS := parsedURL.RawQuery
+
+	payloadHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	req.Header.Set("x-amz-content-sha256", payloadHash)
+
+	host := req.Host
+	if host == "" {
+		host = parsedURL.Host
+	}
+	req.Header.Set("Host", host)
+
+	signedHeaders := "content-type;host;x-amz-content-sha256;x-amz-date"
+	canonicalHeaders := fmt.Sprintf("content-type:%s\nhost:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
+		req.Header.Get("Content-Type"), host, payloadHash, amzDate)
+
+	canonicalReq := strings.Join([]string{
+		req.Method,
+		canonicalURI,
+		canonicalQS,
+		canonicalHeaders,
+		signedHeaders,
+		payloadHash,
+	}, "\n")
+
+	credentialScope := fmt.Sprintf("%s/%s/%s/aws4_request", datestamp, region, svc)
+	stringToSign := strings.Join([]string{
+		"AWS4-HMAC-SHA256",
+		amzDate,
+		credentialScope,
+		fmt.Sprintf("%x", sha256.Sum256([]byte(canonicalReq))),
+	}, "\n")
+
+	signingKey := hmacSHA256(
+		hmacSHA256(
+			hmacSHA256(
+				hmacSHA256([]byte("AWS4"+secretKey), datestamp),
+				region),
+			svc),
+		"aws4_request")
+
+	signature := fmt.Sprintf("%x", hmacSHA256(signingKey, stringToSign))
+
+	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		accessKeyID, credentialScope, signedHeaders, signature)
+	req.Header.Set("Authorization", authHeader)
+	return nil
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(data))
+	return mac.Sum(nil)
 }
 
 // llmRefundAndAbort 退款并终止请求（上游失败时调用）。

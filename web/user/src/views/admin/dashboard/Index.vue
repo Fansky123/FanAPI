@@ -86,13 +86,13 @@ async function loadStats() {
   try {
     stats.value = await statsApi.get()
   } catch {
-    // silently ignore if backend not ready
+    // 后端未就绪时静默失败
   }
 }
 
 onMounted(loadStats)
 
-// credits 单位为 1/1000000 元 (微元)
+// credits 单位为 1/1000000 元（微元）
 function fmtCredits(v) {
   if (v == null) return '--'
   return (v / 1000000).toFixed(4)

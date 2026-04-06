@@ -43,9 +43,9 @@ type NATSConfig struct {
 	Replicas      int    `mapstructure:"replicas"`       // JetStream 副本数，单节点填 1（默认）
 }
 
-// WorkerConfig controls which NATS subjects this worker process subscribes to.
-// Defaults to ["task.>"] (all task types).
-// To run a specialised worker (e.g. GPU node for video only), set:
+// WorkerConfig 控制此 Worker 进程订阅的 NATS 主题列表。
+// 默认订阅 ["task.>"]（全类型）。
+// 如需运行专用 Worker（如 GPU 节点只处理视频），配置示例：
 //
 //	worker:
 //	  subjects:

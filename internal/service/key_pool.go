@@ -15,8 +15,8 @@ const (
 	// 超过此时间后该 Key 会重新参与分配轮转。
 	exhaustedTTL = time.Hour
 
-	assignKeyFmt    = "pool:assign:%d:%d" // pool:assign:{pool_id}:{entity_id}
-	exhaustedKeyFmt = "pool:exhausted:%d" // pool:exhausted:{pool_key_id}
+	assignKeyFmt    = "pool:assign:%d:%d" // Redis 键格式：pool:assign:{pool_id}:{entity_id}
+	exhaustedKeyFmt = "pool:exhausted:%d" // Redis 键格式：pool:exhausted:{pool_key_id}
 )
 
 // GetOrAssignPoolKey 返回分配给 entityID 的三方 PoolKey（Sticky Assignment）。
