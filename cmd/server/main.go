@@ -70,6 +70,11 @@ func main() {
 
 	// 公开接口（无需认证）
 	r.GET("/public/channels", authH.ListModels)
+	r.GET("/public/settings", handler.GetPublicSettings)
+
+	// Epay 回调（无需用户认证，Epay 平台回调）
+	r.GET("/pay/epay/callback", handler.EpayCallback)
+	r.POST("/pay/epay/callback", handler.EpayCallback)
 
 	// 公开认证路由（注册/登录/发验证码等）
 	auth := r.Group("/auth")
@@ -129,7 +134,13 @@ func main() {
 			// LLM 日志
 			admin.GET("/llm-logs", handler.AdminListLLMLogs)
 			admin.GET("/llm-logs/:id", handler.AdminGetLLMLog)
+			// 系统设置
+			admin.GET("/settings", handler.GetSettings)
+			admin.PUT("/settings", handler.UpdateSettings)
 		}
+
+		// Epay 充值（需要 JWT 认证）
+		authed.POST("/pay/epay/create", handler.CreateEpayOrder)
 
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)

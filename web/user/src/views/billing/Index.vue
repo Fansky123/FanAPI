@@ -7,9 +7,15 @@
           <div class="balance-label">当前余额</div>
           <div class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
           <div class="balance-sub">{{ store.balance.toLocaleString() }} credits</div>
-          <el-button type="primary" style="margin-top:16px" @click="showRedeem = true">
-            兑换卡密充值
-          </el-button>
+          <div class="balance-actions">
+            <el-button type="primary" style="margin-top:16px" @click="showRedeem = true">
+              兑换卡密充值
+            </el-button>
+            <el-button v-if="site.epayEnabled" type="success" style="margin-top:16px" @click="showEpay = true">
+              <el-icon><CreditCard /></el-icon>
+              在线充值
+            </el-button>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -87,6 +93,46 @@
       </template>
     </el-dialog>
 
+    <!-- 在线充值弹窗（易支付） -->
+    <el-dialog v-model="showEpay" title="在线充值" width="420px" @close="resetEpayForm">
+      <div class="epay-tips">
+        <el-alert type="info" :closable="false" show-icon>
+          <template #title>充值后余额将自动到账，1元 = 1,000,000 积分</template>
+        </el-alert>
+      </div>
+      <el-form :model="epayForm" label-width="90px" style="margin-top:16px">
+        <el-form-item label="充值金额">
+          <el-input-number
+            v-model="epayForm.amount"
+            :min="1"
+            :precision="2"
+            :step="10"
+            style="width:100%"
+            placeholder="请输入充值金额（元）"
+          />
+        </el-form-item>
+        <el-form-item label="支付方式">
+          <el-radio-group v-model="epayForm.type">
+            <el-radio value="alipay">
+              <el-icon style="color:#1677ff;vertical-align:middle"><Wallet /></el-icon>
+              支付宝
+            </el-radio>
+            <el-radio value="wxpay">
+              <el-icon style="color:#07c160;vertical-align:middle"><ChatDotRound /></el-icon>
+              微信支付
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="实际积分">
+          <span class="credits-preview">+{{ (epayForm.amount * 1e6).toLocaleString() }} credits</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEpay = false">取消</el-button>
+        <el-button type="success" :loading="paying" @click="doEpayPay">前往支付</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 绑定邮箱弹窗 -->
     <el-dialog v-model="showBindEmail" title="绑定邮箱" width="420px" @close="resetBindForm">
       <el-form label-width="80px">
@@ -111,12 +157,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { CreditCard, Wallet, ChatDotRound } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { authApi, userApi } from '@/api'
+import { useSiteStore } from '@/stores/site'
+import { authApi, userApi, payApi } from '@/api'
 
 const store = useUserStore()
+const site = useSiteStore()
 const txList = ref([])
 const page = ref(1)
 const total = ref(0)
@@ -131,7 +180,15 @@ const codeCooldown = ref(0)
 const binding = ref(false)
 let cooldownTimer = null
 
-onMounted(fetchTx)
+// 易支付
+const showEpay = ref(false)
+const paying = ref(false)
+const epayForm = reactive({ amount: 10, type: 'alipay' })
+
+onMounted(() => {
+  fetchTx()
+  site.fetchSettings()
+})
 
 async function fetchTx(p = page.value) {
   page.value = p
@@ -153,6 +210,28 @@ async function doRedeem() {
     fetchTx(1)
   } finally {
     redeeming.value = false
+  }
+}
+
+function resetEpayForm() {
+  epayForm.amount = 10
+  epayForm.type = 'alipay'
+}
+
+async function doEpayPay() {
+  if (!epayForm.amount || epayForm.amount < 0.01) {
+    return ElMessage.warning('请输入有效的充值金额')
+  }
+  paying.value = true
+  try {
+    const res = await payApi.createEpayOrder({ amount: epayForm.amount, type: epayForm.type })
+    if (res.pay_url) {
+      window.open(res.pay_url, '_blank')
+      showEpay.value = false
+      ElMessage.info('请在新窗口中完成支付，支付成功后余额将自动到账')
+    }
+  } finally {
+    paying.value = false
   }
 }
 
@@ -212,7 +291,9 @@ async function doBindEmail() {
 .balance-label { font-size: .84rem; opacity: .72 }
 .balance-val { font-size: 2.4rem; font-weight: 700; margin: 6px 0 2px }
 .balance-sub { font-size: .82rem; opacity: .6 }
+.balance-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .amt-neg { color: #f56c6c }
 .amt-pos { color: #67c23a }
+.epay-tips { margin-bottom: 4px; }
+.credits-preview { color: #67c23a; font-weight: 600; font-size: 1rem; }
 </style>
-

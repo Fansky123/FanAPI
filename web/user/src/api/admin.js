@@ -51,3 +51,9 @@ export const llmLogApi = {
   list: (params = {}) => http.get('/admin/llm-logs', { params }),
   get: (id) => http.get(`/admin/llm-logs/${id}`),
 }
+
+export const settingsApi = {
+  get: () => http.get('/admin/settings'),
+  update: (data) => http.put('/admin/settings', data),
+}
+

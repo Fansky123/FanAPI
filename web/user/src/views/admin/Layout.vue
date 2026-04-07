@@ -2,9 +2,10 @@
   <el-container class="shell">
     <el-aside width="246px" class="sidebar">
       <div class="logo-wrap">
-        <div class="logo-mark">A</div>
+        <img v-if="siteLogo && !logoImgErr" :src="siteLogo" class="logo-img" alt="logo" @error="logoImgErr = true" />
+        <div v-else class="logo-mark">A</div>
         <div>
-          <div class="logo">FanAPI Admin</div>
+          <div class="logo">{{ siteName }} Admin</div>
           <div class="logo-sub">Control Panel</div>
         </div>
       </div>
@@ -17,6 +18,7 @@
         <el-menu-item index="/admin/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
         <el-menu-item index="/admin/llm-logs"><el-icon><ChatLineSquare /></el-icon>LLM 日志</el-menu-item>
         <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
+        <el-menu-item index="/admin/settings"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
     </el-aside>
@@ -61,15 +63,40 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/admin'
+import { settingsApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
-const titles = { '/admin/dashboard': '数据概览', '/admin/channels': '渠道管理', '/admin/key-pools': '号池管理', '/admin/users': '用户管理', '/admin/billing': '账单流水', '/admin/tasks': '任务中心', '/admin/cards': '卡密管理', '/admin/llm-logs': 'LLM 日志' }
+const titles = {
+  '/admin/dashboard': '数据概览',
+  '/admin/channels': '渠道管理',
+  '/admin/key-pools': '号池管理',
+  '/admin/users': '用户管理',
+  '/admin/billing': '账单流水',
+  '/admin/tasks': '任务中心',
+  '/admin/cards': '卡密管理',
+  '/admin/llm-logs': 'LLM 日志',
+  '/admin/settings': '系统设置',
+}
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
+
+// 动态品牌
+const siteName = ref('FanAPI')
+const siteLogo = ref('')
+const logoImgErr = ref(false)
+
+onMounted(async () => {
+  try {
+    const res = await settingsApi.get()
+    const s = res.settings || {}
+    if (s.site_name) siteName.value = s.site_name
+    if (s.logo_url) siteLogo.value = s.logo_url
+  } catch { /* ignore */ }
+})
 
 // 账户菜单
 const showPwd = ref(false)
@@ -115,7 +142,12 @@ function logout() {
 .logo-wrap { display:flex;align-items:center;gap:10px;padding:8px 8px 16px }
 .logo-mark {
   width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
-  font-weight:800;color:#fff;background:linear-gradient(140deg,#1e66ff,#00b4ff)
+  font-weight:800;color:#fff;background:linear-gradient(140deg,#1e66ff,#00b4ff);
+  flex-shrink:0;
+}
+.logo-img {
+  width:36px;height:36px;border-radius:10px;object-fit:contain;background:#fff;
+  flex-shrink:0;
 }
 .logo { font-size:1.05rem;font-weight:700;color:#fff }
 .logo-sub { color:rgba(255,255,255,.72);font-size:.76rem }
@@ -148,3 +180,4 @@ function logout() {
   .page-main { padding:12px }
 }
 </style>
+
