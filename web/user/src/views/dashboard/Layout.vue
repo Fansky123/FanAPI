@@ -6,7 +6,7 @@
     <!-- 侧边栏 -->
     <aside class="sidebar">
       <div class="brand">
-        <img v-if="site.logoUrl" :src="site.logoUrl" class="brand-logo" alt="logo" @error="logoImgErr = true" />
+        <img v-if="site.logoUrl && !logoImgErr" :src="site.logoUrl" class="brand-logo" alt="logo" @error="logoImgErr = true" />
         <div v-else class="brand-icon">{{ site.siteName.charAt(0).toUpperCase() }}</div>
         <span class="brand-name">{{ site.siteName }}</span>
       </div>

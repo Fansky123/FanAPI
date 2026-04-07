@@ -48,7 +48,7 @@ func UpdateSettings(c *gin.Context) {
 		}
 		if found {
 			existing.Value = value
-			if _, err := db.Engine.Where("key = ?", key).Cols("value", "updated_at").Update(existing); err != nil {
+			if _, err := db.Engine.Where("key = ?", key).Cols("value").Update(existing); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}

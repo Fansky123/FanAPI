@@ -2,7 +2,7 @@
   <el-container class="shell">
     <el-aside width="246px" class="sidebar">
       <div class="logo-wrap">
-        <img v-if="siteLogo" :src="siteLogo" class="logo-img" alt="logo" @error="logoImgErr = true" />
+        <img v-if="siteLogo && !logoImgErr" :src="siteLogo" class="logo-img" alt="logo" @error="logoImgErr = true" />
         <div v-else class="logo-mark">A</div>
         <div>
           <div class="logo">{{ siteName }} Admin</div>
@@ -94,7 +94,7 @@ onMounted(async () => {
     const res = await settingsApi.get()
     const s = res.settings || {}
     if (s.site_name) siteName.value = s.site_name
-    if (s.logo_url && !logoImgErr.value) siteLogo.value = s.logo_url
+    if (s.logo_url) siteLogo.value = s.logo_url
   } catch { /* ignore */ }
 })
 

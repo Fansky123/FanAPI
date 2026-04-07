@@ -23,6 +23,9 @@
 
       <!-- 页面装饰 -->
       <el-tab-pane label="页眉 & 页脚" name="appearance">
+        <el-alert type="warning" :closable="false" show-icon style="margin-bottom:16px">
+          <template #title>安全提示：页眉/页脚内容直接通过 <code>v-html</code> 渲染，请勿插入不可信的第三方脚本，避免 XSS 风险。</template>
+        </el-alert>
         <el-form :model="form" label-width="140px" class="settings-form">
           <el-form-item label="页眉 HTML">
             <el-input
