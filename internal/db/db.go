@@ -60,6 +60,8 @@ func Init(cfg *config.DBConfig, migrate bool) error {
 		new(model.BillingTransaction),
 		new(model.Card),
 		new(model.LLMLog),
+		new(model.SystemSetting),
+		new(model.PaymentOrder),
 	); err != nil {
 		return err
 	}

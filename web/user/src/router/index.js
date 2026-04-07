@@ -51,6 +51,7 @@ const routes = [
       { path: 'tasks', component: () => import('@/views/admin/tasks/Index.vue') },
       { path: 'cards', component: () => import('@/views/admin/cards/Index.vue') },
       { path: 'llm-logs', component: () => import('@/views/admin/llm-logs/Index.vue') },
+      { path: 'settings', component: () => import('@/views/admin/settings/Index.vue') },
     ]
   },
   { path: '/:pathMatch(.*)*', redirect: '/' }

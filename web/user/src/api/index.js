@@ -3,6 +3,7 @@ import http from './http'
 // 公开接口（无需登录）
 export const publicApi = {
   listChannels: () => http.get('/public/channels'),
+  getSettings: () => http.get('/public/settings'),
 }
 
 // 认证相关
@@ -33,3 +34,9 @@ export const userApi = {
   redeemCard: (code) => http.post('/user/cards/redeem', { code }),
   bindEmail: (data) => http.post('/user/bind-email', data),
 }
+
+// 支付相关（需 JWT）
+export const payApi = {
+  createEpayOrder: (data) => http.post('/pay/epay/create', data),
+}
+

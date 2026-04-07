@@ -1,10 +1,14 @@
 <template>
   <div class="app-shell">
+    <!-- 自定义页眉 -->
+    <div v-if="site.headerHtml" class="custom-header" v-html="site.headerHtml"></div>
+
     <!-- 侧边栏 -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-icon">F</div>
-        <span class="brand-name">FanAPI</span>
+        <img v-if="site.logoUrl" :src="site.logoUrl" class="brand-logo" alt="logo" @error="logoImgErr = true" />
+        <div v-else class="brand-icon">{{ site.siteName.charAt(0).toUpperCase() }}</div>
+        <span class="brand-name">{{ site.siteName }}</span>
       </div>
 
       <nav class="nav">
@@ -56,7 +60,7 @@
       <header class="topbar">
         <div class="topbar-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item>FanAPI</el-breadcrumb-item>
+            <el-breadcrumb-item>{{ site.siteName }}</el-breadcrumb-item>
             <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
           <h1 class="page-title">{{ pageTitle }}</h1>
@@ -95,14 +99,18 @@
       <main class="content">
         <router-view />
       </main>
+
+      <!-- 自定义页脚 -->
+      <footer v-if="site.footerHtml" class="custom-footer" v-html="site.footerHtml"></footer>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useSiteStore } from '@/stores/site'
 import {
   ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown
 } from '@element-plus/icons-vue'
@@ -110,6 +118,9 @@ import {
 const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
+const site = useSiteStore()
+
+const logoImgErr = ref(false)
 
 const isLoggedIn = computed(() => !!store.token)
 
@@ -130,13 +141,14 @@ const titles = {
   '/docs':       '接口文档',
   '/tasks':      '任务日志',
 }
-const pageTitle = computed(() => titles[route.path] ?? 'FanAPI')
+const pageTitle = computed(() => titles[route.path] ?? site.siteName)
 const userInitial = computed(() => {
   const name = store.username || localStorage.getItem('user_username') || store.email || 'U'
   return name.charAt(0).toUpperCase()
 })
 
 onMounted(() => {
+  site.fetchSettings()
   if (isLoggedIn.value) {
     store.fetchBalance()
     store.fetchProfile()
@@ -160,6 +172,36 @@ function handleCmd(cmd) {
   display: flex;
   min-height: 100vh;
   background: #f4f6fb;
+  flex-direction: column;
+}
+
+/* ---- 自定义页眉 / 页脚 ---- */
+.custom-header, .custom-footer {
+  width: 100%;
+}
+
+/* ---- 主体横向排列 ---- */
+.app-shell > .sidebar,
+.app-shell > .main-area {
+  flex-shrink: 0;
+}
+
+/* ---- Layout 横向 ---- */
+@media (min-width: 769px) {
+  .app-shell {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .custom-header {
+    order: -1;
+    width: 100%;
+  }
+  .custom-footer {
+    order: 999;
+    width: 100%;
+    /* push footer below the main-area */
+    margin-left: 220px;
+  }
 }
 
 /* ---- 侧边栏 ---- */
@@ -170,6 +212,7 @@ function handleCmd(cmd) {
   display: flex;
   flex-direction: column;
   padding: 0;
+  min-height: calc(100vh - 0px);
 }
 
 .brand {
@@ -185,6 +228,14 @@ function handleCmd(cmd) {
   background: #1677ff;
   display: grid; place-items: center;
   font-weight: 800; color: #fff; font-size: .9rem;
+  flex-shrink: 0;
+}
+.brand-logo {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
+  flex-shrink: 0;
 }
 .brand-name {
   font-weight: 700;
@@ -326,8 +377,10 @@ function handleCmd(cmd) {
 
 @media (max-width: 768px) {
   .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; height: auto; padding: 8px; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; height: auto; padding: 8px; min-height: unset; }
   .nav { flex-direction: row; padding: 0; flex-wrap: wrap; }
   .sidebar-footer { display: none; }
+  .custom-footer { margin-left: 0 !important; }
 }
 </style>
+
