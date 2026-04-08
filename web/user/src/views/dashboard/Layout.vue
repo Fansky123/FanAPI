@@ -33,6 +33,9 @@
           <router-link to="/tasks" class="nav-item" :class="{ active: route.path === '/tasks' }">
             <el-icon><List /></el-icon><span>任务日志</span>
           </router-link>
+          <router-link to="/llm-logs" class="nav-item" :class="{ active: route.path === '/llm-logs' }">
+            <el-icon><ChatLineSquare /></el-icon><span>LLM 日志</span>
+          </router-link>
         </template>
       </nav>
 
@@ -112,7 +115,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import {
-  ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown
+  ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown, ChatLineSquare
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -140,6 +143,7 @@ const titles = {
   '/billing':    '钱包 & 账单',
   '/docs':       '接口文档',
   '/tasks':      '任务日志',
+  '/llm-logs':   'LLM 日志',
 }
 const pageTitle = computed(() => titles[route.path] ?? site.siteName)
 const userInitial = computed(() => {

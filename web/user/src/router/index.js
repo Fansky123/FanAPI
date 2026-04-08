@@ -29,6 +29,7 @@ const routes = [
       { path: 'docs', name: 'Docs', component: () => import('@/views/docs/Index.vue') },
       { path: 'tasks', name: 'Tasks', component: () => import('@/views/tasks/Index.vue'), meta: { requiresAuth: true } },
       { path: 'billing', name: 'Billing', component: () => import('@/views/billing/Index.vue'), meta: { requiresAuth: true } },
+      { path: 'llm-logs', name: 'LLMLogs', component: () => import('@/views/llm-logs/Index.vue'), meta: { requiresAuth: true } },
     ]
   },
   // 管理端路由

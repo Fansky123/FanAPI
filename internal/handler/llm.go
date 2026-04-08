@@ -276,6 +276,8 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	if ch.Model != "" {
 		reqData["model"] = ch.Model
 	}
+	// 在协议转换前保存模型名（Gemini 转换后 body 不含 model 字段，但 URL 替换需要用到）
+	resolvedModel, _ := reqData["model"].(string)
 
 	proto := effectiveProtocol(ch)
 
@@ -343,7 +345,13 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// 5. 写入 LLM 请求日志
-	modelName, _ := mappedReq["model"].(string)
+	modelName := resolvedModel
+	// 预先计算实际上游 URL（与 sendLLMRequest 中逻辑保持一致）
+	upstreamURL := strings.ReplaceAll(ch.BaseURL, "{model}", modelName)
+	upstreamMethod := ch.Method
+	if upstreamMethod == "" {
+		upstreamMethod = "POST"
+	}
 	llmLog := &model.LLMLog{
 		UserID:          userID,
 		ChannelID:       channelID,
@@ -351,6 +359,8 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		CorrID:          corrID,
 		Model:           modelName,
 		IsStream:        isStream,
+		UpstreamURL:     upstreamURL,
+		UpstreamMethod:  upstreamMethod,
 		UpstreamRequest: model.JSON(mappedReq),
 		Status:          "pending",
 	}
@@ -372,7 +382,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// 7. 发送上游请求
-	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto)
+	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
 	if err != nil {
 		service.RecordChannelError(c.Request.Context(), channelID)
 		// 尝试换渠道重试
@@ -399,7 +409,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		newKey, rotErr := service.MarkExhaustedAndRotate(c.Request.Context(), ch.KeyPoolID, poolKey.ID, entityID)
 		if rotErr == nil {
 			poolKey = newKey
-			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto)
+			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
 			if err != nil {
 				service.RecordChannelError(c.Request.Context(), channelID)
 				llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "上游请求失败(重试): "+err.Error())
@@ -503,6 +513,14 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	totalHold, userID, channelID, apiKeyIDVal int64, corrID string, userGroup string) {
 	ctx := c.Request.Context()
 	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
+
+	// 非 token 计费（image/video/audio/count/custom）：预扣即精确值，上游成功即结算完毕，不依赖 usageData。
+	if ch.BillingType != "token" {
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status").
+			Update(&model.LLMLog{Status: "ok"})
+		return
+	}
+
 	if usageData == nil {
 		if totalHold > 0 {
 			_ = billing.Refund(ctx, userID, totalHold)
@@ -517,7 +535,7 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	actualUpstreamCost, _ := billing.CalcActualUpstreamCost(ch, reqData, respData)
 	if settleErr == nil {
 		inputFromResponse, _ := ch.BillingConfig["input_from_response"].(bool)
-		if ch.BillingType == "token" && !inputFromResponse {
+		if !inputFromResponse {
 			// 分离结算：预扣已从 DB/Redis 扣除输入费用，结算仅处理输出部分。
 			outputCost := actualCost - totalHold
 			outputUpstreamCost := actualUpstreamCost - upstreamCostHold
@@ -576,12 +594,19 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 //   - "query_param" 将 KEY 作为查询参数附加到 URL
 //   - "basic"      HTTP Basic Auth，KEY 格式为 "user:pass"
 //   - "sigv4"      AWS Signature V4，KEY 格式为 "ACCESS_KEY:SECRET_KEY"
-func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string) (*http.Response, error) {
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string) (*http.Response, error) {
 	body, _ := json.Marshal(reqData)
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
 
-	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, ch.BaseURL, bytes.NewReader(body))
+	// 支持 {model} 占位符，将渠道配置的模型名注入 URL
+	// 例如：https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+	targetURL := ch.BaseURL
+	if resolvedModel != "" {
+		targetURL = strings.ReplaceAll(targetURL, "{model}", resolvedModel)
+	}
+
+	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

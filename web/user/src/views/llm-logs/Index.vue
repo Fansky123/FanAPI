@@ -5,7 +5,7 @@
         <div>
           <div class="eyebrow">LLM Logs</div>
           <h3>LLM 请求日志</h3>
-          <p>查看每次 LLM 请求的上游入参、响应状态、Token 用量及计费信息，方便排查问题。</p>
+          <p>查看每次 LLM 请求的模型、Token 用量、扣费积分及状态。</p>
         </div>
       </div>
     </el-card>
@@ -13,8 +13,6 @@
     <el-card class="toolbar-card">
       <div class="toolbar-row">
         <el-input v-model="filters.corr_id" placeholder="Corr ID" clearable style="width: 220px" />
-        <el-input v-model="filters.user_id" placeholder="用户 ID" clearable style="width: 110px" />
-        <el-input v-model="filters.channel_id" placeholder="渠道 ID" clearable style="width: 110px" />
         <el-input v-model="filters.model" placeholder="Model" clearable style="width: 160px" />
         <el-select v-model="filters.status" placeholder="状态" clearable style="width: 120px">
           <el-option label="pending" value="pending" />
@@ -39,23 +37,18 @@
     <el-card>
       <el-table :data="logs" stripe border>
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="user_id" label="用户" width="80" />
-        <el-table-column prop="channel_id" label="渠道" width="80" />
         <el-table-column prop="model" label="Model" min-width="160" show-overflow-tooltip />
         <el-table-column prop="is_stream" label="流式" width="70">
           <template #default="{ row }">
             <el-tag :type="row.is_stream ? 'primary' : 'info'" size="small">{{ row.is_stream ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="扣费积分" width="120">
+        <el-table-column label="扣费积分" width="140">
           <template #default="{ row }">
-            <span v-if="row.credits_charged" style="color:#f56c6c;font-weight:500">
-              {{ (-row.credits_charged).toLocaleString() }} cr
-            </span>
-            <span v-else style="color:#909399">-</span>
+            <span v-if="row.credits_charged" style="color:#f56c6c">-{{ row.credits_charged.toLocaleString() }} cr</span>
+            <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="upstream_status" label="上游状态" width="90" />
         <el-table-column label="Token 用量" min-width="160">
           <template #default="{ row }">
             <span v-if="row.usage">
@@ -72,11 +65,6 @@
         </el-table-column>
         <el-table-column prop="corr_id" label="Corr ID" min-width="240" show-overflow-tooltip />
         <el-table-column prop="created_at" label="时间" min-width="180" :formatter="fmtTime" />
-        <el-table-column label="操作" width="80" align="center">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
-          </template>
-        </el-table-column>
       </el-table>
 
       <el-pagination
@@ -87,62 +75,19 @@
         @current-change="fetchLogs"
       />
     </el-card>
-
-    <el-drawer v-model="drawerVisible" title="LLM 请求详情" size="60%">
-      <template v-if="currentLog">
-        <el-descriptions :column="2" border style="margin-bottom: 16px">
-          <el-descriptions-item label="ID">{{ currentLog.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户 ID">{{ currentLog.user_id }}</el-descriptions-item>
-          <el-descriptions-item label="渠道 ID">{{ currentLog.channel_id }}</el-descriptions-item>
-          <el-descriptions-item label="API Key ID">{{ currentLog.api_key_id }}</el-descriptions-item>
-          <el-descriptions-item label="Model">{{ currentLog.model || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="流式">{{ currentLog.is_stream ? '是' : '否' }}</el-descriptions-item>
-          <el-descriptions-item label="上游 HTTP 状态">{{ currentLog.upstream_status }}</el-descriptions-item>
-          <el-descriptions-item label="请求方式">
-            <el-tag size="small" type="info">{{ currentLog.upstream_method || 'POST' }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="上游 URL" :span="2">
-            <span style="word-break:break-all">{{ currentLog.upstream_url || '-' }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusType(currentLog.status)" size="small">{{ currentLog.status }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="Corr ID" :span="2">{{ currentLog.corr_id }}</el-descriptions-item>
-          <el-descriptions-item v-if="currentLog.error_msg" label="错误信息" :span="2">{{ currentLog.error_msg }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间" :span="2">{{ fmtTimeStr(currentLog.created_at) }}</el-descriptions-item>
-        </el-descriptions>
-
-        <div v-if="currentLog.usage" class="json-block">
-          <div class="json-title">Token 用量</div>
-          <pre>{{ pretty(currentLog.usage) }}</pre>
-        </div>
-        <div class="json-block">
-          <div class="json-title">发往上游的请求体</div>
-          <pre>{{ pretty(currentLog.upstream_request) }}</pre>
-        </div>
-        <div v-if="currentLog.upstream_response" class="json-block">
-          <div class="json-title">上游响应体</div>
-          <pre>{{ pretty(currentLog.upstream_response) }}</pre>
-        </div>
-      </template>
-    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { llmLogApi } from '@/api/admin'
+import { llmLogApi } from '@/api/index'
 
 const logs = ref([])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
-const drawerVisible = ref(false)
-const currentLog = ref(null)
 const filters = reactive({
   corr_id: '',
-  user_id: '',
-  channel_id: '',
   model: '',
   status: '',
   dateRange: null,
@@ -156,7 +101,7 @@ function doSearch() {
 }
 
 function resetFilters() {
-  Object.assign(filters, { corr_id: '', user_id: '', channel_id: '', model: '', status: '', dateRange: null })
+  Object.assign(filters, { corr_id: '', model: '', status: '', dateRange: null })
   page.value = 1
   fetchLogs()
 }
@@ -164,8 +109,6 @@ function resetFilters() {
 async function fetchLogs() {
   const params = { page: page.value, page_size: pageSize }
   if (filters.corr_id) params.corr_id = filters.corr_id
-  if (filters.user_id) params.user_id = filters.user_id
-  if (filters.channel_id) params.channel_id = filters.channel_id
   if (filters.model) params.model = filters.model
   if (filters.status) params.status = filters.status
   if (filters.dateRange?.[0]) params.start_at = filters.dateRange[0]
@@ -175,21 +118,7 @@ async function fetchLogs() {
   total.value = res.total ?? 0
 }
 
-async function openDetail(id) {
-  const res = await llmLogApi.get(id)
-  currentLog.value = res
-  drawerVisible.value = true
-}
-
-function pretty(value) {
-  return JSON.stringify(value ?? {}, null, 2)
-}
-
 function fmtTime(row, col, val) {
-  return val ? new Date(val).toLocaleString('zh-CN') : '-'
-}
-
-function fmtTimeStr(val) {
   return val ? new Date(val).toLocaleString('zh-CN') : '-'
 }
 
@@ -212,13 +141,10 @@ pre {
   margin: 0;
   padding: 12px;
   background: #f7fafd;
-  border: 1px solid #e4ecf7;
-  border-radius: 10px;
-  overflow: auto;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: monospace;
-  font-size: .82rem;
-  max-height: 500px;
 }
 </style>

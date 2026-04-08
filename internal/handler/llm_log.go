@@ -90,8 +90,38 @@ func AdminListLLMLogs(c *gin.Context) {
 		return
 	}
 
+	// 聚合每条日志对应的净扣费积分
+	creditsMap := map[string]int64{}
+	if len(logs) > 0 {
+		type txRow struct {
+			CorrID  string `xorm:"corr_id"`
+			Credits int64  `xorm:"credits"`
+		}
+		inList := "'" + logs[0].CorrID + "'"
+		for _, l := range logs[1:] {
+			inList += ",'" + l.CorrID + "'"
+		}
+		sqlStr := `SELECT corr_id,
+			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN credits WHEN type='refund' THEN -credits ELSE 0 END),0) AS credits
+			FROM billing_transactions WHERE corr_id IN (` + inList + `) GROUP BY corr_id`
+		var rows []txRow
+		_ = db.Engine.SQL(sqlStr).Find(&rows)
+		for _, r := range rows {
+			creditsMap[r.CorrID] = r.Credits
+		}
+	}
+
+	type logWithCredits struct {
+		model.LLMLog
+		CreditsCharged int64 `json:"credits_charged"`
+	}
+	result := make([]logWithCredits, len(logs))
+	for i, l := range logs {
+		result[i] = logWithCredits{LLMLog: l, CreditsCharged: creditsMap[l.CorrID]}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"logs":      logs,
+		"logs":      result,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
@@ -166,8 +196,8 @@ func UserListLLMLogs(c *gin.Context) {
 	}
 
 	var logs []model.LLMLog
-	// 用户列表不返回 upstream_request / upstream_response 大字段
-	err = sess.Cols("id", "channel_id", "api_key_id", "corr_id", "model", "is_stream",
+	// 用户列表不返回 upstream_request / upstream_response / upstream_url 等上游信息
+	err = sess.Cols("id", "corr_id", "model", "is_stream",
 		"upstream_status", "usage", "status", "error_msg", "created_at").
 		OrderBy("id DESC").Limit(pageSize, offset).Find(&logs)
 	if err != nil {
@@ -175,10 +205,67 @@ func UserListLLMLogs(c *gin.Context) {
 		return
 	}
 
+	// 查询每条日志对应的净扣费积分（hold/charge/settle 扣除 refund 后的实际消耗）
+	creditsMap := map[string]int64{}
+	if len(logs) > 0 {
+		corrIDs := make([]interface{}, len(logs))
+		placeholders := make([]string, len(logs))
+		for i, l := range logs {
+			corrIDs[i] = l.CorrID
+			placeholders[i] = "?" // xorm 用 ? 占位
+		}
+		type txRow struct {
+			CorrID  string `xorm:"corr_id"`
+			Credits int64  `xorm:"credits"`
+		}
+		var rows []txRow
+		inList := "'" + logs[0].CorrID + "'"
+		for _, l := range logs[1:] {
+			inList += ",'" + l.CorrID + "'"
+		}
+		sqlStr := `SELECT corr_id,
+			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN credits WHEN type='refund' THEN -credits ELSE 0 END),0) AS credits
+			FROM billing_transactions WHERE corr_id IN (` + inList + `) GROUP BY corr_id`
+		_ = db.Engine.SQL(sqlStr).Find(&rows)
+		for _, r := range rows {
+			creditsMap[r.CorrID] = r.Credits
+		}
+	}
+
+	type logWithCredits struct {
+		model.LLMLog
+		CreditsCharged int64 `json:"credits_charged"`
+	}
+	result := make([]logWithCredits, len(logs))
+	for i, l := range logs {
+		result[i] = logWithCredits{LLMLog: l, CreditsCharged: creditsMap[l.CorrID]}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"logs":      logs,
+		"logs":      result,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// GET /v1/llm-logs/:id  （用户查自己某条日志的完整详情，含 upstream_request）
+func UserGetLLMLog(c *gin.Context) {
+	userID := c.MustGet("user_id").(int64)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var log model.LLMLog
+	has, err := db.Engine.ID(id).Where("user_id = ?", userID).Get(&log)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !has {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	c.JSON(http.StatusOK, log)
 }

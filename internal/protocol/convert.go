@@ -386,6 +386,13 @@ func openAIToGemini(req map[string]interface{}) (map[string]interface{}, error) 
 		genCfg["topP"] = tp
 	}
 	// stream is controlled via URL suffix for Gemini, not body field
+
+	// response_modalities → generationConfig.responseModalities
+	// 用于图片生成等需要 IMAGE 输出的场景（如 gemini-2.5-flash-image）
+	if rm, ok := req["response_modalities"]; ok {
+		genCfg["responseModalities"] = rm
+	}
+
 	if len(genCfg) > 0 {
 		out["generationConfig"] = genCfg
 	}
@@ -483,6 +490,7 @@ func geminiToOpenAI(body []byte) ([]byte, error) {
 	finishReason := "stop"
 	var content string
 	var toolCalls []map[string]interface{}
+	var inlineImages []map[string]interface{}
 
 	candidates, _ := resp["candidates"].([]interface{})
 	if len(candidates) > 0 {
@@ -506,6 +514,18 @@ func geminiToOpenAI(body []byte) ([]byte, error) {
 					if text, ok := pm["text"].(string); ok {
 						content += text
 					}
+					if id, ok := pm["inlineData"].(map[string]interface{}); ok {
+						mime, _ := id["mimeType"].(string)
+						data, _ := id["data"].(string)
+						if mime != "" && data != "" {
+							inlineImages = append(inlineImages, map[string]interface{}{
+								"type": "image_url",
+								"image_url": map[string]interface{}{
+									"url": "data:" + mime + ";base64," + data,
+								},
+							})
+						}
+					}
 					if fc, ok := pm["functionCall"].(map[string]interface{}); ok {
 						name, _ := fc["name"].(string)
 						argsBytes, _ := json.Marshal(fc["args"])
@@ -524,7 +544,20 @@ func geminiToOpenAI(body []byte) ([]byte, error) {
 		}
 	}
 
-	message := map[string]interface{}{"role": "assistant", "content": content}
+	// 构建 message content：纯文本时用字符串，含图片时用 content array
+	var messageContent interface{}
+	if len(inlineImages) > 0 {
+		var parts []map[string]interface{}
+		if content != "" {
+			parts = append(parts, map[string]interface{}{"type": "text", "text": content})
+		}
+		parts = append(parts, inlineImages...)
+		messageContent = parts
+	} else {
+		messageContent = content
+	}
+
+	message := map[string]interface{}{"role": "assistant", "content": messageContent}
 	if len(toolCalls) > 0 {
 		message["content"] = nil
 		message["tool_calls"] = toolCalls

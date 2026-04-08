@@ -146,6 +146,7 @@ func main() {
 		authed.GET("/v1/tasks", handler.ListUserTasks)
 		authed.GET("/v1/tasks/:id", handler.GetTask)
 		authed.GET("/v1/llm-logs", handler.UserListLLMLogs)
+		authed.GET("/v1/llm-logs/:id", handler.UserGetLLMLog)
 
 		// 公开 API（需要 API Key）
 		v1 := authed.Group("/v1")

@@ -18,6 +18,8 @@ type LLMLog struct {
 	CorrID           string    `xorm:"index 'corr_id'" json:"corr_id"`
 	Model            string    `xorm:"default('') 'model'" json:"model"`                             // 请求中的 model 字段（原始客户端值）
 	IsStream         bool      `xorm:"'is_stream'" json:"is_stream"`                                 // 是否流式请求
+	UpstreamURL      string    `xorm:"text default('') 'upstream_url'" json:"upstream_url"`          // 实际发往上游的完整 URL（含 {model} 替换后）
+	UpstreamMethod   string    `xorm:"default('POST') 'upstream_method'" json:"upstream_method"`     // 上游请求方式
 	UpstreamRequest  JSON      `xorm:"jsonb 'upstream_request'" json:"upstream_request"`             // 发往上游的完整 JSON body
 	UpstreamStatus   int       `xorm:"default(0) 'upstream_status'" json:"upstream_status"`          // 上游 HTTP 状态码
 	UpstreamResponse JSON      `xorm:"jsonb 'upstream_response'" json:"upstream_response,omitempty"` // 上游响应 JSON（同步模式存完整响应，流式模式存 usage chunk）

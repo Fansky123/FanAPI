@@ -40,3 +40,9 @@ export const payApi = {
   createEpayOrder: (data) => http.post('/pay/epay/create', data),
 }
 
+// LLM 日志（需登录）
+export const llmLogApi = {
+  list: (params = {}) => http.get('/v1/llm-logs', { params }),
+  get: (id) => http.get(`/v1/llm-logs/${id}`),
+}
+
