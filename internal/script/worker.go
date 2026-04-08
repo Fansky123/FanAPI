@@ -173,8 +173,8 @@ func execJob(ctx context.Context, job *model.TaskJob) *model.WorkerResult {
 		return fail(errMsg)
 	}
 
-	// response_script 返回 status=3 表示业务失败
-	if statusVal, _ := respData["status"].(float64); int(statusVal) == 3 {
+	// response_script 返回 status=3 表示业务失败（兼容 goja 导出的 int64/float64/int）
+	if statusVal := toIntVal(respData["status"]); statusVal == 3 {
 		return fail("upstream failed: " + fmt.Sprintf("%v", respData["msg"]))
 	}
 
@@ -282,4 +282,19 @@ func DetectUpstreamError(resp map[string]interface{}) (string, bool) {
 	}
 
 	return "", false
+}
+
+// toIntVal 从 goja 脚本导出的值中提取整数，兼容 int64/float64/int/int32。
+func toIntVal(v interface{}) int {
+	switch n := v.(type) {
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int32:
+		return int(n)
+	}
+	return 0
 }

@@ -170,7 +170,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		mappedResp = mapped
 	}
 
-	statusVal, _ := mappedResp["status"].(float64)
+	statusVal := toIntField(mappedResp, "status")
 	upstreamResp := toJSON(rawResp)
 
 	// 错误检测
@@ -195,7 +195,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		}
 	}
 
-	switch int(statusVal) {
+	switch statusVal {
 	case 2: // 成功
 		result := toJSON(mappedResp)
 		db.Engine.Where("id = ?", task.ID).
@@ -216,17 +216,28 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 			"upstream failed: "+failMsg)
 
 	default: // 仍在处理中
-		prog := 0
-		if p, ok := mappedResp["progress"]; ok {
-			switch pv := p.(type) {
-			case float64:
-				prog = int(pv)
-			case int:
-				prog = pv
-			}
-		}
+		prog := toIntField(mappedResp, "progress")
 		db.Engine.Where("id = ?", task.ID).Cols("upstream_response", "progress").
 			Update(&model.Task{UpstreamResponse: upstreamResp, Progress: prog})
-		log.Printf("[poller] task %d still processing (status=%d, progress=%d)", task.ID, int(statusVal), prog)
+		log.Printf("[poller] task %d still processing (status=%d, progress=%d)", task.ID, statusVal, prog)
 	}
+}
+
+// toIntField 从 map 里安全取整数值，兼容 goja 导出的 int64 / float64 / int。
+func toIntField(m map[string]interface{}, key string) int {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int32:
+		return int(n)
+	}
+	return 0
 }

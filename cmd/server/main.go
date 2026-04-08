@@ -34,6 +34,12 @@ func main() {
 	}
 	log.Println("redis connected")
 
+	// 启动时清除渠道缓存，确保 poller/worker 使用 DB 中最新的脚本和配置
+	if keys, err := cache.Client.Keys(context.Background(), "channel:*").Result(); err == nil && len(keys) > 0 {
+		cache.Client.Del(context.Background(), keys...)
+		log.Printf("cleared %d channel cache keys on startup", len(keys))
+	}
+
 	if err := mq.Init(&cfg.NATS); err != nil {
 		log.Fatalf("nats: %v", err)
 	}
