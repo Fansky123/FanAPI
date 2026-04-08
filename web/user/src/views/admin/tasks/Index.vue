@@ -71,7 +71,7 @@
       />
     </el-card>
 
-    <el-drawer v-model="drawerVisible" title="任务详情" size="56%">
+    <el-drawer v-model="drawerVisible" title="任务详情" size="56%" @close="onDrawerClose">
       <template v-if="currentTask">
         <el-descriptions :column="2" border style="margin-bottom: 16px">
           <el-descriptions-item label="Task ID">{{ currentTask.id }}</el-descriptions-item>
@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted } from 'vue'
 import { taskApi } from '@/api/admin'
 
 const tasks = ref([])
@@ -115,6 +115,26 @@ const total = ref(0)
 const drawerVisible = ref(false)
 const currentTask = ref(null)
 const filters = reactive({ task_id: '', user_id: '', type: '', status: '', dateRange: null })
+
+let refreshTimer = null
+
+function startAutoRefresh(id) {
+  stopAutoRefresh()
+  refreshTimer = setInterval(async () => {
+    if (!drawerVisible.value) { stopAutoRefresh(); return }
+    const res = await taskApi.get(id)
+    currentTask.value = res.task
+    if (res.task?.status !== 'processing' && res.task?.status !== 'pending') {
+      stopAutoRefresh()
+    }
+  }, 3000)
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+}
+
+onUnmounted(stopAutoRefresh)
 
 onMounted(fetchTasks)
 
@@ -150,6 +170,13 @@ async function openDetail(id) {
   const res = await taskApi.get(id)
   currentTask.value = res.task
   drawerVisible.value = true
+  if (res.task?.status === 'processing' || res.task?.status === 'pending') {
+    startAutoRefresh(id)
+  }
+}
+
+function onDrawerClose() {
+  stopAutoRefresh()
 }
 
 function pretty(value) {

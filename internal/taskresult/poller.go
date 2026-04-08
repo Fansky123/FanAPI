@@ -133,28 +133,39 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("[poller] task %d: upstream returned %d: %s", task.ID, resp.StatusCode, string(body))
-		return
-	}
-
-	var rawResp map[string]interface{}
-	if err := json.Unmarshal(body, &rawResp); err != nil {
-		log.Printf("[poller] task %d: invalid JSON from upstream: %v", task.ID, err)
-		return
-	}
 
 	// 记录本次轮询请求信息，方便管理端排障
 	upstreamReqInfo := model.JSON{"url": queryURL, "method": method}
 	db.Engine.Where("id = ?", task.ID).Cols("upstream_request").
 		Update(&model.Task{UpstreamRequest: upstreamReqInfo})
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errBody := model.JSON{"http_status": resp.StatusCode, "body": string(body)}
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_response").
+			Update(&model.Task{UpstreamResponse: errBody})
+		log.Printf("[poller] task %d: upstream returned %d: %s", task.ID, resp.StatusCode, string(body))
+		return
+	}
+
+	var rawResp map[string]interface{}
+	if err := json.Unmarshal(body, &rawResp); err != nil {
+		errBody := model.JSON{"parse_error": err.Error(), "body": string(body)}
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_response").
+			Update(&model.Task{UpstreamResponse: errBody})
+		log.Printf("[poller] task %d: invalid JSON from upstream: %v", task.ID, err)
+		return
+	}
+
+	// 解析成功后立即写入原始响应，确保脚本报错时管理端也能看到上游返回了什么
+	db.Engine.Where("id = ?", task.ID).Cols("upstream_response").
+		Update(&model.Task{UpstreamResponse: toJSON(rawResp)})
+
 	mappedResp := rawResp
 	if ch.QueryScript != "" {
 		mapped, scriptErr := script.RunMapResponse(ch.QueryScript, rawResp)
 		if scriptErr != nil {
 			log.Printf("[poller] task %d: query_script error: %v", task.ID, scriptErr)
-			return
+			return // upstream_response 已写入，管理端可看到原始响应排查脚本问题
 		}
 		mappedResp = mapped
 	}
