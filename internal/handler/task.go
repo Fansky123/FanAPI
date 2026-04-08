@@ -180,6 +180,12 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		base.Status = statusVal
 		base.URL = url
 		base.Msg = msg
+		// 多结果任务（如音乐每次生成两首）
+		if items, ok := task.Result["items"]; ok {
+			if arr, ok := items.([]interface{}); ok {
+				base.Items = arr
+			}
+		}
 		return base
 
 	case "failed":

@@ -287,3 +287,44 @@ func CreateAudioTask(c *gin.Context) {
 	}
 	createTask(c, "audio", req.ToMap())
 }
+
+// bindMusicRequest 将请求 body 解析为 MusicRequest 并合并 Extra 字段。
+func bindMusicRequest(bodyBytes []byte) (*model.MusicRequest, error) {
+	var req model.MusicRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		return nil, err
+	}
+	if req.Model == "" {
+		return nil, fmt.Errorf("model is required")
+	}
+	var raw map[string]interface{}
+	_ = json.Unmarshal(bodyBytes, &raw)
+	known := map[string]bool{
+		"model": true, "input_type": true, "mv_version": true, "make_instrumental": true,
+		"gpt_description_prompt": true, "prompt": true, "tags": true, "title": true,
+		"continue_clip_id": true, "continue_at": true, "cover_clip_id": true,
+		"task": true, "metadata_params": true, "callback_url": true,
+	}
+	req.Extra = make(map[string]interface{})
+	for k, v := range raw {
+		if !known[k] {
+			req.Extra[k] = v
+		}
+	}
+	return &req, nil
+}
+
+// POST /v1/music
+func CreateMusicTask(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		return
+	}
+	req, err := bindMusicRequest(bodyBytes)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	createTask(c, "music", req.ToMap())
+}

@@ -198,8 +198,12 @@ func seedChannels() error {
 		timeoutMs      int64
 		requestScript  string
 		responseScript string
+		queryURL       string
+		queryTimeoutMs int64
+		queryScript    string
 		billingType    string
 		billingConfig  string
+		headers        model.JSON // nil 则使用默认 ChatFire Key
 	}
 
 	seeds := []channelSeed{
@@ -264,22 +268,95 @@ func seedChannels() error {
 				}
 			}`,
 		},
+		{
+			name:      "Suno V5 音乐生成",
+			modelName: "suno-music",
+			chType:    "music",
+			baseURL:   "YOUR_SUNO_BASE_URL/_open/suno/music/generate",
+			timeoutMs: 120000,
+			requestScript: `function mapRequest(input) {
+    var b = {
+        mvVersion:        input.mv_version || 'chirp-v5',
+        inputType:        input.input_type  || '10',
+        makeInstrumental: input.make_instrumental !== undefined ? input.make_instrumental : false,
+        callbackUrl:      input.callback_url || ''
+    };
+    if (b.inputType === '10') {
+        b.gptDescriptionPrompt = input.gpt_description_prompt || '';
+    } else {
+        b.prompt = input.prompt || '';
+        b.tags   = input.tags   || '';
+        b.title  = input.title  || '';
+        if (input.continue_clip_id) { b.continueClipId = input.continue_clip_id; }
+        if (input.continue_at)      { b.continueAt     = input.continue_at; }
+        if (input.cover_clip_id)    { b.coverClipId    = input.cover_clip_id; }
+        if (input.task) { b.task = input.task; b.metadataParams = input.metadata_params || {}; }
+    }
+    return b;
+}`,
+			responseScript: `function mapResponse(output) {
+    if (!output || output.code !== 200) {
+        return { status: 3, msg: (output && output.msg) ? output.msg : '提交任务失败' };
+    }
+    var taskBatchId = output.data && output.data.taskBatchId;
+    if (!taskBatchId) { return { status: 3, msg: '上游未返回 taskBatchId' }; }
+    return { status: 1, upstream_task_id: String(taskBatchId), msg: '生成中' };
+}`,
+			billingType:    "count",
+			billingConfig:  `{"base_price": 5000000}`,
+			queryURL:       "YOUR_SUNO_BASE_URL/_open/suno/music/getState?taskBatchId={id}",
+			queryTimeoutMs: 30000,
+			queryScript: `function mapResponse(output) {
+    if (!output || output.code !== 200) {
+        return { status: 3, msg: (output && output.msg) ? output.msg : '查询失败' };
+    }
+    var data = output.data || {};
+    var taskStatus = data.taskStatus || '';
+    var items = data.items || [];
+    if (taskStatus !== 'finished') {
+        var tot = 0;
+        for (var i = 0; i < items.length; i++) { tot += (items[i].progress || 0); }
+        return { status: 1, msg: '生成中', progress: items.length > 0 ? Math.round(tot / items.length) : 0 };
+    }
+    var ok = [];
+    for (var j = 0; j < items.length; j++) {
+        var it = items[j];
+        if (it.status === 30) {
+            ok.push({ id: it.id||'', clip_id: it.clipId||'', title: it.title||'', tags: it.tags||'',
+                      prompt: it.prompt||'', duration: it.duration||0,
+                      audio_url: it.cld2AudioUrl||'', image_url: it.cld2ImageUrl||'', progress_msg: it.progressMsg||'' });
+        }
+    }
+    if (ok.length === 0) {
+        return { status: 3, code: 500, msg: (items[0] && items[0].progressMsg) ? items[0].progressMsg : '创作失败' };
+    }
+    return { status: 2, code: 200, msg: '创作完成', items: ok };
+}`,
+			headers: model.JSON{"Authorization": "Bearer YOUR_SUNO_KEY", "Content-Type": "application/json"},
+		},
 	}
 
 	for _, s := range seeds {
 		var bc model.JSON
 		_ = json.Unmarshal([]byte(s.billingConfig), &bc)
+		headers := s.headers
+		if headers == nil {
+			headers = model.JSON{"Authorization": "Bearer YOUR_CHATFIRE_KEY", "Content-Type": "application/json"}
+		}
 		ch := &model.Channel{
 			Name:           s.name,
 			Model:          s.modelName,
 			Type:           s.chType,
 			BaseURL:        s.baseURL,
 			Method:         "POST",
-			Headers:        model.JSON{"Authorization": "Bearer YOUR_CHATFIRE_KEY", "Content-Type": "application/json"},
+			Headers:        headers,
 			TimeoutMs:      s.timeoutMs,
 			RequestScript:  s.requestScript,
 			ResponseScript: s.responseScript,
+			QueryURL:       s.queryURL,
 			QueryMethod:    "GET",
+			QueryTimeoutMs: s.queryTimeoutMs,
+			QueryScript:    s.queryScript,
 			BillingType:    s.billingType,
 			BillingConfig:  bc,
 			Protocol:       "openai",

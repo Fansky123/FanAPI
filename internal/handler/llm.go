@@ -617,10 +617,11 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	apiKey := ""
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
-			if strings.EqualFold(k, "authorization") && strings.HasPrefix(sv, "Bearer ") {
-				apiKey = strings.TrimPrefix(sv, "Bearer ")
+			resolved := script.ResolveHeaderValue(sv)
+			if strings.EqualFold(k, "authorization") && strings.HasPrefix(resolved, "Bearer ") {
+				apiKey = strings.TrimPrefix(resolved, "Bearer ")
 			}
-			upReq.Header.Set(k, sv)
+			upReq.Header.Set(k, resolved)
 		}
 	}
 

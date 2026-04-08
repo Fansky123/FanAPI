@@ -698,21 +698,22 @@ console.log("Task ID:", task_id);</pre>
 
   <!-- AUDIO -->
   <div class="section">
-    <div class="section-title">4 · 音频生成</div>
+    <div class="section-title">4 · 音频生成（TTS / 语音合成）</div>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method POST">POST</span>
         <span class="ep-path">/v1/audio</span>
-        <span class="ep-desc">创建音频生成任务（异步，返回 task_id）</span>
+        <span class="ep-desc">创建语音合成 / TTS 任务（异步，返回 task_id）</span>
       </div>
       <div class="ep-body">
+        <p class="note">此接口用于 <b>文字转语音（TTS）</b> 等音频合成场景。如需 Suno AI 音乐创作，请使用第 5 节的 <code>/v1/music</code> 接口。</p>
         <h4>Request Body</h4>
         <table>
           <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
-          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称如 <code>music-gen</code></td></tr>
-          <tr><td>prompt</td><td>string</td><td><span class="req">必填</span></td><td>歌词 / 描述</td></tr>
-          <tr><td>style</td><td>string</td><td><span class="opt">可选</span></td><td>风格描述</td></tr>
-          <tr><td>duration</td><td>int</td><td><span class="opt">可选</span></td><td>时长（秒）</td></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称，如 <code>tts-gen</code></td></tr>
+          <tr><td>input</td><td>string</td><td><span class="req">必填</span></td><td>待合成的文本内容（TTS 场景）</td></tr>
+          <tr><td>voice</td><td>string</td><td><span class="opt">可选</span></td><td>发音人 / 音色，如 <code>alloy</code></td></tr>
+          <tr><td>duration</td><td>int</td><td><span class="opt">可选</span></td><td>目标时长（秒），用于计费预扣</td></tr>
         </table>
         <h4>示例</h4>
         <div class="code-tabs">
@@ -807,9 +808,120 @@ console.log("Task ID:", task_id);</pre>
     </div>
   </div>
 
+  <!-- MUSIC -->
+  <div class="section">
+    <div class="section-title">5 · 音乐生成（Suno）</div>
+    <div class="endpoint">
+      <div class="ep-header" onclick="toggle(this)">
+        <span class="method POST">POST</span>
+        <span class="ep-path">/v1/music</span>
+        <span class="ep-desc">提交 Suno AI 音乐创作任务（异步，返回 task_id）</span>
+      </div>
+      <div class="ep-body">
+        <p class="note">每次创作同时生成 <b>2 首</b>歌曲，完成后通过 <code>/v1/tasks/:id</code> 获取结果（<code>items</code> 数组）。</p>
+        <h4>Request Body</h4>
+        <table>
+          <tr><th>字段</th><th>类型</th><th></th><th>说明</th></tr>
+          <tr><td>model</td><td>string</td><td><span class="req">必填</span></td><td>渠道名称，如 <code>suno-music</code></td></tr>
+          <tr><td>input_type</td><td>string</td><td><span class="req">必填</span></td><td><code>"10"</code> 灵感模式 &nbsp;|&nbsp; <code>"20"</code> 自定义/歌词模式</td></tr>
+          <tr><td>mv_version</td><td>string</td><td><span class="opt">可选</span></td><td>模型版本，默认 <code>chirp-v5</code>；可选：<code>chirp-v4-5+</code> / <code>chirp-v4-5</code> / <code>chirp-v4</code> / <code>chirp-v3-5</code></td></tr>
+          <tr><td>make_instrumental</td><td>bool</td><td><span class="opt">可选</span></td><td>是否纯音乐（无人声），默认 <code>false</code></td></tr>
+          <tr><td>gpt_description_prompt</td><td>string</td><td><span class="opt">灵感模式必填</span></td><td>用自然语言描述想要的歌曲，Suno 自动生成歌词</td></tr>
+          <tr><td>prompt</td><td>string</td><td><span class="opt">歌词模式必填</span></td><td>完整歌词内容，支持 <code>[Verse]</code>/<code>[Chorus]</code> 等结构标记</td></tr>
+          <tr><td>tags</td><td>string</td><td><span class="opt">可选</span></td><td>音乐风格，如 <code>pop,female voice</code></td></tr>
+          <tr><td>title</td><td>string</td><td><span class="opt">可选</span></td><td>歌曲名称</td></tr>
+          <tr><td>continue_clip_id</td><td>string</td><td><span class="opt">可选</span></td><td>续写：已有歌曲的 clipId 或 MP3 URL（扩展/续写模式）</td></tr>
+          <tr><td>continue_at</td><td>string</td><td><span class="opt">可选</span></td><td>续写起始时间（秒），如 <code>"70"</code> 表示从 1:10 开始</td></tr>
+          <tr><td>cover_clip_id</td><td>string</td><td><span class="opt">可选</span></td><td>Cover 翻唱：参考音频 MP3 URL</td></tr>
+          <tr><td>task</td><td>string</td><td><span class="opt">可选</span></td><td><code>underpainting</code> 给人声添加伴奏 &nbsp;|&nbsp; <code>overpainting</code> 给伴奏添加人声</td></tr>
+          <tr><td>metadata_params</td><td>object</td><td><span class="opt">可选</span></td><td>underpainting/overpainting 附加参数：<code>underpainting_clip_id</code>/<code>overpainting_clip_id</code>、<code>_start_s</code>、<code>_end_s</code></td></tr>
+          <tr><td>callback_url</td><td>string</td><td><span class="opt">可选</span></td><td>任务状态变更回调 URL（不填则不推送）</td></tr>
+        </table>
+        <h4>示例（灵感模式）</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'python')">Python</button>
+            <button class="tab" onclick="switchLang(this,'node')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl">curl -X POST "http://localhost:8080/v1/music" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d &#39;{"model":"suno-music","input_type":"10","mv_version":"chirp-v5","make_instrumental":false,"gpt_description_prompt":"一首关于兄弟情义的歌"}&#39;</pre>
+          <pre class="code-pane" data-lang="python" hidden>import requests
+
+resp = requests.post(
+    "http://localhost:8080/v1/music",
+    headers={"X-API-Key": "YOUR_SK"},
+    json={
+        "model": "suno-music",
+        "input_type": "10",
+        "mv_version": "chirp-v5",
+        "make_instrumental": False,
+        "gpt_description_prompt": "一首关于兄弟情义的歌"
+    }
+)
+task_id = resp.json()["task_id"]
+print("Task ID:", task_id)</pre>
+          <pre class="code-pane" data-lang="node" hidden>const resp = await fetch("http://localhost:8080/v1/music", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "suno-music",
+    input_type: "10",
+    mv_version: "chirp-v5",
+    make_instrumental: false,
+    gpt_description_prompt: "一首关于兄弟情义的歌"
+  })
+});
+const { task_id } = await resp.json();
+console.log("Task ID:", task_id);</pre>
+        </div>
+        <h4>示例（自定义歌词模式）</h4>
+        <div class="code-tabs">
+          <div class="tab-bar">
+            <button class="tab active" onclick="switchLang(this,'curl2')">cURL</button>
+            <button class="tab" onclick="switchLang(this,'node2')">Node.js</button>
+          </div>
+          <pre class="code-pane" data-lang="curl2">curl -X POST "http://localhost:8080/v1/music" \
+  -H "X-API-Key: YOUR_SK" \
+  -H "Content-Type: application/json" \
+  -d &#39;{"model":"suno-music","input_type":"20","mv_version":"chirp-v5","make_instrumental":false,"prompt":"[主歌]\n星光灿烂 夜色朦胧\n勇敢前行 不问结果\n[副歌]\n在路上 勇敢追梦","tags":"folk,male voice","title":"在路上"}&#39;</pre>
+          <pre class="code-pane" data-lang="node2" hidden>const resp = await fetch("http://localhost:8080/v1/music", {
+  method: "POST",
+  headers: { "X-API-Key": "YOUR_SK", "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "suno-music",
+    input_type: "20",
+    mv_version: "chirp-v5",
+    make_instrumental: false,
+    prompt: "[主歌]\n星光灿烂 夜色朦胧\n勇敢前行 不问结果\n[副歌]\n在路上 勇敢追梦",
+    tags: "folk,male voice",
+    title: "在路上"
+  })
+});
+const { task_id } = await resp.json();</pre>
+        </div>
+        <h4>Response（提交成功）</h4>
+        <pre>{"task_id": 42}</pre>
+        <h4>完成后 GET /v1/tasks/42 返回示例</h4>
+        <pre>{"code":200,"status":2,"msg":"创作完成","task_id":42,"items":[
+  {"id":"1874135948011253762","clip_id":"fa03ad72-b5ef-4ad4-a981-bcfa458a6e29",
+   "title":"在路上","tags":"folk,male voice","duration":139,
+   "audio_url":"https://cdn1.suno.ai/fa03ad72-b5ef-4ad4-a981-bcfa458a6e29.mp3",
+   "image_url":"https://cdn2.suno.ai/image_b639f4e1-549b-4147-bfb8-a9564505951d.jpeg"},
+  {"id":"1874135948011253763","clip_id":"71359d0d-1d92-4d88-93a0-df7bccf85727",
+   "title":"在路上","tags":"folk,male voice","duration":143,
+   "audio_url":"https://cdn1.suno.ai/71359d0d-1d92-4d88-93a0-df7bccf85727.mp3",
+   "image_url":"https://cdn2.suno.ai/image_a6cd0b65-0b99-4e23-9476-17bdcd90d226.jpeg"}
+]}</pre>
+      </div>
+    </div>
+  </div>
+
   <!-- TASKS -->
   <div class="section">
-    <div class="section-title">5 · 任务查询</div>
+    <div class="section-title">6 · 任务查询</div>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method GET">GET</span>
@@ -968,7 +1080,7 @@ console.log("Result:", resultUrl);</pre>
 
   <!-- GROUP PRICING & CHANNELS -->
   <div class="section">
-    <div class="section-title">6 · 用户分组定价 &amp; 渠道列表</div>
+    <div class="section-title">7 · 用户分组定价 &amp; 渠道列表</div>
     <div class="endpoint">
       <div class="ep-header" onclick="toggle(this)">
         <span class="method GET">GET</span>
@@ -998,7 +1110,7 @@ console.log("Result:", resultUrl);</pre>
 
   <!-- LOAD BALANCING -->
   <div class="section">
-    <div class="section-title">7 · 渠道权重 &amp; 负载均衡</div>
+    <div class="section-title">8 · 渠道权重 &amp; 负载均衡</div>
     <p>
       系统根据每条渠道的 <strong>priority（优先级）</strong>和 <strong>weight（权重）</strong>自动选路：
     </p>
@@ -1018,7 +1130,7 @@ console.log("Result:", resultUrl);</pre>
 
   <!-- AUTH TYPES -->
   <div class="section">
-    <div class="section-title">8 · 渠道认证类型（auth_type）</div>
+    <div class="section-title">9 · 渠道认证类型（auth_type）</div>
     <p>创建/更新渠道时可指定 <code>auth_type</code>，系统据此自动构造上游鉴权头：</p>
     <table>
       <tr><th>auth_type</th><th>说明</th><th>附加字段</th></tr>
@@ -1032,7 +1144,7 @@ console.log("Result:", resultUrl);</pre>
 
   <!-- BALANCE -->
   <div class="section">
-    <div class="section-title">9 · 余额查询</div>
+    <div class="section-title">10 · 余额查询</div>
         <span class="ep-desc">查询当前 API Key 对应账户的剩余余额</span>
       </div>
       <div class="ep-body open">

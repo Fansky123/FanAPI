@@ -39,15 +39,16 @@ func (*Task) TableName() string { return "tasks" }
 //   - 2：成功（done）
 //   - 3：失败（failed）
 type TaskResult struct {
-	Code           int    `json:"code"`
-	URL            string `json:"url,omitempty"` // 生成结果 URL（成功时）
-	Status         int    `json:"status"`
-	Msg            string `json:"msg,omitempty"` // 状态描述或错误信息
-	TaskID         int64  `json:"task_id,omitempty"`
-	TaskType       string `json:"task_type,omitempty"`
-	ChannelID      int64  `json:"channel_id,omitempty"`
-	UpstreamTaskID string `json:"upstream_task_id,omitempty"`
-	CreditsCharged int64  `json:"credits_charged,omitempty"`
-	Request        JSON   `json:"request,omitempty"`
-	Result         JSON   `json:"result,omitempty"`
+	Code           int           `json:"code"`
+	URL            string        `json:"url,omitempty"`   // 生成结果 URL（成功时，单结果任务）
+	Items          []interface{} `json:"items,omitempty"` // 生成结果列表（多结果任务，如音乐每次返回两首）
+	Status         int           `json:"status"`
+	Msg            string        `json:"msg,omitempty"` // 状态描述或错误信息
+	TaskID         int64         `json:"task_id,omitempty"`
+	TaskType       string        `json:"task_type,omitempty"`
+	ChannelID      int64         `json:"channel_id,omitempty"`
+	UpstreamTaskID string        `json:"upstream_task_id,omitempty"`
+	CreditsCharged int64         `json:"credits_charged,omitempty"`
+	Request        JSON          `json:"request,omitempty"`
+	Result         JSON          `json:"result,omitempty"`
 }

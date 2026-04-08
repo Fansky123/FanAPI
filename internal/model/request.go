@@ -112,3 +112,56 @@ func (r *AudioRequest) ToMap() map[string]interface{} {
 	}
 	return m
 }
+
+// MusicRequest Suno 音乐生成接口的标准入参（平台统一格式）。
+//
+// 支持以下创作模式（由 InputType 区分）：
+//   - 灵感模式（InputType=10）：填写 GptDescriptionPrompt，平台自动生成歌词
+//   - 自定义/歌词模式（InputType=20）：手动填写 Prompt 歌词、Tags 风格、Title 标题
+//   - 续写模式（InputType=20 + ContinueClipID）：在已有音乐基础上续写
+//   - Cover 模式（InputType=20 + CoverClipID）：翻唱/改编已有音乐
+//   - 添加伴奏（Task=underpainting）：给纯音乐添加伴奏，MetadataParams 含 underpainting_clip_id
+//   - 添加人声（Task=overpainting）：给纯音乐添加人声，MetadataParams 含 overpainting_clip_id
+type MusicRequest struct {
+	Model                string                 `json:"model" binding:"required"`
+	InputType            string                 `json:"input_type"`             // "10"=灵感模式, "20"=自定义模式
+	MVVersion            string                 `json:"mv_version"`             // chirp-v5, chirp-v4-5+, chirp-v4-5, chirp-v4, chirp-v3-5
+	MakeInstrumental     interface{}            `json:"make_instrumental"`      // 是否纯音乐，bool 或 "true"/"false"
+	GptDescriptionPrompt string                 `json:"gpt_description_prompt"` // 灵感模式提示词（InputType=10）
+	Prompt               string                 `json:"prompt"`                 // 歌词内容（InputType=20）
+	Tags                 string                 `json:"tags"`                   // 音乐风格，如 "pop,female voice"
+	Title                string                 `json:"title"`                  // 歌曲名称
+	ContinueClipID       string                 `json:"continue_clip_id"`       // 续写 clipId 或音频 URL
+	ContinueAt           string                 `json:"continue_at"`            // 续写起始时间（秒）
+	CoverClipID          string                 `json:"cover_clip_id"`          // cover 参考音频 URL
+	Task                 string                 `json:"task"`                   // 特殊任务类型：underpainting / overpainting
+	MetadataParams       map[string]interface{} `json:"metadata_params"`        // underpainting/overpainting 附加参数
+	CallbackURL          string                 `json:"callback_url"`           // 任务状态回调 URL（可选）
+	Extra                map[string]interface{} `json:"-"`
+}
+
+// ToMap 将 MusicRequest 序列化为 map，供 billing 和 JS 脚本使用。
+func (r *MusicRequest) ToMap() map[string]interface{} {
+	m := map[string]interface{}{
+		"model":                  r.Model,
+		"input_type":             r.InputType,
+		"mv_version":             r.MVVersion,
+		"make_instrumental":      r.MakeInstrumental,
+		"gpt_description_prompt": r.GptDescriptionPrompt,
+		"prompt":                 r.Prompt,
+		"tags":                   r.Tags,
+		"title":                  r.Title,
+		"continue_clip_id":       r.ContinueClipID,
+		"continue_at":            r.ContinueAt,
+		"cover_clip_id":          r.CoverClipID,
+		"task":                   r.Task,
+		"metadata_params":        r.MetadataParams,
+		"callback_url":           r.CallbackURL,
+	}
+	for k, v := range r.Extra {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	return m
+}

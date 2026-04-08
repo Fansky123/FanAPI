@@ -158,6 +158,7 @@ func main() {
 			v1.POST("/image", handler.CreateImageTask)
 			v1.POST("/video", handler.CreateVideoTask)
 			v1.POST("/audio", handler.CreateAudioTask)
+			v1.POST("/music", handler.CreateMusicTask) // Suno 音乐生成
 		}
 	}
 

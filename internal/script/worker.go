@@ -206,7 +206,7 @@ func callUpstream(job *model.TaskJob, payload map[string]interface{}) (map[strin
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range job.Headers {
 		if sv, ok := v.(string); ok {
-			req.Header.Set(k, sv)
+			req.Header.Set(k, ResolveHeaderValue(sv))
 		}
 	}
 	if job.PoolKeyValue != "" {

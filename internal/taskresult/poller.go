@@ -121,7 +121,7 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	}
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
-			httpReq.Header.Set(k, sv)
+			httpReq.Header.Set(k, script.ResolveHeaderValue(sv))
 		}
 	}
 
@@ -143,6 +143,11 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 		log.Printf("[poller] task %d: invalid JSON from upstream: %v", task.ID, err)
 		return
 	}
+
+	// 记录本次轮询请求信息，方便管理端排障
+	upstreamReqInfo := model.JSON{"url": queryURL, "method": method}
+	db.Engine.Where("id = ?", task.ID).Cols("upstream_request").
+		Update(&model.Task{UpstreamRequest: upstreamReqInfo})
 
 	mappedResp := rawResp
 	if ch.QueryScript != "" {
@@ -200,6 +205,17 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 			"upstream failed: "+failMsg)
 
 	default: // 仍在处理中
-		log.Printf("[poller] task %d still processing (status=%d)", task.ID, int(statusVal))
+		prog := 0
+		if p, ok := mappedResp["progress"]; ok {
+			switch pv := p.(type) {
+			case float64:
+				prog = int(pv)
+			case int:
+				prog = pv
+			}
+		}
+		db.Engine.Where("id = ?", task.ID).Cols("upstream_response", "progress").
+			Update(&model.Task{UpstreamResponse: upstreamResp, Progress: prog})
+		log.Printf("[poller] task %d still processing (status=%d, progress=%d)", task.ID, int(statusVal), prog)
 	}
 }
