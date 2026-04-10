@@ -106,36 +106,29 @@ function mapResponse(output) {
         return { status: 3, msg: errMsg };
     }
 
-    var data   = output.data || {};
-    var st     = (data.status || '').toLowerCase();
-    var errMsg = data.msg || data.message || '';
+    var data = output.data || {};
+    var st   = data.status;   // 数字：1=处理中，2=成功，3=失败
 
-    if (st === 'failed' || st === 'error') {
-        return { status: 3, msg: errMsg || '生成失败' };
+    if (st === 3) {
+        return { status: 3, msg: data.message || '生成失败' };
     }
 
-    if (st !== 'success' && st !== 'completed' && st !== 'done' && st !== 'finish' && st !== 'finished') {
+    if (st !== 2) {
         return { status: 1, msg: '生成中' };
     }
 
-    // 收集结果图片 URL
-    var urls = [];
-    if (data.urls && data.urls.length > 0) {
-        urls = data.urls;
-    } else if (data.url) {
-        urls = [data.url];
-    }
-
+    // status=2 成功，图片在 data.result[]
+    var urls = data.result || [];
     if (urls.length === 0) {
         return { status: 3, msg: '上游未返回图片地址' };
     }
 
     return {
-        status:  2,
-        code:    200,
-        msg:     '生成完成',
-        url:     urls[0],
-        urls:    urls
+        status: 2,
+        code:   200,
+        msg:    '生成完成',
+        url:    urls[0],
+        urls:   urls
     };
 }
     $query_script$,
