@@ -334,6 +334,90 @@ func seedChannels() error {
 }`,
 			headers: model.JSON{"Authorization": "Bearer YOUR_SUNO_KEY", "Content-Type": "application/json"},
 		},
+		{
+			name:      "无音科技 - nanoBanana2 图片生成",
+			modelName: "nano-banana2",
+			chType:    "image",
+			baseURL:   "https://api.wuyinkeji.com/api/async/image_nanoBanana2",
+			timeoutMs: 120000,
+			headers:   model.JSON{"Content-Type": "application/json"},
+			requestScript: `function mapRequest(input) {
+    var out = {
+        key:    'YOUR_WUYINKEJI_KEY',
+        prompt: input.prompt || ''
+    };
+
+    if (input.size)         { out.size        = input.size; }
+    if (input.aspect_ratio) { out.aspectRatio = input.aspect_ratio; }
+    if (input.refer_images && input.refer_images.length > 0) {
+        out.urls = input.refer_images;
+    }
+
+    return out;
+}`,
+			responseScript: `function mapResponse(output) {
+    if (!output || output.code !== 200) {
+        var errMsg = (output && output.msg) ? output.msg : '提交任务失败';
+        return { status: 3, msg: errMsg };
+    }
+    var taskId = output.data && output.data.id;
+    if (!taskId) {
+        return { status: 3, msg: '上游未返回任务 id' };
+    }
+    return {
+        status:           1,
+        upstream_task_id: String(taskId),
+        msg:              '生成中'
+    };
+}`,
+			queryURL:       "https://api.wuyinkeji.com/api/async/detail?key=YOUR_WUYINKEJI_KEY&id={id}",
+			queryTimeoutMs: 30000,
+			queryScript: `function mapResponse(output) {
+    if (!output || output.code !== 200) {
+        var errMsg = (output && output.msg) ? output.msg : '查询失败';
+        return { status: 3, msg: errMsg };
+    }
+
+    var data = output.data || {};
+    var st   = data.status;
+
+    if (st === 3) {
+        return { status: 3, msg: data.message || '生成失败' };
+    }
+
+    if (st !== 2) {
+        return { status: 1, msg: '生成中' };
+    }
+
+    var urls = data.result || [];
+    if (urls.length === 0) {
+        return { status: 3, msg: '上游未返回图片地址' };
+    }
+
+    return {
+        status: 2,
+        code:   200,
+        msg:    '生成完成',
+        url:    urls[0],
+        urls:   urls
+    };
+}`,
+			billingType: "image",
+			billingConfig: `{
+				"base_price": 5000000,
+				"resolution_tiers": [
+					{"max_pixels": 1048576,  "multiplier": 1.0},
+					{"max_pixels": 4194304,  "multiplier": 2.0},
+					{"max_pixels": 9437184,  "multiplier": 3.0},
+					{"max_pixels": 16777216, "multiplier": 4.0}
+				],
+				"metric_paths": {
+					"size":         "request.size",
+					"aspect_ratio": "request.aspect_ratio",
+					"count":        "request.n"
+				}
+			}`,
+		},
 	}
 
 	for _, s := range seeds {
