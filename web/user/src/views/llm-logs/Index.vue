@@ -131,7 +131,7 @@ function statusType(status) {
 .llm-logs-page { max-width: 1400px; }
 .hero-card, .toolbar-card { margin-bottom: 16px; }
 .hero-row { display:flex;align-items:center;justify-content:space-between;gap:16px; }
-.eyebrow { color:#1e66ff;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em; }
+.eyebrow { color:#165dff;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em; }
 .hero-row h3 { margin:8px 0 10px;font-size:1.55rem; }
 .hero-row p { margin:0;color:#617086; }
 .toolbar-row { display:flex;align-items:center;gap:12px;flex-wrap:wrap; }

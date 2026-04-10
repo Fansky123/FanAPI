@@ -1,110 +1,131 @@
 <template>
-  <div class="app-shell">
+  <div class="ow-shell" :class="{ collapsed: sidebarCollapsed }">
     <!-- 自定义页眉 -->
-    <div v-if="site.headerHtml" class="custom-header" v-html="site.headerHtml"></div>
+    <div v-if="site.headerHtml" class="ow-custom-header" v-html="site.headerHtml"></div>
 
     <!-- 侧边栏 -->
-    <aside class="sidebar">
-      <div class="brand">
-        <img v-if="site.logoUrl && !logoImgErr" :src="site.logoUrl" class="brand-logo" alt="logo" @error="logoImgErr = true" />
-        <div v-else class="brand-icon">{{ site.siteName.charAt(0).toUpperCase() }}</div>
-        <span class="brand-name">{{ site.siteName }}</span>
+    <aside class="ow-sidebar">
+      <!-- Logo -->
+      <div class="ow-logo">
+        <img v-if="site.logoUrl && !logoImgErr" :src="site.logoUrl" class="logo-img" alt="logo" @error="logoImgErr = true" />
+        <div v-else class="logo-icon">{{ site.siteName.charAt(0).toUpperCase() }}</div>
+        <span class="logo-title" v-show="!sidebarCollapsed">{{ site.siteName }}</span>
       </div>
 
-      <nav class="nav">
-        <!-- 公开页面 -->
-        <router-link to="/models" class="nav-item" :class="{ active: route.path === '/models' }">
-          <el-icon><Grid /></el-icon><span>模型列表</span>
+      <!-- 导航 -->
+      <nav class="ow-nav">
+        <router-link to="/dashboard" class="ow-nav-item" :class="{ active: route.path === '/dashboard' }">
+          <el-icon><DataBoard /></el-icon>
+          <span v-show="!sidebarCollapsed">数据看板</span>
         </router-link>
-        <router-link to="/docs" class="nav-item" :class="{ active: route.path === '/docs' }">
-          <el-icon><Document /></el-icon><span>接口文档</span>
+        <router-link to="/models" class="ow-nav-item" :class="{ active: route.path === '/models' }">
+          <el-icon><Grid /></el-icon>
+          <span v-show="!sidebarCollapsed">模型列表</span>
         </router-link>
-        <!-- 需要登录的页面 -->
+        <router-link to="/docs" class="ow-nav-item" :class="{ active: route.path === '/docs' }">
+          <el-icon><Document /></el-icon>
+          <span v-show="!sidebarCollapsed">接口文档</span>
+        </router-link>
+        <router-link to="/tasks" class="ow-nav-item" :class="{ active: route.path === '/tasks' || route.path === '/llm-logs' }">
+          <el-icon><List /></el-icon>
+          <span v-show="!sidebarCollapsed">调用日志</span>
+        </router-link>
         <template v-if="isLoggedIn">
-          <router-link to="/playground" class="nav-item" :class="{ active: route.path === '/playground' }">
-            <el-icon><ChatDotRound /></el-icon><span>在线体验</span>
+          <div class="ow-nav-section" v-show="!sidebarCollapsed">在线体验</div>
+          <router-link to="/playground" class="ow-nav-item" :class="{ active: route.path === '/playground' }">
+            <el-icon><ChatDotRound /></el-icon>
+            <span v-show="!sidebarCollapsed">文本对话</span>
           </router-link>
-          <router-link to="/keys" class="nav-item" :class="{ active: route.path === '/keys' }">
-            <el-icon><Key /></el-icon><span>API 密钥</span>
+          <div class="ow-nav-section" v-show="!sidebarCollapsed">账户管理</div>
+          <router-link to="/keys" class="ow-nav-item" :class="{ active: route.path === '/keys' }">
+            <el-icon><Key /></el-icon>
+            <span v-show="!sidebarCollapsed">API 密钥</span>
           </router-link>
-          <router-link to="/billing" class="nav-item" :class="{ active: route.path === '/billing' }">
-            <el-icon><Wallet /></el-icon><span>钱包 & 账单</span>
+          <router-link to="/recharge" class="ow-nav-item" :class="{ active: route.path === '/recharge' }">
+            <el-icon><CreditCard /></el-icon>
+            <span v-show="!sidebarCollapsed">充值积分</span>
           </router-link>
-          <router-link to="/tasks" class="nav-item" :class="{ active: route.path === '/tasks' }">
-            <el-icon><List /></el-icon><span>任务日志</span>
-          </router-link>
-          <router-link to="/llm-logs" class="nav-item" :class="{ active: route.path === '/llm-logs' }">
-            <el-icon><ChatLineSquare /></el-icon><span>LLM 日志</span>
+          <router-link to="/billing" class="ow-nav-item" :class="{ active: route.path === '/billing' }">
+            <el-icon><Wallet /></el-icon>
+            <span v-show="!sidebarCollapsed">我的订单</span>
           </router-link>
         </template>
       </nav>
 
-      <div class="sidebar-footer">
+      <!-- 侧边栏底部 -->
+      <div class="ow-sidebar-footer" v-show="!sidebarCollapsed">
         <template v-if="isLoggedIn">
-          <div class="balance-mini">
-            <span class="balance-label">余额</span>
-            <span class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</span>
+          <div class="balance-row" @click="router.push('/billing')">
+            <el-icon><Wallet /></el-icon>
+            <span>¥{{ (store.balance / 1e6).toFixed(4) }}</span>
           </div>
-          <div class="logout-btn" @click="logout">
+          <div class="logout-row" @click="logout">
             <el-icon><SwitchButton /></el-icon>
-            <span>退出</span>
+            <span>退出登录</span>
           </div>
         </template>
         <template v-else>
-          <router-link to="/login" class="auth-btn primary-btn">登录</router-link>
-          <router-link to="/register" class="auth-btn ghost-btn">注册</router-link>
+          <router-link to="/login" class="ow-footer-btn primary">登录</router-link>
+          <router-link to="/register" class="ow-footer-btn outline">注册</router-link>
         </template>
+      </div>
+
+      <!-- 折叠按钮 -->
+      <div class="ow-collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed">
+        <el-icon><DArrowLeft v-if="!sidebarCollapsed" /><DArrowRight v-else /></el-icon>
       </div>
     </aside>
 
     <!-- 主区域 -->
-    <div class="main-area">
-      <!-- 顶部栏 -->
-      <header class="topbar">
-        <div class="topbar-left">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item>{{ site.siteName }}</el-breadcrumb-item>
-            <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
-          </el-breadcrumb>
-          <h1 class="page-title">{{ pageTitle }}</h1>
+    <div class="ow-main">
+      <!-- 顶部 Header -->
+      <header class="ow-header">
+        <div class="header-left">
+          <span class="header-page">{{ pageTitle }}</span>
         </div>
-        <div class="topbar-right">
+        <div class="header-right">
           <template v-if="isLoggedIn">
-            <el-tag size="large" type="info" effect="plain" class="balance-tag" @click="router.push('/billing')" style="cursor:pointer">
+            <div class="balance-chip" @click="router.push('/billing')">
               <el-icon><Wallet /></el-icon>
-              余额 ¥{{ (store.balance / 1e6).toFixed(4) }}
-            </el-tag>
-            <el-dropdown @command="handleCmd">
+              <span>¥{{ (store.balance / 1e6).toFixed(4) }}</span>
+            </div>
+            <el-dropdown @command="handleCmd" trigger="click">
               <div class="avatar-btn">
                 <div class="avatar-circle">{{ userInitial }}</div>
-                <el-icon><ArrowDown /></el-icon>
+                <span class="avatar-name">{{ store.username || store.email || '用户' }}</span>
+                <el-icon style="font-size:12px;opacity:.6"><ArrowDown /></el-icon>
               </div>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="billing">钱包 & 账单</el-dropdown-item>
-                  <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                  <el-dropdown-item command="billing">
+                    <el-icon><Wallet /></el-icon> 钱包 &amp; 账单
+                  </el-dropdown-item>
+                  <el-dropdown-item command="logout" divided>
+                    <el-icon><SwitchButton /></el-icon> 退出登录
+                  </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </template>
           <template v-else>
             <router-link to="/login">
-              <el-button>登录</el-button>
+              <el-button size="small">登录</el-button>
             </router-link>
             <router-link to="/register">
-              <el-button type="primary">免费注册</el-button>
+              <el-button type="primary" size="small">免费注册</el-button>
             </router-link>
           </template>
         </div>
       </header>
 
       <!-- 内容 -->
-      <main class="content">
+      <main class="ow-content">
+        <div v-if="site.headerHtml" style="display:none"></div>
         <router-view />
       </main>
 
       <!-- 自定义页脚 -->
-      <footer v-if="site.footerHtml" class="custom-footer" v-html="site.footerHtml"></footer>
+      <footer v-if="site.footerHtml" class="ow-custom-footer" v-html="site.footerHtml"></footer>
     </div>
   </div>
 </template>
@@ -115,7 +136,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import {
-  ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown, ChatLineSquare
+  ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown,
+  ChatLineSquare, DArrowLeft, DArrowRight, DataBoard, CreditCard
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -124,26 +146,20 @@ const store = useUserStore()
 const site = useSiteStore()
 
 const logoImgErr = ref(false)
+const sidebarCollapsed = ref(false)
 
 const isLoggedIn = computed(() => !!store.token)
 
-const navItems = [
-  { to: '/playground', label: '在线体验',  icon: 'ChatDotRound' },
-  { to: '/models',     label: '模型列表',  icon: 'Grid' },
-  { to: '/keys',       label: 'API 密钥', icon: 'Key' },
-  { to: '/billing',    label: '钱包 & 账单', icon: 'Wallet' },
-  { to: '/tasks',      label: '任务日志',  icon: 'List' },
-  { to: '/docs',       label: '接口文档',  icon: 'Document' },
-]
-
 const titles = {
-  '/playground': '在线体验',
+  '/dashboard': '数据看板',
+  '/playground': '文本对话',
   '/models':     '模型列表',
   '/keys':       'API 密钥',
-  '/billing':    '钱包 & 账单',
+  '/recharge':   '充值积分',
+  '/billing':    '我的订单',
   '/docs':       '接口文档',
-  '/tasks':      '任务日志',
-  '/llm-logs':   'LLM 日志',
+  '/tasks':      '调用日志',
+  '/llm-logs':   '调用日志',
 }
 const pageTitle = computed(() => titles[route.path] ?? site.siteName)
 const userInitial = computed(() => {
@@ -171,220 +187,290 @@ function handleCmd(cmd) {
 </script>
 
 <style scoped>
-/* ---- 整体布局 ---- */
-.app-shell {
+/* ── Shell ── */
+.ow-shell {
   display: flex;
   min-height: 100vh;
-  background: #f4f6fb;
-  flex-direction: column;
 }
 
-/* ---- 自定义页眉 / 页脚 ---- */
-.custom-header, .custom-footer {
-  width: 100%;
-}
+/* ── 自定义页眉 ── */
+.ow-custom-header { width: 100%; order: -1; }
 
-/* ---- 主体横向排列 ---- */
-.app-shell > .sidebar,
-.app-shell > .main-area {
+/* ── 侧边栏 ── */
+.ow-sidebar {
+  width: var(--ow-sidebar-w, 220px);
   flex-shrink: 0;
-}
-
-/* ---- Layout 横向 ---- */
-@media (min-width: 769px) {
-  .app-shell {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-  .custom-header {
-    order: -1;
-    width: 100%;
-  }
-  .custom-footer {
-    order: 999;
-    width: 100%;
-    /* push footer below the main-area */
-    margin-left: 220px;
-  }
-}
-
-/* ---- 侧边栏 ---- */
-.sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  background: #0d1526;
+  background: #edf3ff;
+  border-right: 1px solid #d0e2ff;
   display: flex;
   flex-direction: column;
-  padding: 0;
-  min-height: calc(100vh - 0px);
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  z-index: 100;
+  transition: width .25s ease;
+  overflow: hidden;
 }
 
-.brand {
+.ow-shell.collapsed .ow-sidebar {
+  width: 60px;
+}
+.ow-shell.collapsed .ow-main {
+  margin-left: 60px;
+}
+
+/* ── Logo ── */
+.ow-logo {
+  height: var(--ow-header-h, 48px);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-}
-.brand-icon {
-  width: 30px; height: 30px;
-  border-radius: 8px;
-  background: #1677ff;
-  display: grid; place-items: center;
-  font-weight: 800; color: #fff; font-size: .9rem;
+  padding: 0 16px;
+  border-bottom: 1px solid #d0e2ff;
   flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
-.brand-logo {
-  width: 30px; height: 30px;
-  border-radius: 8px;
+.logo-img {
+  width: 26px; height: 26px;
+  border-radius: 6px;
   object-fit: contain;
-  background: #fff;
   flex-shrink: 0;
 }
-.brand-name {
-  font-weight: 700;
+.logo-icon {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: var(--ow-primary, #165dff);
   color: #fff;
-  font-size: .95rem;
-  letter-spacing: .02em;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 13px;
+  flex-shrink: 0;
+}
+.logo-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ow-text, #1d2129);
+  letter-spacing: .01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.nav {
+/* ── Nav ── */
+.ow-nav {
   flex: 1;
-  padding: 12px 10px;
+  padding: 8px 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.nav-item {
+.ow-nav::-webkit-scrollbar { width: 0; }
+.ow-nav-section {
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ow-subtext, #86909c);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  user-select: none;
+}
+
+.ow-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  color: rgba(255,255,255,.6);
+  padding: 0 12px;
+  height: 40px;
+  border-radius: var(--ow-radius, 4px);
+  color: #4e5969;
   text-decoration: none;
-  font-size: .875rem;
+  font-size: 14px;
+  font-weight: 400;
   transition: all .15s;
+  position: relative;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.nav-item:hover {
-  background: rgba(255,255,255,.08);
-  color: rgba(255,255,255,.9);
+.ow-nav-item .el-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  color: inherit;
 }
-.nav-item.active {
-  background: rgba(22,119,255,.25);
-  color: #5ba4ff;
+.ow-nav-item:hover {
+  background: rgba(255,255,255,.65);
+  color: var(--ow-primary, #165dff);
 }
-.nav-item .el-icon { font-size: 1rem; flex-shrink: 0; }
+.ow-nav-item.active {
+  background: #fff;
+  color: var(--ow-primary, #165dff);
+  font-weight: 600;
+}
+.ow-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 25%; bottom: 25%;
+  width: 3px;
+  background: var(--ow-primary, #165dff);
+  border-radius: 0 3px 3px 0;
+}
 
-.sidebar-footer {
-  padding: 12px 10px;
-  border-top: 1px solid rgba(255,255,255,.06);
+/* ── Sidebar Footer ── */
+.ow-sidebar-footer {
+  padding: 10px 8px;
+  border-top: 1px solid #d0e2ff;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
-.balance-mini {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: rgba(255,255,255,.05);
-  border-radius: 8px;
-}
-.balance-label { color: rgba(255,255,255,.45); font-size: .75rem; }
-.balance-val { color: #5ba4ff; font-weight: 600; font-size: .85rem; }
-.logout-btn {
+.balance-row, .logout-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: rgba(255,255,255,.45);
+  padding: 0 12px;
+  height: 36px;
+  border-radius: var(--ow-radius, 4px);
+  font-size: 13px;
   cursor: pointer;
-  font-size: .85rem;
   transition: all .15s;
+  color: #4e5969;
 }
-.logout-btn:hover { background: rgba(255,100,100,.15); color: #ff7875; }
+.balance-row:hover { background: rgba(255,255,255,.65); color: var(--ow-primary); }
+.logout-row:hover { background: rgba(255,255,255,.65); color: var(--ow-danger, #f53f3f); }
 
-.auth-btn {
+.ow-footer-btn {
   display: block;
   text-align: center;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: .85rem;
+  padding: 6px 12px;
+  border-radius: var(--ow-radius, 4px);
+  font-size: 13px;
   font-weight: 600;
   text-decoration: none;
   transition: all .15s;
 }
-.primary-btn {
-  background: #1677ff;
+.ow-footer-btn.primary {
+  background: var(--ow-primary, #165dff);
   color: #fff;
 }
-.primary-btn:hover { background: #4096ff; }
-.ghost-btn {
-  background: rgba(255,255,255,.07);
-  color: rgba(255,255,255,.7);
-  border: 1px solid rgba(255,255,255,.12);
+.ow-footer-btn.primary:hover { background: var(--ow-primary-hover, #4080ff); }
+.ow-footer-btn.outline {
+  border: 1px solid var(--ow-border, #e5e6eb);
+  color: #4e5969;
 }
-.ghost-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
+.ow-footer-btn.outline:hover { border-color: var(--ow-primary); color: var(--ow-primary); }
 
-/* ---- 主区域 ---- */
-.main-area {
+/* ── Collapse button ── */
+.ow-collapse-btn {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #86909c;
+  border-top: 1px solid #d0e2ff;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.ow-collapse-btn:hover { color: var(--ow-primary); }
+
+/* ── 主区域 ── */
+.ow-main {
   flex: 1;
-  min-width: 0;
+  margin-left: var(--ow-sidebar-w, 220px);
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  transition: margin-left .25s ease;
 }
 
-/* ---- 顶部栏 ---- */
-.topbar {
-  height: 56px;
-  background: #fff;
-  border-bottom: 1px solid #e8ecf4;
+/* ── Header ── */
+.ow-header {
+  height: var(--ow-header-h, 48px);
+  background: #edf3ff;
+  border-bottom: 1px solid #d0e2ff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 20px;
   flex-shrink: 0;
+  position: sticky; top: 0; z-index: 50;
 }
-.topbar-left { display: flex; flex-direction: column; gap: 1px; }
-.page-title { font-size: 1rem; font-weight: 600; color: #0d1526; margin: 0; line-height: 1.2; }
-:deep(.el-breadcrumb) { font-size: .72rem; opacity: .55; }
-.topbar-right { display: flex; align-items: center; gap: 12px; }
-.balance-tag { font-weight: 600; gap: 4px; }
+.header-left {}
+.header-page {
+  color: var(--ow-text, #1d2129);
+  font-size: 14px;
+  font-weight: 600;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.balance-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.8);
+  color: var(--ow-primary, #165dff);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s;
+  font-weight: 500;
+  border: 1px solid #d0e2ff;
+}
+.balance-chip:hover { background: #fff; }
 .avatar-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: #454f63;
+  color: var(--ow-text, #1d2129);
+  transition: background .15s;
 }
-.avatar-btn:hover { background: #f0f2f7; }
+.avatar-btn:hover { background: rgba(255,255,255,.8); }
 .avatar-circle {
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   border-radius: 50%;
-  background: #1677ff;
+  background: var(--ow-primary, #165dff);
   color: #fff;
   display: grid; place-items: center;
-  font-size: .8rem;
+  font-size: 12px;
   font-weight: 700;
+  flex-shrink: 0;
+}
+.avatar-name {
+  font-size: 13px;
+  color: var(--ow-text, #1d2129);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ---- 内容区 ---- */
-.content {
+/* ── 内容 ── */
+.ow-content {
   flex: 1;
   padding: 20px 24px;
   overflow-y: auto;
+  background: #fff;
 }
 
+/* ── 自定义页脚 ── */
+.ow-custom-footer { padding: 12px 24px; }
+
+/* ── Mobile ── */
 @media (max-width: 768px) {
-  .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; height: auto; padding: 8px; min-height: unset; }
-  .nav { flex-direction: row; padding: 0; flex-wrap: wrap; }
-  .sidebar-footer { display: none; }
-  .custom-footer { margin-left: 0 !important; }
+  .ow-sidebar {
+    transform: translateX(-100%);
+    width: var(--ow-sidebar-w, 220px) !important;
+  }
+  .ow-main {
+    margin-left: 0 !important;
+  }
+  .ow-collapse-btn { display: none; }
 }
 </style>
-

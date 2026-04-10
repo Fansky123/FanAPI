@@ -1,79 +1,115 @@
 <template>
   <div class="billing-page">
-    <!-- 余额卡片 -->
-    <el-row :gutter="18" style="margin-bottom:18px">
-      <el-col :span="10">
-        <div class="balance-card">
-          <div class="balance-label">当前余额</div>
-          <div class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
-          <div class="balance-sub">{{ store.balance.toLocaleString() }} credits</div>
-          <div class="balance-actions">
-            <el-button type="primary" style="margin-top:16px" @click="showRedeem = true">
-              兑换卡密充值
-            </el-button>
-            <el-button v-if="site.epayEnabled" type="success" style="margin-top:16px" @click="showEpay = true">
-              <el-icon><CreditCard /></el-icon>
-              在线充值
-            </el-button>
-          </div>
+    <!-- ───────── 充值积分 ───────── -->
+    <template v-if="route.path === '/recharge'">
+      <div class="balance-card">
+        <div class="balance-label">当前余额</div>
+        <div class="balance-val">¥{{ (store.balance / 1e6).toFixed(4) }}</div>
+        <div class="balance-sub">{{ store.balance.toLocaleString() }} credits</div>
+        <div class="balance-actions">
+          <el-button type="primary" @click="showRedeem = true">兑换卡密</el-button>
+          <el-button v-if="site.epayEnabled" type="success" @click="showEpay = true">
+            <el-icon><CreditCard /></el-icon>
+            在线充值
+          </el-button>
         </div>
-      </el-col>
-    </el-row>
+      </div>
 
-    <!-- 账户安全 -->
-    <el-card style="margin-bottom:18px">
-      <template #header>账户信息</template>
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="用户名">{{ store.username || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="定价分组">
-          <el-tag v-if="store.group" type="warning" effect="light">{{ store.group }}</el-tag>
-          <span v-else style="color:#909399">默认</span>
-          <span style="color:#c0c4cc;font-size:12px;margin-left:8px">影响模型调用的实际计费价格</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="绑定邮箱">
-          <span v-if="store.email" style="color:#67c23a">{{ store.email }}</span>
-          <template v-else>
-            <span style="color:#909399;margin-right:12px">未绑定（绑定后可找回密码）</span>
-            <el-button type="primary" size="small" @click="showBindEmail = true">绑定邮箱</el-button>
-          </template>
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+      <el-card style="margin-top:18px">
+        <template #header>账户信息</template>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="用户名">{{ store.username || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="定价分组">
+            <el-tag v-if="store.group" type="warning" effect="light">{{ store.group }}</el-tag>
+            <span v-else style="color:#909399">默认</span>
+            <span style="color:#c0c4cc;font-size:12px;margin-left:8px">影响模型调用的实际计费价格</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="绑定邮箱">
+            <span v-if="store.email" style="color:#67c23a">{{ store.email }}</span>
+            <template v-else>
+              <span style="color:#909399;margin-right:12px">未绑定（绑定后可找回密码）</span>
+              <el-button type="primary" size="small" @click="showBindEmail = true">绑定邮箱</el-button>
+            </template>
+          </el-descriptions-item>
+        </el-descriptions>
+      </el-card>
 
-    <!-- 余额流水 -->
-    <el-card>
-      <template #header>余额流水</template>
-      <el-table :data="txList" stripe>
-        <el-table-column prop="type" label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag :type="txTagType(row.type)" size="small">{{ txTypeLabel(row.type) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" width="160">
-          <template #default="{ row }">
-            <span :class="txAmtClass(row.type)">
-              {{ txSign(row.type) }}¥{{ (Math.abs(row.credits) / 1e6).toFixed(6) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作后余额" width="160">
-          <template #default="{ row }">
-            <span v-if="row.balance_after" style="color:#617086;font-size:12px">
-              ¥{{ (row.balance_after / 1e6).toFixed(4) }}
-            </span>
-            <span v-else style="color:#ccc;font-size:12px">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="时间" :formatter="fmtTime" />
-      </el-table>
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="20"
-        :total="total"
-        style="margin-top:16px"
-        @current-change="fetchTx"
-      />
-    </el-card>
+      <el-card style="margin-top:18px">
+        <template #header>余额流水</template>
+        <el-table :data="txList" stripe>
+          <el-table-column prop="type" label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag :type="txTagType(row.type)" size="small">{{ txTypeLabel(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="金额" width="160">
+            <template #default="{ row }">
+              <span :class="txAmtClass(row.type)">
+                {{ txSign(row.type) }}¥{{ (Math.abs(row.credits) / 1e6).toFixed(6) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作后余额" width="160">
+            <template #default="{ row }">
+              <span v-if="row.balance_after" style="color:#617086;font-size:12px">
+                ¥{{ (row.balance_after / 1e6).toFixed(4) }}
+              </span>
+              <span v-else style="color:#ccc;font-size:12px">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="时间" :formatter="fmtTime" />
+        </el-table>
+        <el-pagination
+          v-model:current-page="txPage"
+          :page-size="20"
+          :total="txTotal"
+          style="margin-top:16px"
+          @current-change="fetchTx"
+        />
+      </el-card>
+    </template>
+
+    <!-- ───────── 我的订单 ───────── -->
+    <template v-else>
+      <el-card>
+        <template #header>充值订单记录</template>
+        <el-table :data="orderList" stripe>
+          <el-table-column prop="out_trade_no" label="订单号" min-width="200" />
+          <el-table-column label="充值金额" width="110">
+            <template #default="{ row }">
+              <span style="color:#165dff;font-weight:600">¥{{ row.amount.toFixed(2) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="到账积分" width="140">
+            <template #default="{ row }">
+              <span style="color:#67c23a">+{{ row.credits.toLocaleString() }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="orderStatusType(row.status)" size="small">
+                {{ orderStatusLabel(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="支付时间" min-width="160">
+            <template #default="{ row }">
+              {{ row.paid_at ? fmtDate(row.paid_at) : '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" min-width="160">
+            <template #default="{ row }">{{ fmtDate(row.created_at) }}</template>
+          </el-table-column>
+        </el-table>
+        <el-pagination
+          v-model:current-page="orderPage"
+          :page-size="20"
+          :total="orderTotal"
+          style="margin-top:16px"
+          @current-change="fetchOrders"
+        />
+      </el-card>
+    </template>
 
     <!-- 兑换卡密弹窗 -->
     <el-dialog v-model="showRedeem" title="兑换卡密" width="400px" @close="redeemCode = ''">
@@ -95,12 +131,10 @@
 
     <!-- 在线充值弹窗（易支付） -->
     <el-dialog v-model="showEpay" title="在线充值" width="420px" @close="resetEpayForm">
-      <div class="epay-tips">
-        <el-alert type="info" :closable="false" show-icon>
-          <template #title>充值后余额将自动到账，1元 = 1,000,000 积分</template>
-        </el-alert>
-      </div>
-      <el-form :model="epayForm" label-width="90px" style="margin-top:16px">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
+        <template #title>充值后余额将自动到账，1元 = 1,000,000 积分</template>
+      </el-alert>
+      <el-form :model="epayForm" label-width="90px">
         <el-form-item label="充值金额">
           <el-input-number
             v-model="epayForm.amount"
@@ -114,7 +148,7 @@
         <el-form-item label="支付方式">
           <el-radio-group v-model="epayForm.type">
             <el-radio value="alipay">
-              <el-icon style="color:#1677ff;vertical-align:middle"><Wallet /></el-icon>
+              <el-icon style="color:#165dff;vertical-align:middle"><Wallet /></el-icon>
               支付宝
             </el-radio>
             <el-radio value="wxpay">
@@ -158,43 +192,60 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CreditCard, Wallet, ChatDotRound } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import { authApi, userApi, payApi } from '@/api'
 
+const route = useRoute()
 const store = useUserStore()
 const site = useSiteStore()
+
+// 余额流水
 const txList = ref([])
-const page = ref(1)
-const total = ref(0)
+const txPage = ref(1)
+const txTotal = ref(0)
+
+// 充值订单
+const orderList = ref([])
+const orderPage = ref(1)
+const orderTotal = ref(0)
+
+// 弹窗
 const showRedeem = ref(false)
 const redeemCode = ref('')
 const redeeming = ref(false)
 
-// 绑定邮箱
 const showBindEmail = ref(false)
 const bindForm = ref({ email: '', code: '' })
 const codeCooldown = ref(0)
 const binding = ref(false)
 let cooldownTimer = null
 
-// 易支付
 const showEpay = ref(false)
 const paying = ref(false)
 const epayForm = reactive({ amount: 10, type: 'alipay' })
 
 onMounted(() => {
   fetchTx()
+  fetchOrders()
   site.fetchSettings()
 })
 
-async function fetchTx(p = page.value) {
-  page.value = p
+async function fetchTx(p = txPage.value) {
+  txPage.value = p
   const res = await userApi.getTransactions(p, 20)
   txList.value = res.transactions ?? []
-  total.value = res.total ?? 0
+  txTotal.value = res.total ?? 0
+}
+
+async function fetchOrders(p = orderPage.value) {
+  orderPage.value = p
+  const res = await payApi.listOrders(p, 20)
+  orderList.value = res.orders ?? []
+  orderTotal.value = res.total ?? 0
 }
 
 async function doRedeem() {
@@ -208,6 +259,7 @@ async function doRedeem() {
     redeemCode.value = ''
     store.fetchBalance()
     fetchTx(1)
+    fetchOrders(1)
   } finally {
     redeeming.value = false
   }
@@ -240,7 +292,13 @@ const txTagType = (t) => ({ charge: 'danger', hold: 'warning', settle: 'info', r
 const txSign = (t) => (['charge', 'hold', 'settle'].includes(t) ? '-' : '+')
 const txAmtClass = (t) => (['charge', 'hold', 'settle'].includes(t) ? 'amt-neg' : 'amt-pos')
 
+const orderStatusLabel = (s) => ({ pending: '待支付', paid: '已支付', failed: '已失败' }[s] ?? s)
+const orderStatusType = (s) => ({ pending: 'warning', paid: 'success', failed: 'danger' }[s] ?? 'info')
+
 function fmtTime(row, col, val) {
+  return val ? new Date(val).toLocaleString('zh-CN', { hour12: false }) : '—'
+}
+function fmtDate(val) {
   return val ? new Date(val).toLocaleString('zh-CN', { hour12: false }) : '—'
 }
 
@@ -261,7 +319,7 @@ async function sendBindCode() {
       if (--codeCooldown.value <= 0) clearInterval(cooldownTimer)
     }, 1000)
   } catch {
-    // 错误已由 HTTP 拦截器处理
+    // error handled by http interceptor
   }
 }
 
@@ -287,13 +345,14 @@ async function doBindEmail() {
   border-radius: 18px;
   padding: 28px 32px;
   color: #fff;
+  display: inline-block;
+  min-width: 320px;
 }
 .balance-label { font-size: .84rem; opacity: .72 }
 .balance-val { font-size: 2.4rem; font-weight: 700; margin: 6px 0 2px }
 .balance-sub { font-size: .82rem; opacity: .6 }
-.balance-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.balance-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px }
 .amt-neg { color: #f56c6c }
 .amt-pos { color: #67c23a }
-.epay-tips { margin-bottom: 4px; }
-.credits-preview { color: #67c23a; font-weight: 600; font-size: 1rem; }
+.credits-preview { color: #67c23a; font-weight: 600; font-size: 1rem }
 </style>

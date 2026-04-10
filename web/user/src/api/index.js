@@ -25,6 +25,7 @@ export const taskApi = {
 export const userApi = {
   getProfile: () => http.get('/user/profile'),
   getBalance: () => http.get('/user/balance'),
+  getStats: () => http.get('/user/stats'),
   getTransactions: (page = 1, size = 20) =>
     http.get('/user/transactions', { params: { page, size } }),
   listAPIKeys: () => http.get('/user/apikeys'),
@@ -38,6 +39,7 @@ export const userApi = {
 // 支付相关（需 JWT）
 export const payApi = {
   createEpayOrder: (data) => http.post('/pay/epay/create', data),
+  listOrders: (page = 1, size = 20) => http.get('/user/payment-orders', { params: { page, size } }),
 }
 
 // LLM 日志（需登录）

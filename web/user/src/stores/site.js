@@ -15,7 +15,10 @@ export const useSiteStore = defineStore('site', () => {
     try {
       const res = await publicApi.getSettings()
       const s = res.settings || {}
-      if (s.site_name) siteName.value = s.site_name
+      if (s.site_name) {
+        siteName.value = s.site_name
+        document.title = s.site_name
+      }
       if (s.logo_url) logoUrl.value = s.logo_url
       if (s.header_html) headerHtml.value = s.header_html
       if (s.footer_html) footerHtml.value = s.footer_html
