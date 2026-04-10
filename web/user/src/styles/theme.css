@@ -1,60 +1,113 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap');
-
 :root {
-  --cf-bg: #f4f7fb;
-  --cf-panel: #ffffff;
-  --cf-panel-soft: #f7fafd;
-  --cf-text: #0f172a;
-  --cf-subtext: #5f6b7c;
-  --cf-border: #e7edf5;
-  --cf-primary: #1e66ff;
-  --cf-primary-2: #0ec5ff;
-  --cf-success: #12b76a;
-  --cf-danger: #f04438;
-  --cf-radius-lg: 18px;
-  --cf-radius-md: 12px;
-  --cf-shadow: 0 14px 44px rgba(11, 33, 79, 0.08);
+  /* OpenWond-style design tokens */
+  --ow-primary:    #165dff;
+  --ow-primary-hover: #4080ff;
+  --ow-primary-bg: #f0f4ff;         /* active menu bg */
+  --ow-bg:         #f2f3f5;         /* page background */
+  --ow-sidebar-bg: #ffffff;
+  --ow-header-bg:  #1f2937;
+  --ow-text:       #1d2129;
+  --ow-subtext:    #86909c;
+  --ow-border:     #e5e6eb;
+  --ow-panel:      #ffffff;
+  --ow-success:    #00b42a;
+  --ow-danger:     #f53f3f;
+  --ow-warning:    #ff7d00;
+  --ow-radius:     4px;
+  --ow-radius-lg:  8px;
+  --ow-shadow:     0 1px 4px rgba(0,0,0,.08);
+  --ow-shadow-md:  0 4px 16px rgba(0,0,0,.1);
+  --ow-sidebar-w:  220px;
+  --ow-header-h:   48px;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body,
-#app {
+html, body, #app {
   width: 100%;
   min-height: 100%;
+  margin: 0;
 }
 
 body {
-  margin: 0;
-  background:
-    radial-gradient(1200px 420px at -8% -25%, rgba(30, 102, 255, 0.12), transparent 55%),
-    radial-gradient(960px 360px at 108% -18%, rgba(14, 197, 255, 0.14), transparent 54%),
-    var(--cf-bg);
-  color: var(--cf-text);
-  font-family: 'Plus Jakarta Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: linear-gradient(126.82deg, rgba(236,243,255,.7) 0.58%, rgba(232,247,251,.7) 86.28%), var(--ow-bg);
+  color: var(--ow-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', Roboto, sans-serif;
+  font-size: 14px;
 }
 
+/* ---- Element Plus global overrides to match Arco Design aesthetic ---- */
 .el-card {
-  border: 1px solid var(--cf-border);
-  border-radius: var(--cf-radius-lg);
-  box-shadow: var(--cf-shadow);
+  border: 1px solid var(--ow-border);
+  border-radius: var(--ow-radius-lg) !important;
+  box-shadow: var(--ow-shadow) !important;
+}
+
+.el-card__header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ow-text);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ow-border);
+}
+
+.el-card__body {
+  padding: 16px 20px;
 }
 
 .el-button--primary {
   border: none;
-  background: linear-gradient(90deg, var(--cf-primary), var(--cf-primary-2));
+  background: var(--ow-primary);
+}
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background: var(--ow-primary-hover);
+  border: none;
 }
 
 .el-input__wrapper,
 .el-select__wrapper,
 .el-textarea__inner {
-  border-radius: 10px;
+  border-radius: var(--ow-radius) !important;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--ow-primary) inset !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--ow-primary) inset !important;
 }
 
 .el-table {
-  border-radius: 12px;
+  border-radius: var(--ow-radius-lg);
   overflow: hidden;
+  font-size: 13px;
 }
+
+.el-table__header thead th {
+  background: #f7f8fa !important;
+  color: var(--ow-text) !important;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.el-table__row:hover > td {
+  background: #f7f9ff !important;
+}
+
+.el-tag {
+  border-radius: var(--ow-radius) !important;
+}
+
+.el-pagination {
+  justify-content: center;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { border-radius: 4px; background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 8px; background-color: #dddee0; }
+::-webkit-scrollbar-thumb:hover { background-color: #c7c9cc; }

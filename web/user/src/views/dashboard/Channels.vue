@@ -142,8 +142,8 @@ function copyName(name) {
 .search-input { width: 260px; }
 .count-tip { color: #8a94a8; font-size: .82rem; margin-left: auto; }
 .table-card { margin-bottom: 14px; }
-.name-text { font-weight: 500; color: #0d1526; }
-.price-text { font-size: .82rem; color: #1677ff; }
+.name-text { font-weight: 500; color: #1d2129; }
+.price-text { font-size: .82rem; color: #165dff; }
 .price-group { color: #e6a23c; font-weight: 600; }
 .price-origin { font-size: .75rem; color: #c0c4cc; text-decoration: line-through; margin-top: 2px; }
 .proto-badge {
@@ -157,9 +157,9 @@ function copyName(name) {
 }
 .proto-badge.claude { background: #fff4e5; color: #d46b08; }
 .proto-badge.gemini { background: #e8f8f0; color: #237804; }
-.proto-badge.openai { background: #e6f0ff; color: #1677ff; }
+.proto-badge.openai { background: #e6f0ff; color: #165dff; }
 .hint-card { }
-.hint-title { font-weight: 600; color: #0d1526; margin-bottom: 10px; font-size: .9rem; }
+.hint-title { font-weight: 600; color: #1d2129; margin-bottom: 10px; font-size: .9rem; }
 .hint-row {
   display: flex;
   align-items: center;

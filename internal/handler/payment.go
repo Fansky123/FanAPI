@@ -158,6 +158,51 @@ func EpayCallback(c *gin.Context) {
 	c.String(http.StatusOK, "success")
 }
 
+// GetUserPaymentOrders returns the authenticated user's payment orders (paginated).
+// GET /user/payment-orders
+func GetUserPaymentOrders(c *gin.Context) {
+	userID := c.MustGet("user_id").(int64)
+
+	var page, size int
+	if err := c.ShouldBindQuery(&struct {
+		Page int `form:"page"`
+		Size int `form:"size"`
+	}{}); err != nil {
+		page, size = 1, 20
+	} else {
+		page = 1
+		size = 20
+	}
+	if p := c.Query("page"); p != "" {
+		fmt.Sscanf(p, "%d", &page)
+	}
+	if s := c.Query("size"); s != "" {
+		fmt.Sscanf(s, "%d", &size)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 20
+	}
+
+	var orders []model.PaymentOrder
+	total, err := db.Engine.
+		Where("user_id = ?", userID).
+		OrderBy("created_at DESC").
+		Limit(size, (page-1)*size).
+		FindAndCount(&orders)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"orders": orders,
+		"total":  total,
+	})
+}
+
 // epaySign generates the MD5 signature for Epay parameters.
 func epaySign(params map[string]string, key string) string {
 	keys := make([]string, 0, len(params))

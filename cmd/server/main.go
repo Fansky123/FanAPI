@@ -101,6 +101,7 @@ func main() {
 			user.GET("/profile", authH.GetProfile)
 			user.GET("/balance", authH.GetBalance)
 			user.GET("/transactions", authH.GetTransactions)
+			user.GET("/stats", authH.GetUserStats)
 			user.GET("/channels", authH.ListModels)
 			user.GET("/apikeys", authH.ListAPIKeys)
 			user.POST("/apikeys", authH.CreateAPIKey)
@@ -108,6 +109,7 @@ func main() {
 			user.PUT("/password", authH.ChangePassword)
 			user.POST("/bind-email", authH.BindEmail)
 			user.POST("/cards/redeem", handler.RedeemCard)
+			user.GET("/payment-orders", handler.GetUserPaymentOrders)
 		}
 
 		// 管理员路由（JWT 或 API Key + admin 角色）

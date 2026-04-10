@@ -36,7 +36,7 @@ function openDocs() {
   gap: 16px;
 }
 .eyebrow {
-  color: #1e66ff;
+  color: #165dff;
   font-size: .82rem;
   font-weight: 700;
   text-transform: uppercase;
