@@ -8,6 +8,10 @@ export const useSiteStore = defineStore('site', () => {
   const headerHtml = ref('')
   const footerHtml = ref('')
   const epayEnabled = ref(false)
+  const noticeTitle = ref('')
+  const noticeContent = ref('')
+  const contactInfo = ref('')
+  const qrcodeUrl = ref('')
   const loaded = ref(false)
 
   async function fetchSettings() {
@@ -23,11 +27,15 @@ export const useSiteStore = defineStore('site', () => {
       if (s.header_html) headerHtml.value = s.header_html
       if (s.footer_html) footerHtml.value = s.footer_html
       epayEnabled.value = s.epay_enabled === 'true'
+      if (s.notice_title !== undefined) noticeTitle.value = s.notice_title
+      if (s.notice_content !== undefined) noticeContent.value = s.notice_content
+      if (s.contact_info !== undefined) contactInfo.value = s.contact_info
+      if (s.qrcode_url !== undefined) qrcodeUrl.value = s.qrcode_url
       loaded.value = true
     } catch {
       // 静默失败，使用默认值
     }
   }
 
-  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, loaded, fetchSettings }
+  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings }
 })

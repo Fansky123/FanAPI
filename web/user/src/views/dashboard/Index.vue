@@ -1,77 +1,128 @@
 <template>
   <div class="dashboard">
-    <!-- 统计卡片 -->
-    <div class="stat-row">
-      <div class="stat-card">
-        <div class="stat-val">{{ fmtCredits(store.balance) }}</div>
-        <div class="stat-label">剩余积分</div>
+    <!-- 左侧主内容 -->
+    <div class="dashboard-main">
+      <!-- 统计卡片 -->
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-val">{{ fmtCredits(store.balance) }}</div>
+          <div class="stat-label">剩余积分</div>
+        </div>
+        <div class="stat-divider" />
+        <div class="stat-card">
+          <div class="stat-val">{{ fmtCredits(stats.total_consumed) }}</div>
+          <div class="stat-label">累计消耗积分</div>
+        </div>
+        <div class="stat-divider" />
+        <div class="stat-card">
+          <div class="stat-val">{{ fmtCredits(stats.today_consumed) }}</div>
+          <div class="stat-label">今日消耗积分</div>
+        </div>
       </div>
-      <div class="stat-divider" />
-      <div class="stat-card">
-        <div class="stat-val">{{ fmtCredits(stats.total_consumed) }}</div>
-        <div class="stat-label">累计消耗积分</div>
+
+      <!-- 快速入门 -->
+      <div class="guide-card">
+        <div class="guide-title">快速入门步骤：</div>
+        <div class="guide-list">
+          <div class="guide-item">
+            第一步：点击左侧【API 密钥】创建密钥
+            <router-link to="/keys" class="guide-link">立即前往</router-link>
+          </div>
+          <div class="guide-item">
+            第二步：点击左侧【模型列表】查看模型 ID 和接口调用地址
+            <router-link to="/models" class="guide-link">立即前往</router-link>
+          </div>
+          <div class="guide-item">
+            第三步：点击左侧【文本对话】在线体验所有 AI 聊天模型
+            <router-link to="/playground" class="guide-link">立即前往</router-link>
+          </div>
+          <div class="guide-item">
+            第四步：点击左侧【充值积分】充值积分或兑换卡密
+            <router-link to="/recharge" class="guide-link">立即前往</router-link>
+          </div>
+        </div>
       </div>
-      <div class="stat-divider" />
-      <div class="stat-card">
-        <div class="stat-val">{{ fmtCredits(stats.today_consumed) }}</div>
-        <div class="stat-label">今日消耗积分</div>
+
+      <!-- 积分消耗趋势 -->
+      <div class="chart-card">
+        <div class="chart-title">积分消耗趋势（最近7天）</div>
+        <div class="chart-wrap">
+          <canvas ref="creditsChart" height="80"></canvas>
+          <div ref="creditsTooltip" class="chart-tooltip"></div>
+        </div>
+      </div>
+
+      <!-- 请求次数统计 -->
+      <div class="chart-card">
+        <div class="chart-title">请求次数统计（最近7天）</div>
+        <div class="chart-wrap">
+          <canvas ref="reqChart" height="80"></canvas>
+          <div ref="reqTooltip" class="chart-tooltip"></div>
+        </div>
       </div>
     </div>
 
-    <!-- 快速入门 -->
-    <div class="guide-card">
-      <div class="guide-title">快速入门步骤：</div>
-      <div class="guide-list">
-        <div class="guide-item">
-          第一步：点击左侧【API 密钥】创建密钥
-          <router-link to="/keys" class="guide-link">立即前往</router-link>
-        </div>
-        <div class="guide-item">
-          第二步：点击左侧【模型列表】查看模型 ID 和接口调用地址
-          <router-link to="/models" class="guide-link">立即前往</router-link>
-        </div>
-        <div class="guide-item">
-          第三步：点击左侧【文本对话】在线体验所有 AI 聊天模型
-          <router-link to="/playground" class="guide-link">立即前往</router-link>
-        </div>
-        <div class="guide-item">
-          第四步：点击左侧【充值积分】充值积分或兑换卡密
-          <router-link to="/recharge" class="guide-link">立即前往</router-link>
-        </div>
-      </div>
-    </div>
+    <!-- 右侧公告面板（仅在有内容时显示） -->
+    <div class="dashboard-side" v-if="siteStore.noticeTitle || siteStore.noticeContent || siteStore.contactInfo || siteStore.qrcodeUrl">
+      <div class="side-card side-card--full">
+        <!-- 公告 -->
+        <template v-if="siteStore.noticeTitle || siteStore.noticeContent">
+          <div class="side-title" v-if="siteStore.noticeTitle">{{ siteStore.noticeTitle }}</div>
+          <div class="notice-lines">
+            <div
+              class="notice-line"
+              v-for="(line, i) in noticeLines"
+              :key="i"
+            >{{ line }}</div>
+          </div>
+        </template>
 
-    <!-- 积分消耗趋势 -->
-    <div class="chart-card">
-      <div class="chart-title">积分消耗趋势（最近7天）</div>
-      <div class="chart-wrap">
-        <canvas ref="creditsChart" height="80"></canvas>
-        <div ref="creditsTooltip" class="chart-tooltip"></div>
-      </div>
-    </div>
+        <!-- 分隔线 -->
+        <div
+          class="side-divider"
+          v-if="(siteStore.noticeTitle || siteStore.noticeContent) && (siteStore.contactInfo || siteStore.qrcodeUrl)"
+        />
 
-    <!-- 请求次数统计 -->
-    <div class="chart-card">
-      <div class="chart-title">请求次数统计（最近7天）</div>
-      <div class="chart-wrap">
-        <canvas ref="reqChart" height="80"></canvas>
-        <div ref="reqTooltip" class="chart-tooltip"></div>
+        <!-- 联系方式 + 二维码 -->
+        <template v-if="siteStore.contactInfo || siteStore.qrcodeUrl">
+          <div class="side-title">联系我们</div>
+          <div class="contact-lines" v-if="siteStore.contactInfo">
+            <div
+              class="contact-line"
+              v-for="(line, i) in contactLines"
+              :key="i"
+            >{{ line }}</div>
+          </div>
+          <div class="qrcode-wrap" v-if="siteStore.qrcodeUrl">
+            <img :src="siteStore.qrcodeUrl" alt="联系二维码" class="qrcode-img" @error="qrcodeErr = true" v-if="!qrcodeErr" />
+          </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
+import { useSiteStore } from '@/stores/site'
 import { userApi } from '@/api'
 
 const store = useUserStore()
+const siteStore = useSiteStore()
 const stats = ref({ total_consumed: 0, today_consumed: 0, daily_credits: [], daily_requests: [] })
 const creditsChart = ref(null)
 const reqChart = ref(null)
 const creditsTooltip = ref(null)
 const reqTooltip = ref(null)
+const qrcodeErr = ref(false)
+
+const noticeLines = computed(() =>
+  (siteStore.noticeContent || '').split('\n').filter(l => l.trim())
+)
+const contactLines = computed(() =>
+  (siteStore.contactInfo || '').split('\n').filter(l => l.trim())
+)
 
 function fmtCredits(v) {
   if (!v) return '0.00'
@@ -235,7 +286,87 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.dashboard { max-width: 1100px; display: flex; flex-direction: column; gap: 16px; }
+.dashboard {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 16px;
+}
+
+/* 左侧主内容 */
+.dashboard-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 右侧公告面板 */
+.dashboard-side {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.side-card {
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e5e6eb;
+  padding: 18px 16px;
+}
+.side-card--full {
+  flex: 1;
+}
+.side-divider {
+  height: 1px;
+  background: #f0f1f5;
+  margin: 16px 0;
+}
+.side-title {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--ow-primary, #165dff);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0f1f5;
+}
+.notice-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notice-line {
+  font-size: .85rem;
+  color: #4e5969;
+  line-height: 1.6;
+  padding-left: 10px;
+  border-left: 3px solid var(--ow-primary, #165dff);
+}
+.contact-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.contact-line {
+  font-size: .85rem;
+  color: #4e5969;
+  line-height: 1.6;
+}
+.qrcode-wrap {
+  display: flex;
+  justify-content: center;
+}
+.qrcode-img {
+  width: 100%;
+  max-width: 180px;
+  border-radius: 8px;
+  border: 1px solid #e5e6eb;
+}
 
 /* 统计卡片 */
 .stat-row {
@@ -300,4 +431,10 @@ canvas { width: 100%; display: block; cursor: crosshair; }
 .chart-tooltip :deep(.tip-row) { display: flex; align-items: center; gap: 4px; }
 .chart-tooltip :deep(.tip-dot) { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .chart-tooltip :deep(b) { margin-left: auto; padding-left: 12px; font-weight: 600; }
+
+/* 小屏幕降级为纵向 */
+@media (max-width: 900px) {
+  .dashboard { flex-direction: column; }
+  .dashboard-side { width: 100%; }
+}
 </style>

@@ -86,6 +86,53 @@
           </template>
         </el-form>
       </el-tab-pane>
+
+      <!-- 公告 & 联系方式 -->
+      <el-tab-pane label="公告 & 联系方式" name="notice">
+        <el-form :model="form" label-width="140px" class="settings-form">
+          <el-form-item label="公告标题">
+            <el-input v-model="form.notice_title" placeholder="例如：📢 最新公告" />
+            <div class="form-tip">显示在用户数据看板右侧顶部，留空则不显示公告模块</div>
+          </el-form-item>
+          <el-form-item label="公告内容">
+            <el-input
+              v-model="form.notice_content"
+              type="textarea"
+              :rows="6"
+              placeholder="支持换行，每行一条公告内容"
+            />
+            <div class="form-tip">纯文本，每行作为一条，不支持 HTML</div>
+          </el-form-item>
+          <el-form-item label="联系方式">
+            <el-input
+              v-model="form.contact_info"
+              type="textarea"
+              :rows="4"
+              placeholder="例如：微信：fanapi&#10;QQ群：123456789&#10;邮箱：support@example.com"
+            />
+            <div class="form-tip">纯文本，每行一条联系方式</div>
+          </el-form-item>
+          <el-form-item label="二维码图片">
+            <div class="qrcode-input-row">
+              <el-input
+                v-model="form.qrcode_url"
+                placeholder="https://example.com/qrcode.png 或粘贴 base64 数据"
+                @input="qrcodeErr = false"
+                clearable
+              />
+              <el-button @click="triggerQrcodeUpload">本地上传</el-button>
+              <input ref="qrcodeFileInput" type="file" accept="image/*" style="display:none" @change="onQrcodeFile" />
+            </div>
+            <div class="form-tip">支持图片 URL 或本地上传（自动转 base64）；留空则不显示</div>
+          </el-form-item>
+          <el-form-item label="二维码预览" v-if="form.qrcode_url">
+            <div class="qrcode-preview">
+              <img :src="form.qrcode_url" alt="二维码" @error="qrcodeErr = true" v-if="!qrcodeErr" />
+              <span class="logo-err" v-else>图片加载失败，请检查 URL 或 base64 数据</span>
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
     </el-tabs>
 
     <div class="save-bar">
@@ -106,6 +153,25 @@ import { settingsApi } from '@/api/admin'
 const activeTab = ref('basic')
 const saving = ref(false)
 const logoErr = ref(false)
+const qrcodeErr = ref(false)
+const qrcodeFileInput = ref(null)
+
+function triggerQrcodeUpload() {
+  qrcodeFileInput.value?.click()
+}
+
+function onQrcodeFile(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    form.qrcode_url = ev.target.result
+    qrcodeErr.value = false
+  }
+  reader.readAsDataURL(file)
+  // 重置 input 以便同一文件可再次选择
+  e.target.value = ''
+}
 
 const form = reactive({
   site_name: '',
@@ -118,6 +184,10 @@ const form = reactive({
   epay_key: '',
   epay_notify_url: '',
   epay_return_url: '',
+  notice_title: '',
+  notice_content: '',
+  contact_info: '',
+  qrcode_url: '',
 })
 
 const epayEnabledBool = ref(false)
@@ -188,6 +258,30 @@ async function save() {
   color: #f56c6c;
   text-align: center;
   padding: 4px;
+}
+.qrcode-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.qrcode-input-row .el-input {
+  flex: 1;
+}
+.qrcode-preview {  width: 140px;
+  height: 140px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+}
+.qrcode-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 .preview-box {
   width: 100%;
