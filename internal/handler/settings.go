@@ -11,15 +11,16 @@ import (
 
 // publicSettingKeys lists keys that are safe to expose to all visitors.
 var publicSettingKeys = map[string]bool{
-	"site_name":      true,
-	"logo_url":       true,
-	"header_html":    true,
-	"footer_html":    true,
-	"epay_enabled":   true,
-	"notice_title":   true,
-	"notice_content": true,
-	"contact_info":   true,
-	"qrcode_url":     true,
+	"site_name":         true,
+	"logo_url":          true,
+	"header_html":       true,
+	"footer_html":       true,
+	"epay_enabled":      true,
+	"pay_apply_enabled": true,
+	"notice_title":      true,
+	"notice_content":    true,
+	"contact_info":      true,
+	"qrcode_url":        true,
 }
 
 // GetSettings returns all settings (admin only).

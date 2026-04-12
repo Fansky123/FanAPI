@@ -82,6 +82,9 @@ func main() {
 	r.GET("/pay/epay/callback", handler.EpayCallback)
 	r.POST("/pay/epay/callback", handler.EpayCallback)
 
+	// 中台支付回调（无需用户认证，支付中台回调）
+	r.POST("/pay/apply/notify", handler.PayApplyNotify)
+
 	// 公开认证路由（注册/登录/发验证码等）
 	auth := r.Group("/auth")
 	{
@@ -149,6 +152,9 @@ func main() {
 
 		// Epay 充值（需要 JWT 认证）
 		authed.POST("/pay/epay/create", handler.CreateEpayOrder)
+
+		// 中台支付（需要 JWT 认证）
+		authed.POST("/pay/apply/create", handler.CreatePayApplyOrder)
 
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)

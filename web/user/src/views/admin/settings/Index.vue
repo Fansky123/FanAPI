@@ -60,7 +60,7 @@
       <el-tab-pane label="支付设置" name="payment">
         <el-form :model="form" label-width="140px" class="settings-form">
           <el-form-item label="启用易支付">
-            <el-switch v-model="epayEnabledBool" @change="v => form.epay_enabled = v ? 'true' : 'false'" />
+            <el-switch v-model="epayEnabledBool" @change="onEpaySwitch" />
             <div class="form-tip">开启后用户可以通过易支付（支付宝 / 微信）充值余额</div>
           </el-form-item>
 
@@ -82,6 +82,28 @@
             <el-form-item label="同步跳转地址">
               <el-input v-model="form.epay_return_url" placeholder="https://yoursite.com/billing" />
               <div class="form-tip">用户支付成功后跳回的前端页面地址</div>
+            </el-form-item>
+          </template>
+
+          <el-divider />
+
+          <el-form-item label="启用中台支付">
+            <el-switch v-model="payApplyEnabledBool" @change="onPayApplySwitch" />
+            <div class="form-tip">开启后用户可通过支付中台（微信 / 支付宝）充值余额</div>
+          </el-form-item>
+
+          <template v-if="payApplyEnabledBool">
+            <el-form-item label="中台根地址">
+              <el-input v-model="form.pay_apply_urlroot" placeholder="https://pay.example.com" />
+              <div class="form-tip">支付中台的域名（不含末尾斜杠）</div>
+            </el-form-item>
+            <el-form-item label="中台商品 Key">
+              <el-input v-model="form.pay_apply_key" type="password" show-password placeholder="支付中台分配的商品 key" />
+              <div class="form-tip">中台回调时会携带此 key 用于验签，请妥善保管</div>
+            </el-form-item>
+            <el-form-item label="回调地址">
+              <el-input :value="payApplyNotifyUrl" readonly />
+              <div class="form-tip">将此地址填写到支付中台的回调配置中，必须可从公网访问</div>
             </el-form-item>
           </template>
         </el-form>
@@ -145,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
 import { settingsApi } from '@/api/admin'
@@ -184,6 +206,9 @@ const form = reactive({
   epay_key: '',
   epay_notify_url: '',
   epay_return_url: '',
+  pay_apply_enabled: 'false',
+  pay_apply_urlroot: '',
+  pay_apply_key: '',
   notice_title: '',
   notice_content: '',
   contact_info: '',
@@ -191,9 +216,32 @@ const form = reactive({
 })
 
 const epayEnabledBool = ref(false)
+const payApplyEnabledBool = ref(false)
+
+function onEpaySwitch(v) {
+  form.epay_enabled = v ? 'true' : 'false'
+  if (v) {
+    payApplyEnabledBool.value = false
+    form.pay_apply_enabled = 'false'
+  }
+}
+function onPayApplySwitch(v) {
+  form.pay_apply_enabled = v ? 'true' : 'false'
+  if (v) {
+    epayEnabledBool.value = false
+    form.epay_enabled = 'false'
+  }
+}
+
+// 中台回调地址自动生成（当前域名 + 固定路径）
+const payApplyNotifyUrl = computed(() => {
+  const origin = window.location.origin.replace(':3001', '')
+  return `${origin}/pay/apply/notify`
+})
 
 watch(() => form.logo_url, () => { logoErr.value = false })
 watch(() => form.epay_enabled, (v) => { epayEnabledBool.value = v === 'true' })
+watch(() => form.pay_apply_enabled, (v) => { payApplyEnabledBool.value = v === 'true' })
 
 onMounted(async () => {
   try {
@@ -201,6 +249,7 @@ onMounted(async () => {
     const s = res.settings || {}
     Object.keys(form).forEach(k => { if (s[k] !== undefined) form[k] = s[k] })
     epayEnabledBool.value = form.epay_enabled === 'true'
+    payApplyEnabledBool.value = form.pay_apply_enabled === 'true'
   } catch {
     ElMessage.error('加载设置失败')
   }
@@ -209,7 +258,9 @@ onMounted(async () => {
 async function save() {
   saving.value = true
   try {
-    await settingsApi.update({ ...form })
+    // 回调地址是只读展示，不保存到后端
+    const { payApplyNotifyUrl, ...saveForm } = { ...form }
+    await settingsApi.update(saveForm)
     ElMessage.success('设置已保存')
   } catch {
     ElMessage.error('保存失败')
