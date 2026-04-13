@@ -71,7 +71,7 @@ func rotatePoolKey(ctx context.Context, poolID, entityID int64, assignKey string
 		return nil, fmt.Errorf("key pool %d: db error: %w", poolID, err)
 	}
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("key pool %d has no active keys", poolID)
+		return nil, fmt.Errorf("号池 %d 暂无可用 Key", poolID)
 	}
 
 	for i := range keys {
@@ -87,7 +87,7 @@ func rotatePoolKey(ctx context.Context, poolID, entityID int64, assignKey string
 			return k, nil
 		}
 	}
-	return nil, fmt.Errorf("key pool %d: all keys are exhausted", poolID)
+	return nil, fmt.Errorf("号池 %d 的所有 Key 已耗尽", poolID)
 }
 
 // ---- 管理接口 ----

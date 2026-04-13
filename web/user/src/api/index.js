@@ -39,6 +39,8 @@ export const userApi = {
 // 支付相关（需 JWT）
 export const payApi = {
   createEpayOrder: (data) => http.post('/pay/epay/create', data),
+  createPayApplyOrder: (data) => http.post('/pay/apply/create', data),
+  getOrderStatus: (outTradeNo) => http.get('/pay/order/status', { params: { out_trade_no: outTradeNo } }),
   listOrders: (page = 1, size = 20) => http.get('/user/payment-orders', { params: { page, size } }),
 }
 

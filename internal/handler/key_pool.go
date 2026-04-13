@@ -14,12 +14,12 @@ import (
 func ListKeyPools(c *gin.Context) {
 	channelIDStr := c.Query("channel_id")
 	if channelIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 channel_id"})
 		return
 	}
 	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
 		return
 	}
 	pools, err := service.ListKeyPools(c.Request.Context(), channelID)
@@ -38,7 +38,7 @@ func CreateKeyPool(c *gin.Context) {
 		return
 	}
 	if pool.ChannelID == 0 || pool.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id and name required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 channel_id 和号池名称"})
 		return
 	}
 	if err := service.CreateKeyPool(c.Request.Context(), &pool); err != nil {
@@ -52,7 +52,7 @@ func CreateKeyPool(c *gin.Context) {
 func DeleteKeyPool(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	if err := service.DeleteKeyPool(c.Request.Context(), id); err != nil {
@@ -66,7 +66,7 @@ func DeleteKeyPool(c *gin.Context) {
 func ListPoolKeys(c *gin.Context) {
 	poolID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pool id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "号池 ID 格式错误"})
 		return
 	}
 	keys, err := service.ListPoolKeys(c.Request.Context(), poolID)
@@ -81,7 +81,7 @@ func ListPoolKeys(c *gin.Context) {
 func AddPoolKey(c *gin.Context) {
 	poolID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pool id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "号池 ID 格式错误"})
 		return
 	}
 	var key model.PoolKey
@@ -90,7 +90,7 @@ func AddPoolKey(c *gin.Context) {
 		return
 	}
 	if key.Value == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "value required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 Key 值"})
 		return
 	}
 	key.PoolID = poolID
@@ -105,7 +105,7 @@ func AddPoolKey(c *gin.Context) {
 func RemovePoolKey(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	if err := service.RemovePoolKey(c.Request.Context(), id); err != nil {

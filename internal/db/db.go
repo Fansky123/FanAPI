@@ -166,7 +166,7 @@ func seedAdmin() error {
 		}
 		if _, err := Engine.Insert(&model.User{
 			Username:     a.username,
-			Email:        a.email,
+			Email:        &a.email,
 			PasswordHash: string(hash),
 			Role:         a.role,
 			IsActive:     true,

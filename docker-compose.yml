@@ -32,9 +32,11 @@ services:
     image: fanapi-api:latest
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "127.0.0.1:8088:80"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host-gateway:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]
       interval: 30s
@@ -54,3 +56,5 @@ services:
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host-gateway:host-gateway"

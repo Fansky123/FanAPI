@@ -19,7 +19,7 @@ import (
 // StartResultProcessor 订阅 RESULTS JetStream 流。
 // 只应在 API 服务器进程中调用。
 func StartResultProcessor(_ config.WorkerConfig) error {
-	if _, err := mq.QueueSubscribe("result.>", "result-proc", handleResult); err != nil {
+	if _, err := mq.QueueSubscribe("result.>", "result-proc", handleResult, 0); err != nil {
 		return fmt.Errorf("subscribe results: %w", err)
 	}
 	log.Println("[result-proc] subscribed to result.>")

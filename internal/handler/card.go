@@ -34,7 +34,7 @@ func GenerateCards(c *gin.Context) {
 	for i := 0; i < req.Count; i++ {
 		code, err := genCode()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "generate code failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成卡密失败"})
 			return
 		}
 		cards = append(cards, &model.Card{
@@ -95,7 +95,7 @@ func DeleteCard(c *gin.Context) {
 		return
 	}
 	db.Engine.ID(id).Delete(new(model.Card))
-	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+	c.JSON(http.StatusOK, gin.H{"message": "卡密已删除"})
 }
 
 // POST /user/cards/redeem

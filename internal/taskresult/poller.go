@@ -40,10 +40,36 @@ func StartPoller(ctx context.Context) {
 				return
 			case <-ticker.C:
 				pollPendingTasks(ctx)
+				cleanStaleTasks(ctx)
 			}
 		}
 	}()
 	log.Println("[poller] started, interval =", pollInterval)
+}
+
+// cleanStaleTasks 清理僵尸任务：
+//   - pending 状态：NATS 消息丢失（Worker 重启等），任务从未被执行
+//   - processing 状态且无 upstream_task_id：Worker 中途崩溃，结果未发布
+//
+// 超过 5 分钟（默认超时兜底）未完成的此类任务一律标为失败并退款。
+func cleanStaleTasks(ctx context.Context) {
+	const staleTimeout = 5 * time.Minute
+	cutoff := time.Now().Add(-staleTimeout)
+
+	var tasks []model.Task
+	err := db.Engine.
+		Where("(status = ? OR (status = ? AND upstream_task_id = '')) AND created_at < ?",
+			"pending", "processing", cutoff).
+		Find(&tasks)
+	if err != nil || len(tasks) == 0 {
+		return
+	}
+	for i := range tasks {
+		t := &tasks[i]
+		log.Printf("[poller] stale task %d (status=%s, age=%s), marking failed", t.ID, t.Status, time.Since(t.CreatedAt).Round(time.Second))
+		failTaskDB(ctx, t.ID, t.UserID, t.ChannelID, t.APIKeyID, t.CorrID, t.CreditsCharged,
+			"task timed out: worker did not complete within "+staleTimeout.String())
+	}
 }
 
 func pollPendingTasks(ctx context.Context) {
@@ -134,8 +160,13 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	// 记录本次轮询请求信息，方便管理端排障
-	upstreamReqInfo := model.JSON{"url": queryURL, "method": method}
+	// 记录本次轮询请求信息（使用与 worker 一致的 _url/_headers 键，方便前端统一展示）
+	pollHeaders := make(map[string]interface{})
+	for k, v := range ch.Headers {
+		pollHeaders[k] = v
+	}
+	pollHeaders["Content-Type"] = "application/json"
+	upstreamReqInfo := model.JSON{"_url": queryURL, "_headers": pollHeaders, "method": method}
 	db.Engine.Where("id = ?", task.ID).Cols("upstream_request").
 		Update(&model.Task{UpstreamRequest: upstreamReqInfo})
 

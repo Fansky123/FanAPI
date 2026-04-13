@@ -8,6 +8,7 @@ export const useSiteStore = defineStore('site', () => {
   const headerHtml = ref('')
   const footerHtml = ref('')
   const epayEnabled = ref(false)
+  const payApplyEnabled = ref(false)
   const noticeTitle = ref('')
   const noticeContent = ref('')
   const contactInfo = ref('')
@@ -27,6 +28,7 @@ export const useSiteStore = defineStore('site', () => {
       if (s.header_html) headerHtml.value = s.header_html
       if (s.footer_html) footerHtml.value = s.footer_html
       epayEnabled.value = s.epay_enabled === 'true'
+      payApplyEnabled.value = s.pay_apply_enabled === 'true'
       if (s.notice_title !== undefined) noticeTitle.value = s.notice_title
       if (s.notice_content !== undefined) noticeContent.value = s.notice_content
       if (s.contact_info !== undefined) contactInfo.value = s.contact_info
@@ -37,5 +39,5 @@ export const useSiteStore = defineStore('site', () => {
     }
   }
 
-  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings }
+  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, payApplyEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings }
 })

@@ -214,14 +214,76 @@ docker load < /opt/fanapi/fanapi-api.tar.gz
 docker load < /opt/fanapi/fanapi-script.tar.gz
 ```
 
-### 步骤 3：在服务器上准备文件
+### 步骤 3：在服务器上部署中间件
+
+> 如果 PostgreSQL / Redis / NATS 已经存在，跳到步骤 4。
+
+以下命令使用 Docker 在宿主机本地启动中间件，端口绑定 `0.0.0.0` 以便 fanapi 容器可通过 `host-gateway` 访问。
+
+**⚠️ 安全须知**：绑定 `0.0.0.0` 后端口对网卡可见，请在服务器防火墙 / 云安全组中禁止 5432、6379、4222 的公网入站访问，只允许内网或本机使用。
+
+#### 3a. PostgreSQL
 
 ```bash
-mkdir -p /opt/fanapi
+docker run -d \
+  --name postgres \
+  --restart unless-stopped \
+  -e POSTGRES_PASSWORD=your-pg-password \
+  -e POSTGRES_DB=fanapi \
+  -p 0.0.0.0:5432:5432 \
+  -v /opt/pgdata:/var/lib/postgresql/data \
+  postgres:16
+```
+
+#### 3b. Redis
+
+> Redis 7+ 默认启用 ACL，**必须设置密码**，否则连接报 `WRONGPASS`。
+
+```bash
+docker run -d \
+  --name redis \
+  --restart unless-stopped \
+  -p 0.0.0.0:6379:6379 \
+  redis:latest \
+  --requirepass "your-redis-password"
+```
+
+#### 3c. NATS（需开启 JetStream 持久化）
+
+```bash
+docker run -d \
+  --name nats \
+  --restart unless-stopped \
+  -p 0.0.0.0:4222:4222 \
+  -v /opt/nats-data:/data \
+  nats:latest \
+  -js -sd /data -a 0.0.0.0
+```
+
+#### 3d. 初始化数据库表
+
+```bash
+# 执行项目根目录下的 SQL 脚本（按文件名日期顺序）
+psql -h 127.0.0.1 -U postgres -d fanapi -f scripts/migrate_*.sql
+```
+
+---
+
+### 步骤 4：在服务器上准备项目文件
+
+```bash
+# 直接在服务器上克隆代码（推荐，后续 git pull 即可升级）
+git clone <你的仓库地址> /opt/fanapi
 cd /opt/fanapi
 ```
 
-将项目中的 `docker-compose.yml` 复制过来（或直接使用项目 compose 文件），然后创建 `/opt/fanapi/config.yaml`：
+---
+
+### 步骤 5：配置 config.yaml
+
+> **重要**：中间件运行在宿主机 Docker 容器中，fanapi 容器需通过 `host-gateway`（Docker 内置别名，自动解析为宿主机 IP）访问它们，**不能用 `localhost`**。
+
+编辑 `/opt/fanapi/config.yaml`：
 
 ```yaml
 server:
@@ -230,10 +292,10 @@ server:
   jwt_expire_hours: 24
 
 db:
-  host: 数据库地址
+  host: host-gateway        # ← 不要写 localhost
   port: 5432
   user: postgres
-  password: 数据库密码
+  password: your-pg-password
   dbname: fanapi
   sslmode: disable
   max_open_conns: 100
@@ -241,12 +303,12 @@ db:
   conn_max_idle_sec: 300
 
 redis:
-  addr: Redis地址:6379
-  password: ""
+  addr: host-gateway:6379   # ← 不要写 localhost
+  password: "your-redis-password"
   db: 0
 
 nats:
-  url: nats://NATS地址:4222
+  url: nats://host-gateway:4222  # ← 不要写 localhost
 
 smtp:
   host: smtp.example.com
@@ -256,7 +318,23 @@ smtp:
   from: "FanAPI <no-reply@example.com>"
 ```
 
-### 步骤 4：启动服务
+---
+
+### 步骤 6：确认 docker-compose.yml 端口配置
+
+`docker-compose.yml` 中 api 服务已配置为：
+
+```yaml
+ports:
+  - "127.0.0.1:8088:80"  # 只绑定本机，宿主机 nginx 来接收外部流量
+extra_hosts:
+  - "host-gateway:host-gateway"  # 让容器可访问宿主机上的中间件
+```
+
+- 端口 `8088` 可按需修改，保证和宿主机 nginx 反代目标一致即可。
+- 如果没有宿主机 nginx，改为 `"0.0.0.0:80:80"` 直接对外暴露。
+
+### 步骤 7：启动服务
 
 ```bash
 cd /opt/fanapi
@@ -268,14 +346,65 @@ docker compose up -d
 docker compose ps
 ```
 
-### 步骤 5：验证服务正常
+### 步骤 8：验证服务正常
 
 ```bash
 # 应返回 {"status":"ok"}
-curl http://localhost/health
+curl http://localhost:8088/health
 ```
 
-浏览器访问 `http://服务器IP` 打开用户端，`http://服务器IP/admin` 打开管理后台。
+---
+
+### 步骤 9（可选）：宿主机 nginx 配置域名和 SSL
+
+当宿主机已安装 nginx 负责域名管理和 SSL 时，fanapi 容器**不**直接对外暴露 80 端口（已绑定 `127.0.0.1:8088`），由宿主机 nginx 做 SSL 终止后反代。
+
+创建 `/etc/nginx/sites-available/fanapi.conf`（CentOS 放到 `/etc/nginx/conf.d/fanapi.conf`）：
+
+```nginx
+# HTTP → HTTPS 跳转
+server {
+    listen 80;
+    server_name your.domain.com;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS 入口
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+
+    ssl_certificate     /etc/ssl/certs/your.domain.com.pem;
+    ssl_certificate_key /etc/ssl/private/your.domain.com.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # 反代到 fanapi 容器内的 nginx
+    location / {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 180s;
+    }
+}
+```
+
+启用并重载：
+
+```bash
+# Debian / Ubuntu
+sudo ln -sf /etc/nginx/sites-available/fanapi.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo nginx -s reload
+```
+
+流量链路：
+
+```
+外部 HTTPS:443 → 宿主机 nginx（SSL 终止）→ 127.0.0.1:8088 → 容器内 nginx:80 → fanapi-server:8080
+```
 
 ---
 
@@ -647,4 +776,86 @@ sudo systemctl restart fanapi-script
 # 停止服务
 sudo systemctl stop fanapi-server
 sudo systemctl stop fanapi-script
+```
+
+---
+
+## 常见问题排查
+
+### 502 Bad Gateway / fanapi-server 未启动
+
+**症状**：`docker compose ps` 显示 `unhealthy`，日志出现 `connect() failed (111: Connection refused)`。
+
+**排查步骤**：
+
+```bash
+# 1. 查看 fanapi-server 的实际报错
+docker compose exec api /app/fanapi-server
+# 或查看 supervisor 日志
+docker compose logs api | grep -E "error|fatal|FATAL"
+```
+
+**常见原因及修复**：
+
+| 报错关键字 | 原因 | 修复 |
+|---|---|---|
+| `WRONGPASS` | Redis 密码错误或为空（Redis 7+ 默认需要密码） | 在 `config.yaml` 填写 `redis.password`，或重建 Redis 容器时加 `--requirepass` |
+| `connection refused` (5432/6379/4222) | 中间件只监听 `127.0.0.1`，容器无法通过 `host-gateway` 访问 | 用 `ss -tlnp` 检查端口，重建中间件容器改为 `-p 0.0.0.0:端口:端口` |
+| `no such host: host-gateway` | `docker-compose.yml` 缺少 `extra_hosts` 配置 | 确保两个服务都有 `extra_hosts: ["host-gateway:host-gateway"]` |
+| `database "fanapi" does not exist` | 数据库未创建 | `psql -U postgres -c "CREATE DATABASE fanapi;"` |
+
+---
+
+### 前端页面路由 404（如 /admin、/dashboard）
+
+**症状**：浏览器访问 `http://域名/admin` 返回 404。
+
+**原因**：nginx 将 `/admin` 代理到 Go 后端，但后端没有对应的页面路由，返回 404。`/admin` 是 Vue Router 的前端路由，应回落到 `index.html`。
+
+**状态**：项目 `docker/nginx.conf` 已修复，直连后端规则只保留 `v1`、`health`、`pay`，`/admin` 等前端路由自动走 SPA fallback。重新构建镜像即可：
+
+```bash
+docker compose build api && docker compose up -d api
+```
+
+---
+
+### 接口请求返回 HTML 页面
+
+**症状**：调用 `/api/xxx` 接口，响应内容是 `<!DOCTYPE html>` 而不是 JSON。
+
+**原因**：前端 `baseURL` 为 `/api`，但 nginx 未配置 `/api/` 前缀的 rewrite。
+
+**状态**：项目中 `docker/nginx.conf` 已包含 `/api/` rewrite 规则，确保使用最新代码构建镜像即可：
+
+```bash
+docker compose build api
+docker compose up -d api
+```
+
+---
+
+### 中间件端口检查
+
+```bash
+# 检查 PG / Redis / NATS 是否绑定在 0.0.0.0（容器可访问）
+ss -tlnp | grep -E '5432|6379|4222'
+
+# 期望输出（0.0.0.0 或 * 开头表示可访问，127.0.0.1 开头表示容器无法访问）
+# LISTEN  0.0.0.0:5432  ← 正确
+# LISTEN  127.0.0.1:6379 ← 容器无法访问，需要重建
+```
+
+---
+
+### 防火墙安全建议
+
+中间件端口绑定 `0.0.0.0` 后，务必在防火墙层面限制访问：
+
+```bash
+# 使用 iptables：拒绝公网访问 Redis / NATS
+iptables -A INPUT -p tcp --dport 6379 ! -s 127.0.0.1 -j DROP
+iptables -A INPUT -p tcp --dport 4222 ! -s 127.0.0.1 -j DROP
+
+# 或使用阿里云/腾讯云安全组：不开放 5432 / 6379 / 4222 入站规则（推荐）
 ```

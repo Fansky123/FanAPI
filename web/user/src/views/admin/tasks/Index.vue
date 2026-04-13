@@ -89,8 +89,16 @@
           <pre>{{ pretty(currentTask.request) }}</pre>
         </div>
         <div class="json-block">
+          <div class="json-title">上游请求 URL</div>
+          <pre class="url-block">{{ upstreamURL(currentTask.upstream_request) }}</pre>
+        </div>
+        <div class="json-block">
+          <div class="json-title">上游请求头</div>
+          <pre>{{ pretty(upstreamHeaders(currentTask.upstream_request)) }}</pre>
+        </div>
+        <div class="json-block">
           <div class="json-title">发送给第三方的请求体</div>
-          <pre>{{ pretty(currentTask.upstream_request) }}</pre>
+          <pre>{{ pretty(upstreamBody(currentTask.upstream_request)) }}</pre>
         </div>
         <div class="json-block">
           <div class="json-title">第三方原始响应体</div>
@@ -183,6 +191,22 @@ function pretty(value) {
   return JSON.stringify(value ?? {}, null, 2)
 }
 
+function upstreamURL(req) {
+  return req?._url ?? ''
+}
+
+function upstreamHeaders(req) {
+  if (!req) return {}
+  const { _url, _headers, ..._ } = req
+  return _headers ?? {}
+}
+
+function upstreamBody(req) {
+  if (!req) return {}
+  const { _url, _headers, ...rest } = req
+  return rest
+}
+
 function fmtTime(row, col, val) {
   return val ? new Date(val).toLocaleString('zh-CN') : '-'
 }
@@ -213,6 +237,10 @@ pre {
   word-break: break-all;
   font-family: monospace;
   font-size: .82rem;
+}
+pre.url-block {
+  color: #1e66ff;
+  word-break: break-all;
 }
 @media (max-width: 900px) { .hero-row { flex-direction:column;align-items:flex-start; } }
 </style>

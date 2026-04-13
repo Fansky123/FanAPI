@@ -155,6 +155,7 @@ func main() {
 
 		// 中台支付（需要 JWT 认证）
 		authed.POST("/pay/apply/create", handler.CreatePayApplyOrder)
+		authed.GET("/pay/order/status", handler.GetPaymentOrderStatus)
 
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)

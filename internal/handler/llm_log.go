@@ -77,16 +77,19 @@ func AdminListLLMLogs(c *gin.Context) {
 	defer countSess.Close()
 	total, err := countSess.Count(new(model.LLMLog))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 
 	listSess := applyFilters()
 	defer listSess.Close()
 	var logs []model.LLMLog
-	err = listSess.OrderBy("id DESC").Limit(pageSize, offset).Find(&logs)
+	err = listSess.Cols("id", "user_id", "channel_id", "api_key_id", "corr_id",
+		"model", "is_stream", "upstream_url", "upstream_method",
+		"upstream_status", "usage", "status", "error_msg", "created_at").
+		OrderBy("id DESC").Limit(pageSize, offset).Find(&logs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 
@@ -132,17 +135,17 @@ func AdminListLLMLogs(c *gin.Context) {
 func AdminGetLLMLog(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	var log model.LLMLog
 	has, err := db.Engine.ID(id).Get(&log)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 	if !has {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
 	}
 	c.JSON(http.StatusOK, log)
@@ -191,7 +194,7 @@ func UserListLLMLogs(c *gin.Context) {
 	countSess := *sess
 	total, err := countSess.Count(new(model.LLMLog))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 
@@ -201,7 +204,7 @@ func UserListLLMLogs(c *gin.Context) {
 		"upstream_status", "usage", "status", "error_msg", "created_at").
 		OrderBy("id DESC").Limit(pageSize, offset).Find(&logs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 
@@ -254,17 +257,17 @@ func UserGetLLMLog(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	var log model.LLMLog
 	has, err := db.Engine.ID(id).Where("user_id = ?", userID).Get(&log)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 	if !has {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
 	}
 	c.JSON(http.StatusOK, log)

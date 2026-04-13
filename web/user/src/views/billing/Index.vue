@@ -12,6 +12,10 @@
             <el-icon><CreditCard /></el-icon>
             在线充值
           </el-button>
+          <el-button v-if="site.payApplyEnabled" type="success" @click="showPayApply = true">
+            <el-icon><CreditCard /></el-icon>
+            在线充值
+          </el-button>
         </div>
       </div>
 
@@ -167,6 +171,59 @@
       </template>
     </el-dialog>
 
+    <!-- 中台支付充值弹窗 -->
+    <el-dialog v-model="showPayApply" title="在线充值" width="420px" @close="resetPayApplyForm">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
+        <template #title>充值后余额将自动到账，1元 = 1,000,000 积分</template>
+      </el-alert>
+      <el-form :model="payApplyForm" label-width="90px">
+        <el-form-item label="充值金额">
+          <el-input-number
+            v-model="payApplyForm.amount"
+            :min="0.01"
+            :precision="2"
+            :step="10"
+            style="width:100%"
+            placeholder="请输入充值金额（元）"
+          />
+        </el-form-item>
+        <el-form-item label="支付方式">
+          <el-radio-group v-model="payApplyForm.pay_flat">
+            <el-radio :value="2">
+              <el-icon style="color:#165dff;vertical-align:middle"><Wallet /></el-icon>
+              支付宝
+            </el-radio>
+            <el-radio :value="1">
+              <el-icon style="color:#07c160;vertical-align:middle"><ChatDotRound /></el-icon>
+              微信支付
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="实际积分">
+          <span class="credits-preview">+{{ (payApplyForm.amount * 1e6).toLocaleString() }} credits</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPayApply = false">取消</el-button>
+        <el-button type="success" :loading="payApplying" @click="doPayApply">前往支付</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 中台支付内嵌弹窗 -->
+    <el-dialog v-model="showPayFrame" title="扫码支付" width="360px" :close-on-click-modal="false" @close="onPayFrameClose">
+      <div style="text-align:center">
+        <div style="color:#606266;font-size:13px;margin-bottom:16px">
+          请使用手机扫码完成支付，支付成功后余额将自动到账
+        </div>
+        <canvas ref="qrcodeCanvas" style="border-radius:8px;max-width:100%" />
+        <div style="margin-top:12px;color:#909399;font-size:12px">如扫码无效，可点击下方按鈕在新窗口打开</div>
+      </div>
+      <template #footer>
+        <el-button @click="showPayFrame = false">我已完成支付</el-button>
+        <el-button type="primary" @click="openPayInTab">在新窗口打开</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 绑定邮箱弹窗 -->
     <el-dialog v-model="showBindEmail" title="绑定邮箱" width="420px" @close="resetBindForm">
       <el-form label-width="80px">
@@ -191,10 +248,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CreditCard, Wallet, ChatDotRound } from '@element-plus/icons-vue'
+import QRCode from 'qrcode'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import { authApi, userApi, payApi } from '@/api'
@@ -227,6 +285,16 @@ let cooldownTimer = null
 const showEpay = ref(false)
 const paying = ref(false)
 const epayForm = reactive({ amount: 10, type: 'alipay' })
+
+const showPayApply = ref(false)
+const payApplying = ref(false)
+const payApplyForm = reactive({ amount: 10, pay_flat: 2 })
+
+const showPayFrame = ref(false)
+const payFrameURL = ref('')
+const qrcodeCanvas = ref(null)
+const currentOutTradeNo = ref('')
+let payPollTimer = null
 
 onMounted(() => {
   fetchTx()
@@ -268,6 +336,80 @@ async function doRedeem() {
 function resetEpayForm() {
   epayForm.amount = 10
   epayForm.type = 'alipay'
+}
+
+function resetPayApplyForm() {
+  payApplyForm.amount = 10
+  payApplyForm.pay_flat = 2
+}
+
+function stopPayPolling() {
+  if (payPollTimer) {
+    clearInterval(payPollTimer)
+    payPollTimer = null
+  }
+}
+
+function startPayPolling(outTradeNo) {
+  stopPayPolling()
+  payPollTimer = setInterval(async () => {
+    try {
+      const res = await payApi.getOrderStatus(outTradeNo)
+      if (res.status === 'paid') {
+        stopPayPolling()
+        showPayFrame.value = false
+        ElMessage.success('支付成功，余额已到账！')
+        store.fetchBalance()
+        fetchTx(1)
+        fetchOrders(1)
+      }
+    } catch {
+      // 忽略轮询期间的网络错误
+    }
+  }, 3000)
+}
+
+function onPayFrameClose() {
+  stopPayPolling()
+  payFrameURL.value = ''
+  currentOutTradeNo.value = ''
+  // 弹窗关闭后刷新余额和流水，确保到账显示最新
+  store.fetchBalance()
+  fetchTx(1)
+  fetchOrders(1)
+}
+
+function openPayInTab() {
+  window.open(payFrameURL.value, '_blank')
+}
+
+async function doPayApply() {
+  if (!payApplyForm.amount || payApplyForm.amount < 0.01) {
+    return ElMessage.warning('请输入有效的充值金额')
+  }
+  payApplying.value = true
+  try {
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent)
+    const payFrom = isMobile ? (payApplyForm.pay_flat === 1 ? 'wapwx' : 'wap') : 'pc'
+    const res = await payApi.createPayApplyOrder({
+      amount: payApplyForm.amount,
+      pay_flat: payApplyForm.pay_flat,
+      pay_from: payFrom,
+    })
+    if (res.pay_url) {
+      showPayApply.value = false
+      payFrameURL.value = res.pay_url
+      currentOutTradeNo.value = res.out_trade_no
+      showPayFrame.value = true
+      await nextTick()
+      if (qrcodeCanvas.value) {
+        QRCode.toCanvas(qrcodeCanvas.value, res.pay_url, { width: 280, margin: 2 })
+      }
+      startPayPolling(res.out_trade_no)
+    }
+  } finally {
+    payApplying.value = false
+  }
 }
 
 async function doEpayPay() {

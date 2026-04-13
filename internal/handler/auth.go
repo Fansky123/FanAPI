@@ -37,7 +37,7 @@ func (h *AuthHandler) SendCode(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "code sent"})
+	c.JSON(http.StatusOK, gin.H{"message": "验证码已发送"})
 }
 
 // POST /auth/register — 仅需用户名 + 密码，无需邮箱验证
@@ -81,7 +81,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		usernameOrEmail = req.Email
 	}
 	if usernameOrEmail == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username or email required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入用户名或邮筱"})
 		return
 	}
 	token, user, err := service.Login(c.Request.Context(), usernameOrEmail, req.Password, h.cfg)
@@ -98,7 +98,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	user := &model.User{}
 	found, err := db.Engine.ID(userID).Get(user)
 	if err != nil || !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -125,7 +125,7 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "email bound"})
+	c.JSON(http.StatusOK, gin.H{"message": "邮箱绑定成功"})
 }
 
 // POST /auth/forgot-password — 向已绑定邮箱发送重置验证码（邮箱不存在时静默成功，防枚举）
@@ -138,7 +138,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 	_ = service.SendPasswordResetCode(c.Request.Context(), req.Email, h.mailer)
-	c.JSON(http.StatusOK, gin.H{"message": "if this email is bound to an account, a reset code has been sent"})
+	c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已绑定账号，重置验证码将发送至您的邮筱"})
 }
 
 // POST /auth/reset-password — 通过邮箱验证码重置密码
@@ -156,7 +156,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "password reset"})
+	c.JSON(http.StatusOK, gin.H{"message": "密码已重置，请使用新密码登录"})
 }
 
 // POST /user/apikeys  (requires auth)
@@ -412,7 +412,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	user := &model.User{}
 	found, err := db.Engine.ID(userID).Get(user)
 	if err != nil || !found {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
@@ -421,11 +421,11 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
 		return
 	}
 	db.Engine.ID(userID).Cols("password_hash").Update(&model.User{PasswordHash: string(hash)})
-	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
+	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
 }
 
 // DELETE /user/apikeys/:id
@@ -442,10 +442,10 @@ func (h *AuthHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 	if affected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "API Key 不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "api key revoked"})
+	c.JSON(http.StatusOK, gin.H{"message": "API Key 已撤销"})
 }
 
 // GET /user/stats — 用户仪表盘统计（最近7天消耗趋势 + 累计/今日积分）

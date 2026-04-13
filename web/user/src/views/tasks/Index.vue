@@ -86,6 +86,15 @@
               <el-option label="成功" value="done" />
               <el-option label="失败" value="failed" />
             </el-select>
+            <el-date-picker
+              v-model="task.filters.dateRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width:380px"
+            />
             <el-button type="primary" @click="taskSearch">查询</el-button>
             <el-button @click="taskReset">重置</el-button>
           </div>
@@ -168,7 +177,7 @@ const llm = reactive({
 // ── 任务状态 ──
 const task = reactive({
   list: [], page: 1, total: 0,
-  filters: { task_id: '', type: '', status: '' }
+  filters: { task_id: '', type: '', status: '', dateRange: null }
 })
 const drawerVisible = ref(false)
 const currentTask = ref(null)
@@ -198,12 +207,14 @@ function llmStatusType(s) { return ({ ok: 'success', error: 'danger', refunded: 
 
 // Task
 function taskSearch() { task.page = 1; fetchTask() }
-function taskReset() { Object.assign(task.filters, { task_id: '', type: '', status: '' }); task.page = 1; fetchTask() }
+function taskReset() { Object.assign(task.filters, { task_id: '', type: '', status: '', dateRange: null }); task.page = 1; fetchTask() }
 async function fetchTask() {
   const params = { page: task.page, size: 20 }
   if (task.filters.task_id) params.task_id = task.filters.task_id
   if (task.filters.type) params.type = task.filters.type
   if (task.filters.status) params.status = task.filters.status
+  if (task.filters.dateRange?.[0]) params.start_at = task.filters.dateRange[0]
+  if (task.filters.dateRange?.[1]) params.end_at = task.filters.dateRange[1]
   const res = await taskApi.list(params)
   task.list = res.tasks ?? []
   task.total = res.total ?? 0

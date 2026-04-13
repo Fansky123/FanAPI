@@ -27,7 +27,7 @@ var publicSettingKeys = map[string]bool{
 func GetSettings(c *gin.Context) {
 	var settings []model.SystemSetting
 	if err := db.Engine.Find(&settings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取配置失败，请稍后重试"})
 		return
 	}
 	result := make(map[string]string, len(settings))
@@ -48,18 +48,18 @@ func UpdateSettings(c *gin.Context) {
 		existing := &model.SystemSetting{}
 		found, err := db.Engine.Where("key = ?", key).Get(existing)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败，请稍后重试"})
 			return
 		}
 		if found {
 			existing.Value = value
 			if _, err := db.Engine.Where("key = ?", key).Cols("value").Update(existing); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败，请稍后重试"})
 				return
 			}
 		} else {
 			if _, err := db.Engine.Insert(&model.SystemSetting{Key: key, Value: value}); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败，请稍后重试"})
 				return
 			}
 		}
@@ -71,7 +71,7 @@ func UpdateSettings(c *gin.Context) {
 func GetPublicSettings(c *gin.Context) {
 	var settings []model.SystemSetting
 	if err := db.Engine.Find(&settings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取配置失败，请稍后重试"})
 		return
 	}
 	result := make(map[string]string)

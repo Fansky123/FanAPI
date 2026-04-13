@@ -57,6 +57,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
         supervisor \
+        curl \
         ca-certificates \
         tzdata && \
     rm -rf /var/lib/apt/lists/* && \
