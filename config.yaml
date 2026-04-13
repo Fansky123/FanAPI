@@ -31,3 +31,9 @@ smtp:
   user: no-reply@example.com
   password: ""
   from: "FanAPI <no-reply@example.com>"
+
+worker:
+  # 最大同时执行的任务数，防止并发过高打垮服务器
+  # 根据服务器 CPU/内存和上游 API 限速适当调整
+  max_concurrent: 5000
+
