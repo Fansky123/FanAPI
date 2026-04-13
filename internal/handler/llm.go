@@ -183,14 +183,52 @@ func (u *usageState) normalized(req map[string]interface{}) map[string]interface
 
 // LLMProxy 处理 POST /v1/chat/completions（OpenAI 标准格式）。
 // 客户端发送 OpenAI 格式请求，收到 OpenAI 格式 SSE 响应。
+//
+// @Summary      OpenAI 兼容对话（Chat Completions）
+// @Description  发送 OpenAI 格式对话请求，支持流式（SSE）和非流式；将 model 字段填写渠道的 routing_model，服务端自动路由到真实上游模型。
+// @Tags         LLM
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      object  true  "请求体，参考 OpenAI Chat Completions API；model 填渠道名称（routing_model）"
+// @Success      200   {object}  object  "OpenAI 格式响应；stream=true 时为 SSE 流"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Failure      503   {object}  object  "无可用渠道"
+// @Router       /v1/chat/completions [post]
 func LLMProxy(c *gin.Context) { llmProxy(c) }
 
 // ClaudeProxy 处理 POST /v1/messages（Anthropic Claude 原生格式）。
 // 客户端发送 Claude 原生格式请求，收到 Claude 原生格式 SSE 响应。
+//
+// @Summary      Anthropic Claude 原生对话
+// @Description  发送 Anthropic Messages API 格式请求，支持流式（SSE）；model 填渠道的 routing_model。
+// @Tags         LLM
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      object  true  "Claude Messages 请求体；model 填渠道名称"
+// @Success      200   {object}  object  "Claude 格式响应；stream=true 时为 SSE 流"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/messages [post]
 func ClaudeProxy(c *gin.Context) { llmProxy(c) }
 
 // GeminiProxy 处理 POST /v1/gemini（Google Gemini 原生格式）。
 // 客户端发送 Gemini 原生格式请求，收到 Gemini 原生格式 SSE 响应。
+//
+// @Summary      Google Gemini 原生对话
+// @Description  发送 Gemini generateContent 格式请求；model 填渠道的 routing_model（可省略，由 channel_id 指定）。
+// @Tags         LLM
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        channel_id  query     int     false  "渠道 ID（兼容旧版）"
+// @Param        body        body      object  true   "Gemini generateContent 请求体"
+// @Success      200   {object}  object  "Gemini 格式响应"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/gemini [post]
 func GeminiProxy(c *gin.Context) { llmProxy(c) }
 
 // llmProxy 是三条 LLM 路由的共同实现。

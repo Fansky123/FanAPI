@@ -10,6 +10,10 @@ web/user/dist/
 /tmp/fanapi-script
 *.exe
 
+# Swagger generated artifacts (only docs/docs.go is needed)
+docs/swagger.json
+docs/swagger.yaml
+
 # Env / secrets
 .env
 .env.*

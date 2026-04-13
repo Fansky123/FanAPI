@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/server ./cmd/server"
+  cmd = "swag init -g cmd/server/main.go --parseInternal --output docs --outputTypes go --quiet && go build -o ./tmp/server ./cmd/server"
   bin = "./tmp/server"
   full_bin = "./tmp/server"
   include_ext = ["go", "yaml", "toml"]

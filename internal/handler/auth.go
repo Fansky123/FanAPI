@@ -177,7 +177,14 @@ func (h *AuthHandler) CreateAPIKey(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"key": rawKey, "note": "store this key safely, it will not be shown again"})
 }
 
-// GET /user/balance
+// GetBalance 查询余额
+// @Summary      查询账户余额
+// @Description  返回当前 API Key 对应账户的剩余余额，1 CNY = 1,000,000 credits。
+// @Tags         用户
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Success      200  {object}  object{balance_credits=int,balance_cny=number}
+// @Router       /user/balance [get]
 func (h *AuthHandler) GetBalance(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	balance, err := service.GetBalance(c.Request.Context(), userID)
@@ -215,8 +222,14 @@ func (h *AuthHandler) GetTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"transactions": txs, "total": total})
 }
 
-// GET /public/channels  — 公开（无需登录），显示默认价格
-// GET /user/channels    — 登录用户，按其 group 显示专属价格
+// ListModels 获取可用渠道列表
+// @Summary      获取渠道列表并查询价格
+// @Description  登录用户可看到其分组专属价（group_price）；请将 routing_model 填入请求的 model 字段进行加载均衡路由。
+// @Tags         用户
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Success      200  {object}  object{channels=[]object}
+// @Router       /user/channels [get]
 func (h *AuthHandler) ListModels(c *gin.Context) {
 	var channels []model.Channel
 	if err := db.Engine.Where("is_active = true").

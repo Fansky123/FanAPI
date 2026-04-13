@@ -1,3 +1,11 @@
+// @title           FanAPI
+// @version         1.0
+// @description     LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询
+// @host            localhost:8080
+// @schemes         http https
+// @securityDefinitions.apikey ApiKeyAuth
+// @in              header
+// @name            X-API-Key
 package main
 
 import (
@@ -5,6 +13,7 @@ import (
 	"fmt"
 	"log"
 
+	_ "fanapi/docs"
 	"fanapi/internal/billing"
 	"fanapi/internal/cache"
 	"fanapi/internal/config"
@@ -16,6 +25,8 @@ import (
 	"fanapi/pkg/mailer"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -70,6 +81,9 @@ func main() {
 
 	// 健康检查（无需认证）
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+
+	// Swagger 接口文档
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// API 文档页面（无需认证）
 	r.GET("/docs", handler.APIDocs)

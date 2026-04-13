@@ -4,15 +4,26 @@
 # ─────────────────────────────────────────────────────────────
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26
 
-RUN apt-get update && apt-get install -y ca-certificates tzdata git && rm -rf /var/lib/apt/lists/*
-RUN apt-get install nodejs npm -y
+RUN if [ -f /etc/apt/sources.list ]; then \
+        sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list; \
+    fi && \
+    if [ -d /etc/apt/sources.list.d ]; then \
+        find /etc/apt/sources.list.d -name "*.list" -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
+        find /etc/apt/sources.list.d -name "*.sources" -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
+    fi && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata git nodejs npm && \
+    rm -rf /var/lib/apt/lists/*
+
+
 
 ENV TZ=Asia/Shanghai \
 	GOPROXY=https://goproxy.cn,direct \
 	GOSUMDB=sum.golang.google.cn
 
-# 安装 air 热重载工具
-RUN go install github.com/air-verse/air@latest
+# 安装 air 热重载工具 + swag 文档生成工具
+RUN go install github.com/air-verse/air@latest && \
+    go install github.com/swaggo/swag/cmd/swag@latest
 
 WORKDIR /app
 

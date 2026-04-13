@@ -243,7 +243,18 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	c.JSON(http.StatusAccepted, gin.H{"task_id": task.ID})
 }
 
-// POST /v1/image
+// CreateImageTask 创建图片生成任务
+// @Summary      创建图片生成任务
+// @Description  异步任务，提交后返回 task_id；通过 GET /v1/tasks/:id 轮询结果。
+// @Tags         媒体生成
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      model.ImageRequest  true  "图片生成参数"
+// @Success      202   {object}  object{task_id=int}  "任务已接受"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/image [post]
 func CreateImageTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -258,7 +269,18 @@ func CreateImageTask(c *gin.Context) {
 	createTask(c, "image", req.ToMap())
 }
 
-// POST /v1/video
+// CreateVideoTask 创建视频生成任务
+// @Summary      创建视频生成任务
+// @Description  异步任务，提交后返回 task_id；通过 GET /v1/tasks/:id 轮询结果。
+// @Tags         媒体生成
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      model.VideoRequest  true  "视频生成参数"
+// @Success      202   {object}  object{task_id=int}  "任务已接受"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/video [post]
 func CreateVideoTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -273,7 +295,18 @@ func CreateVideoTask(c *gin.Context) {
 	createTask(c, "video", req.ToMap())
 }
 
-// POST /v1/audio
+// CreateAudioTask 创建音频/TTS 任务
+// @Summary      创建音频生成（TTS）任务
+// @Description  异步任务，提交后返回 task_id；通过 GET /v1/tasks/:id 轮询结果。
+// @Tags         媒体生成
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      model.AudioRequest  true  "音频生成参数"
+// @Success      202   {object}  object{task_id=int}  "任务已接受"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/audio [post]
 func CreateAudioTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -314,7 +347,18 @@ func bindMusicRequest(bodyBytes []byte) (*model.MusicRequest, error) {
 	return &req, nil
 }
 
-// POST /v1/music
+// CreateMusicTask 创建 Suno 音乐生成任务
+// @Summary      创建音乐生成任务（Suno）
+// @Description  异步任务，每次生成 2 首；提交后返回 task_id，通过 GET /v1/tasks/:id 轮询结果（items 数组）。
+// @Tags         媒体生成
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      model.MusicRequest  true  "Suno 音乐生成参数"
+// @Success      202   {object}  object{task_id=int}  "任务已接受"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1/music [post]
 func CreateMusicTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {

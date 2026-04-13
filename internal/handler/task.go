@@ -10,12 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GET /v1/tasks/:id
-// 返回任务的标准响应格式 TaskResult：
-//   - pending    → code=150, status=0, msg="排队中"
-//   - processing → code=150, status=1, msg="生成中"
-//   - done       → 直接返回 task.Result（已由 response_script 映射为标准格式）
-//   - failed     → code=500, status=3, msg=task.ErrorMsg
+// GetTask 查询任务结果
+// @Summary      查询任务结果
+// @Description  轮询图片/视频/音频/音乐任务结果。code=150 进行中，200 成功，500 失败。
+// @Tags         任务
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        id   path      int  true  "任务 ID"
+// @Success      200  {object}  model.TaskResult
+// @Failure      404  {object}  object  "任务不存在"
+// @Router       /v1/tasks/{id} [get]
 func GetTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -81,7 +85,21 @@ func ListTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "total": total})
 }
 
-// GET /v1/tasks  (用户查看自己的任务列表，需 API Key)
+// ListUserTasks 查询当前用户的任务列表
+// @Summary      查询任务列表
+// @Description  分页获取当前 API Key 对应用户的历史任务。
+// @Tags         任务
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        page      query     int     false  "页码（默认 1）"
+// @Param        size      query     int     false  "每页条数（默认 20，最大 100）"
+// @Param        status    query     string  false  "状态过滤：pending/processing/done/failed"
+// @Param        type      query     string  false  "任务类型过滤：image/video/audio/music"
+// @Param        task_id   query     int     false  "按 task_id 精确查询"
+// @Param        start_at  query     string  false  "创建时间起（2006-01-02 15:04:05）"
+// @Param        end_at    query     string  false  "创建时间止"
+// @Success      200  {object}  object{tasks=[]model.TaskResult,total=int}
+// @Router       /v1/tasks [get]
 func ListUserTasks(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
