@@ -2,14 +2,21 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-// APIDocs 返回内嵌的 API 文档 HTML 页面
+// APIDocs 返回内嵌的 API 文档 HTML 页面，Base URL 根据请求自动推断
 func APIDocs(c *gin.Context) {
+	scheme := c.GetHeader("X-Forwarded-Proto")
+	if scheme == "" {
+		scheme = "http"
+	}
+	baseURL := scheme + "://" + c.Request.Host
+	html := strings.ReplaceAll(apiDocsHTML, "http://localhost:8080", baseURL)
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, apiDocsHTML)
+	c.String(http.StatusOK, html)
 }
 
 const apiDocsHTML = `<!DOCTYPE html>

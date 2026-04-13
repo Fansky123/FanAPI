@@ -114,10 +114,11 @@ func Publish(subject string, data []byte) error {
 // survive worker restarts without the "filtered consumer not unique" error that push
 // consumers suffer on WorkQueue streams.
 //
-// Each fetched message is dispatched in its own goroutine (safe: handler is idempotent
-// and operates on independent task IDs). The goroutine exits when the subscription is
-// closed (sub.Unsubscribe / server shutdown).
-func QueueSubscribe(subject, queue string, handler nats.MsgHandler) (*nats.Subscription, error) {
+// maxConcurrent limits the number of goroutines running handler concurrently.
+// When the limit is reached, the fetch loop blocks — providing true backpressure:
+// no new messages are pulled from the queue until a slot is freed.
+// Pass 0 for unlimited concurrency.
+func QueueSubscribe(subject, queue string, handler nats.MsgHandler, maxConcurrent int) (*nats.Subscription, error) {
 	sub, err := JS.PullSubscribe(
 		subject,
 		queue,
@@ -127,6 +128,11 @@ func QueueSubscribe(subject, queue string, handler nats.MsgHandler) (*nats.Subsc
 	)
 	if err != nil {
 		return nil, fmt.Errorf("pull subscribe %s/%s: %w", subject, queue, err)
+	}
+
+	var sem chan struct{}
+	if maxConcurrent > 0 {
+		sem = make(chan struct{}, maxConcurrent)
 	}
 
 	go func() {
@@ -144,7 +150,17 @@ func QueueSubscribe(subject, queue string, handler nats.MsgHandler) (*nats.Subsc
 				continue
 			}
 			for _, msg := range msgs {
-				go handler(msg)
+				if sem != nil {
+					// 先占槽再 spawn goroutine：fetch 循环在此阻塞，
+					// 达到上限时不再从队列拉取新消息，形成真正的背压。
+					sem <- struct{}{}
+				}
+				go func(m *nats.Msg) {
+					if sem != nil {
+						defer func() { <-sem }()
+					}
+					handler(m)
+				}(msg)
 			}
 		}
 	}()

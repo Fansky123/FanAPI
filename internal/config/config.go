@@ -50,8 +50,10 @@ type NATSConfig struct {
 //	worker:
 //	  subjects:
 //	    - "task.video.*"
+//	  max_concurrent: 10  # 最大同时执行的任务数，0 表示不限制
 type WorkerConfig struct {
-	Subjects []string `mapstructure:"subjects"`
+	Subjects      []string `mapstructure:"subjects"`
+	MaxConcurrent int      `mapstructure:"max_concurrent"`
 }
 
 type SMTPConfig struct {

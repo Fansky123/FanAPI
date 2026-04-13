@@ -19,7 +19,7 @@ import (
 func GetTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务 ID 格式错误"})
 		return
 	}
 	userID := c.MustGet("user_id").(int64)
@@ -27,11 +27,11 @@ func GetTask(c *gin.Context) {
 	task := &model.Task{}
 	found, err := db.Engine.Where("id = ? AND user_id = ?", id, userID).Get(task)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
 		return
 	}
 
@@ -70,9 +70,12 @@ func ListTasks(c *gin.Context) {
 	}
 
 	var tasks []model.Task
-	total, err := query.Limit(size, (page-1)*size).FindAndCount(&tasks)
+	total, err := query.Cols("id", "user_id", "channel_id", "api_key_id", "type", "status",
+		"progress", "upstream_task_id",
+		"error_msg", "credits_charged", "corr_id", "created_at", "updated_at").
+		Limit(size, (page-1)*size).FindAndCount(&tasks)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "total": total})
@@ -100,11 +103,20 @@ func ListUserTasks(c *gin.Context) {
 	if taskID := c.Query("task_id"); taskID != "" {
 		query = query.And("id = ?", taskID)
 	}
+	if startAt := c.Query("start_at"); startAt != "" {
+		query = query.And("created_at >= ?", startAt)
+	}
+	if endAt := c.Query("end_at"); endAt != "" {
+		query = query.And("created_at <= ?", endAt)
+	}
 
 	var tasks []model.Task
-	total, err := query.Limit(size, (page-1)*size).FindAndCount(&tasks)
+	total, err := query.Cols("id", "user_id", "channel_id", "api_key_id", "type", "status",
+		"progress", "upstream_task_id",
+		"error_msg", "credits_charged", "corr_id", "created_at", "updated_at").
+		Limit(size, (page-1)*size).FindAndCount(&tasks)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 
@@ -119,17 +131,17 @@ func ListUserTasks(c *gin.Context) {
 func GetAdminTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务 ID 格式错误"})
 		return
 	}
 	task := &model.Task{}
 	found, err := db.Engine.Where("id = ?", id).Get(task)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
 		return
 	}
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"task": task})
@@ -143,7 +155,6 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		TaskID:         task.ID,
 		TaskType:       task.Type,
 		ChannelID:      task.ChannelID,
-		UpstreamTaskID: task.UpstreamTaskID,
 		CreditsCharged: task.CreditsCharged,
 		Request:        task.Request,
 		Result:         task.Result,

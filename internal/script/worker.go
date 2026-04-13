@@ -32,13 +32,17 @@ func StartWorkers(cfg config.WorkerConfig) error {
 	// 只应在 Worker 进程中运行——如在服务器进程中运行会杀死服务器的 result-proc Consumer。
 	mq.PurgeConsumers()
 
+	if cfg.MaxConcurrent > 0 {
+		log.Printf("[script worker] max concurrent tasks: %d", cfg.MaxConcurrent)
+	}
+
 	subjects := cfg.Subjects
 	if len(subjects) == 0 {
 		subjects = []string{"task.>"}
 	}
 	for _, subj := range subjects {
 		consumer := subjectToConsumer(subj)
-		if _, err := mq.QueueSubscribe(subj, consumer, handleTask); err != nil {
+		if _, err := mq.QueueSubscribe(subj, consumer, handleTask, cfg.MaxConcurrent); err != nil {
 			return fmt.Errorf("subscribe %s: %w", subj, err)
 		}
 		log.Printf("[script worker] subscribed to %s (consumer: %s)", subj, consumer)
@@ -55,6 +59,10 @@ func subjectToConsumer(subject string) string {
 	return "workers-" + s
 }
 
+// natsMaxPayload 是 NATS 消息发布的保守最大字节数（略低于服务端限制，留出序列化开销）。
+// NATS 服务端已配置 max_payload = 60MB；此处设 55MB 作为软限制，保留 5MB 余量。
+const natsMaxPayload = 55 * 1024 * 1024 // 55 MB
+
 func handleTask(msg *nats.Msg) {
 	var job model.TaskJob
 	if err := json.Unmarshal(msg.Data, &job); err != nil {
@@ -65,12 +73,31 @@ func handleTask(msg *nats.Msg) {
 
 	result := execJob(context.Background(), &job)
 
-	// 先发布结果再 ACK——若发布失败则消息会被重新投递，Worker 将重试（奖励幂等）。
 	subject := fmt.Sprintf("result.%d", job.TaskID)
 	data, _ := json.Marshal(result)
+
+	// NATS 服务端有最大消息大小限制（默认 1MB）。
+	// 上游若返回 base64 内联图片等大体积数据，响应可能超限。
+	// 策略：先去掉调试用的 UpstreamResponse；仍超限则整体标为失败并立即 Term，
+	// 避免消息被无限重投（每次都会失败）直到 MaxDeliver 耗尽后任务永久卡死。
+	if len(data) > natsMaxPayload {
+		log.Printf("[worker] task %d: result too large (%d bytes), stripping upstream_response", job.TaskID, len(data))
+		result.UpstreamResponse = nil
+		data, _ = json.Marshal(result)
+	}
+	if len(data) > natsMaxPayload {
+		log.Printf("[worker] task %d: result still too large (%d bytes), marking failed", job.TaskID, len(data))
+		result.Outcome = model.OutcomeFailed
+		result.ErrorMsg = fmt.Sprintf("上游响应体过大（超过 %d KB），无法经由消息队列传输；请在渠道的 response_script 中提取 URL 而非透传整个响应", natsMaxPayload/1024)
+		result.Result = nil
+		result.UpstreamResponse = nil
+		data, _ = json.Marshal(result)
+	}
+
+	// 先发布结果再 ACK——若发布失败则消息会被重新投递，Worker 将重试。
 	if err := mq.PublishResult(subject, data); err != nil {
 		log.Printf("[worker] task %d: failed to publish result: %v", job.TaskID, err)
-		// Do NOT ack — let the message be redelivered.
+		_ = msg.Term() // 立即终止，不再重投（同样的载荷会一直失败）
 		return
 	}
 	_ = msg.Ack()
@@ -107,11 +134,27 @@ func execJob(ctx context.Context, job *model.TaskJob) *model.WorkerResult {
 		payload = mapped
 	}
 
-	// 记录上游请求（调试用）
+	// 记录上游请求（调试用），包含目标 URL 和请求头
 	upstreamReq := make(map[string]interface{})
 	for k, v := range payload {
 		upstreamReq[k] = v
 	}
+	// 计算实际 URL（含 {model} 替换），方便管理端排障
+	targetURLForLog := job.BaseURL
+	if modelVal, ok := job.Payload["model"].(string); ok && modelVal != "" {
+		targetURLForLog = strings.ReplaceAll(targetURLForLog, "{model}", modelVal)
+	}
+	upstreamReq["_url"] = targetURLForLog
+	// 合并渠道配置的请求头（不记录已被替换占位符的敏感值，只记录 key）
+	headersForLog := make(map[string]interface{})
+	for k, v := range job.Headers {
+		headersForLog[k] = v
+	}
+	if job.PoolKeyValue != "" {
+		headersForLog["Authorization"] = "Bearer ****" // 号池 Key 脱敏
+	}
+	headersForLog["Content-Type"] = "application/json"
+	upstreamReq["_headers"] = headersForLog
 	base.UpstreamRequest = upstreamReq
 
 	// 调用上游 HTTP
@@ -199,7 +242,14 @@ func callUpstream(job *model.TaskJob, payload map[string]interface{}) (map[strin
 	}
 	client := &http.Client{Timeout: timeout}
 
-	req, err := http.NewRequest(job.Method, job.BaseURL, bytes.NewReader(body))
+	// 支持 {model} 占位符，将请求载荷中的模型名注入 URL
+	// 例如：https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+	targetURL := job.BaseURL
+	if modelVal, ok := job.Payload["model"].(string); ok && modelVal != "" {
+		targetURL = strings.ReplaceAll(targetURL, "{model}", modelVal)
+	}
+
+	req, err := http.NewRequest(job.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}

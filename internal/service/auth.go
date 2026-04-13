@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"fanapi/internal/cache"
@@ -35,7 +37,11 @@ func Register(ctx context.Context, username, password string) (*model.User, erro
 		IsActive:     true,
 	}
 	if _, err := db.Engine.Insert(user); err != nil {
-		return nil, fmt.Errorf("username already taken")
+		log.Printf("[register] db insert error: %v", err)
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			return nil, fmt.Errorf("用户名已被占用")
+		}
+		return nil, fmt.Errorf("注册失败，请稍后重试")
 	}
 	return user, nil
 }
@@ -46,19 +52,24 @@ func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.Se
 	// 先尝试用户名登录，失败再尝试邂算
 	found, err := db.Engine.Where("username = ?", usernameOrEmail).Get(user)
 	if err != nil {
-		return "", nil, fmt.Errorf("invalid credentials")
+		log.Printf("[login] db error (username lookup): %v", err)
+		return "", nil, fmt.Errorf("内部错误，请稍后重试")
 	}
 	if !found {
 		found, err = db.Engine.Where("email = ?", usernameOrEmail).Get(user)
-		if err != nil || !found {
-			return "", nil, fmt.Errorf("invalid username or password")
+		if err != nil {
+			log.Printf("[login] db error (email lookup): %v", err)
+			return "", nil, fmt.Errorf("内部错误，请稍后重试")
+		}
+		if !found {
+			return "", nil, fmt.Errorf("用户名或密码错误")
 		}
 	}
 	if !user.IsActive {
-		return "", nil, fmt.Errorf("account disabled")
+		return "", nil, fmt.Errorf("账号已被禁用，请联系管理员")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return "", nil, fmt.Errorf("invalid username or password")
+		return "", nil, fmt.Errorf("用户名或密码错误")
 	}
 
 	exp := time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)
@@ -85,9 +96,9 @@ func BindEmail(ctx context.Context, userID int64, email, code string) error {
 		return err
 	}
 	if count > 0 {
-		return fmt.Errorf("email already bound to another account")
+		return fmt.Errorf("该邮箱已被其他账号绑定")
 	}
-	_, err = db.Engine.Where("id = ?", userID).Cols("email").Update(&model.User{Email: email})
+	_, err = db.Engine.Where("id = ?", userID).Cols("email").Update(&model.User{Email: &email})
 	return err
 }
 
@@ -120,7 +131,7 @@ func ResetPasswordByEmail(ctx context.Context, email, code, newPassword string) 
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("email not bound to any account")
+		return fmt.Errorf("该邮箱未绑定任何账号")
 	}
 	return nil
 }
@@ -146,7 +157,7 @@ func encryptAPIKey(rawKey, secret string) (string, error) {
 
 func DecryptAPIKey(cipherText, secret string) (string, error) {
 	if cipherText == "" {
-		return "", fmt.Errorf("empty cipher text")
+		return "", fmt.Errorf("重置链接无效")
 	}
 	key := sha256.Sum256([]byte(secret + ":fanapi:apikey"))
 	block, err := aes.NewCipher(key[:])
@@ -162,7 +173,7 @@ func DecryptAPIKey(cipherText, secret string) (string, error) {
 		return "", err
 	}
 	if len(raw) < gcm.NonceSize() {
-		return "", fmt.Errorf("invalid cipher text")
+		return "", fmt.Errorf("重置链接无效或已过期")
 	}
 	nonce := raw[:gcm.NonceSize()]
 	data := raw[gcm.NonceSize():]
@@ -219,8 +230,12 @@ func LookupAPIKey(ctx context.Context, rawKey string) (*model.APIKey, error) {
 
 	apiKey := &model.APIKey{}
 	found, err := db.Engine.Where("key_hash = ? AND is_active = true", keyHash).Get(apiKey)
-	if err != nil || !found {
-		return nil, fmt.Errorf("invalid api key")
+	if err != nil {
+		log.Printf("[apikey] db error: %v", err)
+		return nil, fmt.Errorf("内部错误，请稍后重试")
+	}
+	if !found {
+		return nil, fmt.Errorf("API Key 无效")
 	}
 
 	// 缓存 {userID} 30 分钟

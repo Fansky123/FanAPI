@@ -104,7 +104,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	if channelIDStr := c.Query("channel_id"); channelIDStr != "" {
 		channelID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
 		if parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel_id"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
 			return
 		}
 		var chErr error
@@ -116,13 +116,13 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	} else {
 		routingModel, _ := reqData["model"].(string)
 		if routingModel == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "model or channel_id required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请指定 model 或 channel_id"})
 			return
 		}
 		var chErr error
 		ch, chErr = service.GetChannelByName(c.Request.Context(), routingModel)
 		if chErr != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found: " + routingModel})
+			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
 			return
 		}
 	}
@@ -136,7 +136,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	// 精确计费：图片/视频/音频在请求时参数已全部已知，无需两阶段结算
 	cost, _, calcErr := billing.Calc(ch, reqData)
 	if calcErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "billing error: " + calcErr.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "计费计算失败，请稍后重试"})
 		return
 	}
 	// 计算上游进价成本（用于记录利润，不影响用户扣费）
@@ -167,7 +167,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 	if _, err := db.Engine.Insert(task); err != nil {
 		_ = billing.Refund(c.Request.Context(), userID, cost)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create task"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建任务失败，请稍后重试"})
 		return
 	}
 
@@ -191,7 +191,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 					"reason":  "key pool error",
 				})
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "key pool error: " + pkErr.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "号池分配失败: " + pkErr.Error()})
 			return
 		}
 		poolKeyID = pk.ID
@@ -233,7 +233,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 				"reason":  "publish error",
 			})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to queue task"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "任务投递失败，请稍后重试"})
 		return
 	}
 
@@ -247,7 +247,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 func CreateImageTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
 		return
 	}
 	req, err := bindImageRequest(bodyBytes)
@@ -262,7 +262,7 @@ func CreateImageTask(c *gin.Context) {
 func CreateVideoTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
 		return
 	}
 	req, err := bindVideoRequest(bodyBytes)
@@ -277,7 +277,7 @@ func CreateVideoTask(c *gin.Context) {
 func CreateAudioTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
 		return
 	}
 	req, err := bindAudioRequest(bodyBytes)
@@ -318,7 +318,7 @@ func bindMusicRequest(bodyBytes []byte) (*model.MusicRequest, error) {
 func CreateMusicTask(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
 		return
 	}
 	req, err := bindMusicRequest(bodyBytes)

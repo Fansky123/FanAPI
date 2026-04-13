@@ -21,7 +21,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 		if rawKey != "" {
 			apiKey, err := service.LookupAPIKey(c.Request.Context(), rawKey)
 			if err != nil {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid api key"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API Key 无效"})
 				return
 			}
 			c.Set("user_id", apiKey.UserID)
@@ -47,12 +47,12 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 				return []byte(cfg.JWTSecret), nil
 			})
 			if err != nil || !token.Valid {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已过期，请重新登录"})
 				return
 			}
 			claims, ok := token.Claims.(jwt.MapClaims)
 			if !ok {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录凭证异常，请重新登录"})
 				return
 			}
 			userID := int64(claims["sub"].(float64))
@@ -66,7 +66,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
 	}
 }
 
@@ -74,7 +74,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 func APIKeyOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if authType, _ := c.Get("auth_type"); authType != "apikey" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "api key required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "此接口仅支持 API Key 认证"})
 			return
 		}
 		c.Next()

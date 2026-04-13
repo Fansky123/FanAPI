@@ -23,6 +23,6 @@ func (m *Mailer) Send(to, subject, body string) error {
 	msg.SetBody("text/html", body)
 
 	d := gomail.NewDialer(m.cfg.Host, m.cfg.Port, m.cfg.User, m.cfg.Password)
-	d.TLSConfig = &tls.Config{InsecureSkipVerify: false}
+	d.TLSConfig = &tls.Config{ServerName: m.cfg.Host}
 	return d.DialAndSend(msg)
 }

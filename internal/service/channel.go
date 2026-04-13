@@ -38,7 +38,7 @@ func GetChannel(ctx context.Context, channelID int64) (*model.Channel, error) {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("channel not found")
+		return nil, fmt.Errorf("渠道不存在")
 	}
 
 	if b, jsonErr := json.Marshal(ch); jsonErr == nil {
@@ -85,7 +85,7 @@ func GetChannelByName(ctx context.Context, name string) (*model.Channel, error) 
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("channel %q not found", name)
+		return nil, fmt.Errorf("渠道 \"%s\" 不存在", name)
 	}
 
 	if b, jsonErr := json.Marshal(ch); jsonErr == nil {
@@ -148,7 +148,7 @@ func SelectChannel(ctx context.Context, modelName string, excludeIDs ...int64) (
 		return nil, err
 	}
 	if len(channels) == 0 {
-		return nil, fmt.Errorf("no active channels for model %q", modelName)
+		return nil, fmt.Errorf("无可用渠道: %s", modelName)
 	}
 
 	excluded := make(map[int64]bool, len(excludeIDs))
@@ -177,7 +177,7 @@ func SelectChannel(ctx context.Context, modelName string, excludeIDs ...int64) (
 		}
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("all channels for model %q are exhausted", modelName)
+		return nil, fmt.Errorf("所有渠道均不可用，请稍后重试")
 	}
 
 	// 按优先级降序排序，选取最高优先级组

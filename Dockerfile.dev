@@ -5,6 +5,7 @@
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26
 
 RUN apt-get update && apt-get install -y ca-certificates tzdata git && rm -rf /var/lib/apt/lists/*
+RUN apt-get install nodejs npm -y
 
 ENV TZ=Asia/Shanghai \
 	GOPROXY=https://goproxy.cn,direct \

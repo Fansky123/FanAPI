@@ -59,10 +59,10 @@ func Charge(ctx context.Context, userID, credits int64) error {
 		return err
 	}
 	if result == -1 {
-		return fmt.Errorf("insufficient credits")
+		return fmt.Errorf("余额不足")
 	}
 	if result == -2 {
-		return fmt.Errorf("balance key missing")
+		return fmt.Errorf("余额记录异常，请联系管理员")
 	}
 	return nil
 }

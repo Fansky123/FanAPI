@@ -57,7 +57,7 @@ func ListChannels(c *gin.Context) {
 func UpdateChannel(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	var ch model.Channel
@@ -77,21 +77,21 @@ func UpdateChannel(c *gin.Context) {
 func DeleteChannel(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	if err := service.DeleteChannel(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "channel disabled"})
+	c.JSON(http.StatusOK, gin.H{"message": "渠道已删除"})
 }
 
 // PUT /admin/users/:id/password — 管理员重置任意用户密码
 func ResetUserPassword(c *gin.Context) {
 	targetID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	var req struct {
@@ -103,22 +103,22 @@ func ResetUserPassword(c *gin.Context) {
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
 		return
 	}
 	affected, err := db.Engine.ID(targetID).Cols("password_hash").Update(&model.User{PasswordHash: string(hash)})
 	if err != nil || affected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
+	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})
 }
 
 // POST /admin/users/:id/recharge — 为用户手动充值（直接填写 credits 数量）
 func Recharge(c *gin.Context) {
 	targetID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	adminID := c.MustGet("user_id").(int64)
@@ -163,7 +163,7 @@ func ListUsers(c *gin.Context) {
 func SetUserGroup(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
 		return
 	}
 	var req struct {
@@ -189,12 +189,12 @@ func ListAllTransactions(c *gin.Context) {
 	}
 	startAt, err := parseDateTime(c.Query("start_at"), false)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_at"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "start_at 时间格式错误"})
 		return
 	}
 	endAt, err := parseDateTime(c.Query("end_at"), true)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_at"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "end_at 时间格式错误"})
 		return
 	}
 

@@ -74,7 +74,7 @@ func GetBalance(ctx context.Context, userID int64) (int64, error) {
 		return 0, err
 	}
 	if !found {
-		return 0, fmt.Errorf("user not found")
+		return 0, fmt.Errorf("用户不存在")
 	}
 	return user.Balance, nil
 }
