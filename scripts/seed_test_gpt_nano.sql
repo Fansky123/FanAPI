@@ -21,7 +21,7 @@ INSERT INTO channels (
     'ChatFire - GPT-4o',
     'gpt-4o',
     'llm',
-    'https://api.chatfire.cn/v1/chat/completions',
+    'https://api.*****.cn/v1/chat/completions',
     'POST',
     '{"Authorization": "Bearer YOUR_CHATFIRE_KEY", "Content-Type": "application/json"}',
     60000,

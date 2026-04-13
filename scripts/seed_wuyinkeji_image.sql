@@ -22,7 +22,7 @@ INSERT INTO channels (
     '无音科技 - nanoBanana2 图片生成',
     'nano-banana2',
     'image',
-    'https://api.wuyinkeji.com/api/async/image_nanoBanana2',
+    'https://api.*****.com/api/async/image_nanoBanana2',
     'POST',
     '{"Content-Type": "application/json"}',
     120000,
