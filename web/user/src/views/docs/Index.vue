@@ -1,79 +1,46 @@
 <template>
   <div class="docs-page">
-    <el-card class="hero-card">
-      <div class="hero-row">
-        <div>
-          <div class="eyebrow">Developer Docs</div>
-          <h3>接口文档与多语言示例</h3>
-          <p>在控制台内直接查看 API 文档，包含 LLM、图像、视频、音频和任务轮询调用说明。</p>
-        </div>
-        <el-button type="primary" plain @click="openDocs">新窗口打开</el-button>
-      </div>
-    </el-card>
-    <div class="docs-wrap">
-      <iframe src="/api/docs" frameborder="0" class="docs-frame" />
-    </div>
+    <div ref="scalarRoot" class="scalar-root" />
   </div>
 </template>
 
 <script setup>
-function openDocs() {
-  window.open('/api/docs', '_blank', 'noopener')
-}
+import { onMounted, onUnmounted, ref } from 'vue'
+
+const scalarRoot = ref(null)
+let scriptEl = null
+
+onMounted(() => {
+  // 挂载 Scalar 容器元素
+  const el = document.createElement('div')
+  el.id = 'api-reference'
+  el.setAttribute('data-url', '/api/swagger/doc.json')
+  el.setAttribute(
+    'data-configuration',
+    JSON.stringify({ theme: 'default', darkMode: false, layout: 'sidebar', hideDarkModeToggle: true })
+  )
+  scalarRoot.value.appendChild(el)
+
+  // 动态加载 Scalar CDN 脚本
+  scriptEl = document.createElement('script')
+  scriptEl.src = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference'
+  scriptEl.async = true
+  document.head.appendChild(scriptEl)
+})
+
+onUnmounted(() => {
+  if (scriptEl) scriptEl.remove()
+})
 </script>
 
 <style scoped>
 .docs-page {
-  max-width: 1320px;
-}
-.hero-card {
-  margin-bottom: 16px;
-}
-.hero-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.eyebrow {
-  color: #165dff;
-  font-size: .82rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-.hero-row h3 {
-  margin: 8px 0 10px;
-  font-size: 1.55rem;
-}
-.hero-row p {
-  margin: 0;
-  color: #617086;
-}
-.docs-wrap {
-  height: calc(100vh - 210px);
-  min-height: 720px;
-  border-radius: 18px;
+  width: 100%;
+  height: calc(100vh - 48px);
   overflow: hidden;
-  border: 1px solid #dfe8f5;
-  box-shadow: 0 14px 44px rgba(11, 33, 79, 0.08);
 }
-.docs-frame {
+.scalar-root {
   width: 100%;
   height: 100%;
-  border: none;
-  display: block;
-  background: #0f1117;
-}
-
-@media (max-width: 900px) {
-  .hero-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .docs-wrap {
-    height: calc(100vh - 260px);
-    min-height: 560px;
-  }
 }
 </style>

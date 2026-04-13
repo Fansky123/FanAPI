@@ -19,6 +19,14 @@
   --ow-shadow-md:  0 4px 16px rgba(0,0,0,.1);
   --ow-sidebar-w:  220px;
   --ow-header-h:   48px;
+  /* layout shell 专属（亮色） */
+  --ow-layout-sidebar:  #edf3ff;
+  --ow-layout-border:   #d0e2ff;
+  --ow-nav-color:       #4e5969;
+  --ow-nav-hover:       rgba(255,255,255,.65);
+  --ow-nav-active:      #ffffff;
+  --ow-content-bg:      #ffffff;
+  --ow-chip-bg:         rgba(255,255,255,.8);
 }
 
 * { box-sizing: border-box; }
@@ -111,3 +119,40 @@ body {
 ::-webkit-scrollbar-track { border-radius: 4px; background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: 8px; background-color: #dddee0; }
 ::-webkit-scrollbar-thumb:hover { background-color: #c7c9cc; }
+
+/* ---- Dark mode ---- */
+html.dark {
+  --ow-primary:        #4080ff;
+  --ow-primary-hover:  #669dff;
+  --ow-primary-bg:     #1a2744;
+  --ow-bg:             #0d0d14;
+  --ow-sidebar-bg:     #141422;
+  --ow-header-bg:      #141422;
+  --ow-text:           #e5eaf3;
+  --ow-subtext:        #8a8fa6;
+  --ow-border:         #3a3a4a;
+  --ow-panel:          #1a1a2e;
+  --ow-success:        #23c343;
+  --ow-danger:         #f76965;
+  --ow-shadow:         0 1px 4px rgba(0,0,0,.4);
+  --ow-shadow-md:      0 4px 16px rgba(0,0,0,.5);
+  /* layout shell 专属（深色） */
+  --ow-layout-sidebar: #141422;
+  --ow-layout-border:  #252540;
+  --ow-nav-color:      #b5bac8;
+  --ow-nav-hover:      rgba(255,255,255,.07);
+  --ow-nav-active:     rgba(255,255,255,.1);
+  --ow-content-bg:     #0d0d14;
+  --ow-chip-bg:        rgba(255,255,255,.07);
+}
+
+html.dark body {
+  background: var(--ow-bg);
+}
+
+html.dark .el-table__header thead th {
+  background: #1e1e30 !important;
+}
+html.dark .el-table__row:hover > td {
+  background: #1a1a2e !important;
+}

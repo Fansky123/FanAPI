@@ -115,11 +115,12 @@
               <el-button type="primary" size="small">免费注册</el-button>
             </router-link>
           </template>
+         
         </div>
       </header>
 
       <!-- 内容 -->
-      <main class="ow-content">
+      <main class="ow-content" :class="{ 'ow-content--flush': route.path === '/docs' }">
         <div v-if="site.headerHtml" style="display:none"></div>
         <router-view />
       </main>
@@ -137,7 +138,7 @@ import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import {
   ChatDotRound, Grid, Key, Wallet, List, Document, SwitchButton, ArrowDown,
-  ChatLineSquare, DArrowLeft, DArrowRight, DataBoard, CreditCard
+  ChatLineSquare, DArrowLeft, DArrowRight, DataBoard, CreditCard, Moon, Sunny
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -200,8 +201,8 @@ function handleCmd(cmd) {
 .ow-sidebar {
   width: var(--ow-sidebar-w, 220px);
   flex-shrink: 0;
-  background: #edf3ff;
-  border-right: 1px solid #d0e2ff;
+  background: var(--ow-layout-sidebar);
+  border-right: 1px solid var(--ow-layout-border);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -226,7 +227,7 @@ function handleCmd(cmd) {
   align-items: center;
   gap: 10px;
   padding: 0 16px;
-  border-bottom: 1px solid #d0e2ff;
+  border-bottom: 1px solid var(--ow-layout-border);
   flex-shrink: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -283,7 +284,7 @@ function handleCmd(cmd) {
   padding: 0 12px;
   height: 40px;
   border-radius: var(--ow-radius, 4px);
-  color: #4e5969;
+  color: var(--ow-nav-color);
   text-decoration: none;
   font-size: 14px;
   font-weight: 400;
@@ -298,11 +299,11 @@ function handleCmd(cmd) {
   color: inherit;
 }
 .ow-nav-item:hover {
-  background: rgba(255,255,255,.65);
+  background: var(--ow-nav-hover);
   color: var(--ow-primary, #165dff);
 }
 .ow-nav-item.active {
-  background: #fff;
+  background: var(--ow-nav-active);
   color: var(--ow-primary, #165dff);
   font-weight: 600;
 }
@@ -318,7 +319,7 @@ function handleCmd(cmd) {
 /* ── Sidebar Footer ── */
 .ow-sidebar-footer {
   padding: 10px 8px;
-  border-top: 1px solid #d0e2ff;
+  border-top: 1px solid var(--ow-layout-border);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -333,10 +334,10 @@ function handleCmd(cmd) {
   font-size: 13px;
   cursor: pointer;
   transition: all .15s;
-  color: #4e5969;
+  color: var(--ow-nav-color);
 }
-.balance-row:hover { background: rgba(255,255,255,.65); color: var(--ow-primary); }
-.logout-row:hover { background: rgba(255,255,255,.65); color: var(--ow-danger, #f53f3f); }
+.balance-row:hover { background: var(--ow-nav-hover); color: var(--ow-primary); }
+.logout-row:hover { background: var(--ow-nav-hover); color: var(--ow-danger, #f53f3f); }
 
 .ow-footer-btn {
   display: block;
@@ -355,7 +356,7 @@ function handleCmd(cmd) {
 .ow-footer-btn.primary:hover { background: var(--ow-primary-hover, #4080ff); }
 .ow-footer-btn.outline {
   border: 1px solid var(--ow-border, #e5e6eb);
-  color: #4e5969;
+  color: var(--ow-nav-color);
 }
 .ow-footer-btn.outline:hover { border-color: var(--ow-primary); color: var(--ow-primary); }
 
@@ -366,8 +367,8 @@ function handleCmd(cmd) {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #86909c;
-  border-top: 1px solid #d0e2ff;
+  color: var(--ow-subtext);
+  border-top: 1px solid var(--ow-layout-border);
   flex-shrink: 0;
   transition: color .15s;
 }
@@ -386,8 +387,8 @@ function handleCmd(cmd) {
 /* ── Header ── */
 .ow-header {
   height: var(--ow-header-h, 48px);
-  background: #edf3ff;
-  border-bottom: 1px solid #d0e2ff;
+  background: var(--ow-layout-sidebar);
+  border-bottom: 1px solid var(--ow-layout-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -412,15 +413,15 @@ function handleCmd(cmd) {
   gap: 5px;
   padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,.8);
+  background: var(--ow-chip-bg);
   color: var(--ow-primary, #165dff);
   font-size: 13px;
   cursor: pointer;
   transition: background .15s;
   font-weight: 500;
-  border: 1px solid #d0e2ff;
+  border: 1px solid var(--ow-layout-border);
 }
-.balance-chip:hover { background: #fff; }
+.balance-chip:hover { background: var(--ow-nav-active); }
 .avatar-btn {
   display: flex;
   align-items: center;
@@ -431,7 +432,7 @@ function handleCmd(cmd) {
   color: var(--ow-text, #1d2129);
   transition: background .15s;
 }
-.avatar-btn:hover { background: rgba(255,255,255,.8); }
+.avatar-btn:hover { background: var(--ow-chip-bg); }
 .avatar-circle {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -456,7 +457,27 @@ function handleCmd(cmd) {
   flex: 1;
   padding: 20px 24px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--ow-content-bg);
+}
+.ow-content--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 深色模式切换按鈕 */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ow-nav-color);
+  transition: background .15s, color .15s;
+}
+.theme-toggle:hover {
+  background: var(--ow-nav-hover);
+  color: var(--ow-primary);
 }
 
 /* ── 自定义页脚 ── */

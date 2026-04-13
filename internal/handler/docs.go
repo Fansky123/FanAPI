@@ -20,8 +20,8 @@ const scalarHTMLTpl = `<!doctype html>
 <body>
 <script
   id="api-reference"
-  data-url="swagger/doc.json"
-  data-configuration='{"theme":"purple","darkMode":true,"layout":"sidebar"}'
+  data-url="/swagger/doc.json"
+  data-configuration='{"theme":"default","darkMode":false,"layout":"sidebar","hideDarkModeToggle":true}'
 ><\/script>
 <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"><\/script>
 </body>

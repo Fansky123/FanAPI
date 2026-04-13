@@ -39,5 +39,13 @@ export const useSiteStore = defineStore('site', () => {
     }
   }
 
-  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, payApplyEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings }
+  const darkMode = ref(localStorage.getItem('dark_mode') === 'true')
+
+  function toggleDark() {
+    darkMode.value = !darkMode.value
+    localStorage.setItem('dark_mode', darkMode.value)
+    document.documentElement.classList.toggle('dark', darkMode.value)
+  }
+
+  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, payApplyEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings, darkMode, toggleDark }
 })
