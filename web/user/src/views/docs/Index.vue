@@ -11,14 +11,14 @@
       </div>
     </el-card>
     <div class="docs-wrap">
-      <iframe src="/api/swagger/index.html" frameborder="0" class="docs-frame" />
+      <iframe src="/api/docs" frameborder="0" class="docs-frame" />
     </div>
   </div>
 </template>
 
 <script setup>
 function openDocs() {
-  window.open('/api/swagger/index.html', '_blank', 'noopener')
+  window.open('/api/docs', '_blank', 'noopener')
 }
 </script>
 
