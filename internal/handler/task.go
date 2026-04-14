@@ -10,6 +10,66 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetTaskBilling 查询任务计费明细
+// @Summary      查询任务计费明细
+// @Description  返回指定任务的全部计费流水及汇总（净扣费、是否已退款）。
+// @Tags         任务
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        id   path      int  true  "任务 ID"
+// @Success      200  {object}  object{transactions=[]model.BillingTransaction,total_charged=int,total_refunded=int,net_charged=int,refunded=bool}
+// @Failure      404  {object}  object  "任务不存在"
+// @Router       /v1/tasks/{id}/billing [get]
+func GetTaskBilling(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务 ID 格式错误"})
+		return
+	}
+	userID := c.MustGet("user_id").(int64)
+
+	task := &model.Task{}
+	found, err := db.Engine.Where("id = ? AND user_id = ?", id, userID).
+		Cols("id", "corr_id", "credits_charged", "status").Get(task)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
+		return
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
+		return
+	}
+
+	var txs []model.BillingTransaction
+	if task.CorrID != "" {
+		if err := db.Engine.Where("user_id = ? AND corr_id = ?", userID, task.CorrID).
+			Cols("id", "corr_id", "type", "credits", "balance_after", "metrics", "created_at").
+			Asc("id").Find(&txs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
+			return
+		}
+	}
+
+	var totalCharged, totalRefunded int64
+	for _, tx := range txs {
+		switch tx.Type {
+		case "charge", "hold", "settle":
+			totalCharged += tx.Credits
+		case "refund":
+			totalRefunded += tx.Credits
+		}
+	}
+	netCharged := totalCharged - totalRefunded
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions":   txs,
+		"total_charged":  totalCharged,
+		"total_refunded": totalRefunded,
+		"net_charged":    netCharged,
+		"refunded":       totalRefunded > 0,
+	})
+}
+
 // GetTask 查询任务结果
 // @Summary      查询任务结果
 // @Description  轮询图片/视频/音频/音乐任务结果。code=150 进行中，200 成功，500 失败。
@@ -174,8 +234,7 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		TaskType:       task.Type,
 		ChannelID:      task.ChannelID,
 		CreditsCharged: task.CreditsCharged,
-		Request:        task.Request,
-		Result:         task.Result,
+		CreatedAt:      task.CreatedAt,
 	}
 	switch task.Status {
 	case "pending":
@@ -191,6 +250,8 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		return base
 
 	case "done":
+		t := task.UpdatedAt
+		base.FinishedAt = &t
 		code := 200
 		if v, ok := task.Result["code"]; ok {
 			if n, ok := toInt(v); ok {
@@ -218,6 +279,8 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		return base
 
 	case "failed":
+		t := task.UpdatedAt
+		base.FinishedAt = &t
 		base.Code = 500
 		base.Status = 3
 		base.Msg = task.ErrorMsg

@@ -42,12 +42,18 @@ func handleResult(msg *nats.Msg) {
 	switch res.Outcome {
 
 	case model.OutcomeDone:
+		result := toJSON(res.Result)
+		if res.TaskType == "image" {
+			if ch, err := service.GetChannel(ctx, res.ChannelID); err == nil {
+				result = convertResultURLs(result, ch.BaseURL)
+			}
+		}
 		enqueueDoneUpdate(doneItem{
 			msg:          msg,
 			taskID:       res.TaskID,
 			status:       "done",
 			progress:     100,
-			result:       toJSON(res.Result),
+			result:       result,
 			upstreamReq:  upstreamReq,
 			upstreamResp: upstreamResp,
 		})

@@ -54,7 +54,13 @@
           <template #default="{ row }">{{ row.credits_charged?.toLocaleString?.() ?? row.credits_charged }} cr</template>
         </el-table-column>
         <el-table-column prop="upstream_task_id" label="第三方任务 ID" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建时间" min-width="180" :formatter="fmtTime" />
+        <el-table-column prop="created_at" label="创建时间" width="180" :formatter="fmtTime" />
+        <el-table-column prop="updated_at" label="结束时间" width="180">
+          <template #default="{ row }">
+            <span v-if="row.status === 'done' || row.status === 'failed'">{{ fmtTime(row, null, row.updated_at) }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>

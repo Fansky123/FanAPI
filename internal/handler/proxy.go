@@ -134,7 +134,11 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 
 	// 精确计费：图片/视频/音频在请求时参数已全部已知，无需两阶段结算
-	cost, _, calcErr := billing.Calc(ch, reqData)
+	var userGroup string
+	if raw, ok := c.Get("user_group"); ok {
+		userGroup, _ = raw.(string)
+	}
+	cost, _, calcErr := billing.CalcForUser(ch, reqData, userGroup)
 	if calcErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "计费计算失败，请稍后重试"})
 		return

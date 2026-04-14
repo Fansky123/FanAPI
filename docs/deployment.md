@@ -18,6 +18,9 @@
 - [方案二：物理机部署](#方案二物理机部署)
 - [配置说明](#配置说明)
 - [升级与重新部署](#升级与重新部署)
+  - [场景一：只修改了渠道脚本](#场景一只修改了渠道脚本js-脚本字段)
+  - [场景二：修改了后端 Go 代码](#场景二修改了后端-go-代码api-逻辑handleerservice-等)
+  - [场景三：修改了前端代码](#场景三修改了前端代码vue-页面样式api-路径等)
 - [常用维护命令](#常用维护命令)
 
 ---
@@ -689,41 +692,151 @@ curl http://localhost/health
 
 ## 升级与重新部署
 
-### Docker 升级
+> **区分三种更新场景**：不同改动涉及的重建/重启范围不同，按需操作即可，无需每次全量重建。
+
+| 改动类型 | 需要重编译 | 需要重建镜像 | 需要重启进程 |
+|----------|-----------|-------------|-------------|
+| 修改渠道脚本（JS 脚本字段） | ❌ | ❌ | 仅 script worker（`fanapi-script`）/ **或通过管理后台直接保存即生效** |
+| 修改后端 Go 代码 | ✅ | Docker 需要 | ✅ `fanapi-server` 或 `fanapi-script` |
+| 修改前端代码 | 前端 `npm build` | Docker 需要 | nginx reload 即可（无需重启 Go 进程） |
+
+---
+
+### 场景一：只修改了渠道脚本（JS 脚本字段）
+
+渠道脚本存储在数据库中，`fanapi-script` 在每次处理任务时**实时从数据库读取**，通过管理后台保存后**立即生效，无需重启任何服务**。
+
+若你直接修改了数据库或配置文件中的脚本，只需重启 script worker 使其刷新缓存：
+
+**Docker：**
 
 ```bash
-# 1. 在开发机重新构建镜像
-docker compose build
-
-# 2. 推送到镜像仓库（或用 docker save / scp 方式传输）
-docker push registry.example.com/fanapi-api:latest
-docker push registry.example.com/fanapi-script:latest
-
-# 3. 在服务器上拉取并重启
 cd /opt/fanapi
-docker compose pull
-docker compose up -d
+docker compose restart script
 ```
 
-仅升级其中一个：
+**物理机：**
 
 ```bash
-docker compose build api    && docker compose up -d api
-docker compose build script && docker compose up -d script
-```
-
-### 物理机升级
-
-```bash
-# 1. 在开发机重新构建（见第一步：构建产物）
-
-# 2. 上传新产物到服务器
-scp out/fanapi-server out/fanapi-script user@your-server:/opt/fanapi/
-scp -r web/user/dist user@your-server:/opt/fanapi/web/
-
-# 3. 在服务器上重启服务
-sudo systemctl restart fanapi-server
 sudo systemctl restart fanapi-script
+```
+
+验证新脚本已被加载：
+
+```bash
+# Docker
+docker compose logs -f script | grep -i "channel\|script"
+
+# 物理机
+sudo tail -f /var/log/fanapi/script.log
+```
+
+---
+
+### 场景二：修改了后端 Go 代码（API 逻辑、handler、service 等）
+
+**第一步：在开发机重新编译**
+
+```bash
+# 只编译 server（API 逻辑改动）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -ldflags="-s -w" -trimpath -o out/fanapi-server ./cmd/server
+
+# 只编译 script（Worker 逻辑改动）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -ldflags="-s -w" -trimpath -o out/fanapi-script ./cmd/script
+```
+
+**第二步（Docker）：重建并重启**
+
+```bash
+# 只重建 api 镜像（server 改动）
+docker compose build api
+docker compose up -d api
+
+# 只重建 script 镜像（worker 改动）
+docker compose build script
+docker compose up -d script
+```
+
+**第二步（物理机）：上传并重启**
+
+```bash
+# 上传新二进制（按实际改动选择）
+scp out/fanapi-server user@your-server:/opt/fanapi/fanapi-server
+scp out/fanapi-script user@your-server:/opt/fanapi/fanapi-script
+
+# 在服务器上重启对应服务
+sudo systemctl restart fanapi-server   # server 改动时
+sudo systemctl restart fanapi-script   # script worker 改动时
+```
+
+**验证：**
+
+```bash
+# Docker
+docker compose ps
+curl http://localhost:8088/health   # 应返回 {"status":"ok"}
+
+# 物理机
+sudo systemctl status fanapi-server
+curl http://localhost/health
+```
+
+---
+
+### 场景三：修改了前端代码（Vue 页面、样式、API 路径等）
+
+**第一步：在开发机重新构建前端**
+
+```bash
+cd web/user
+npm ci          # 依赖有变化时执行，否则跳过
+npm run build   # 产物输出到 web/user/dist/
+cd ../..
+```
+
+**第二步（Docker）：重建 api 镜像并重启**
+
+前端静态资源打包在 api 镜像里，需要重建镜像：
+
+```bash
+docker compose build api
+docker compose up -d api
+```
+
+**第二步（物理机）：上传 dist 目录，reload nginx**
+
+Go 进程无需重启，nginx 本身会直接读取文件系统，上传后 reload 即可：
+
+```bash
+# 上传新的前端静态资源
+scp -r web/user/dist user@your-server:/opt/fanapi/web/dist
+
+# reload nginx（不中断现有连接）
+sudo nginx -t && sudo nginx -s reload
+```
+
+> 带 hash 的 JS/CSS 文件浏览器会自动更新；`index.html` 已配置 `no-cache`，用户刷新后立即加载新版本。
+
+---
+
+### 同时更新后端 + 前端
+
+```bash
+# 开发机：编译全部产物
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o out/fanapi-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o out/fanapi-script ./cmd/script
+cd web/user && npm ci && npm run build && cd ../..
+
+# Docker：全量重建
+docker compose build
+docker compose up -d
+
+# 物理机：上传全部并重启
+scp out/fanapi-server out/fanapi-script user@your-server:/opt/fanapi/
+scp -r web/user/dist user@your-server:/opt/fanapi/web/dist
+ssh user@your-server "sudo systemctl restart fanapi-server fanapi-script && sudo nginx -s reload"
 ```
 
 ### 数据库迁移

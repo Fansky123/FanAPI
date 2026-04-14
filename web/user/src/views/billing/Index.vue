@@ -39,7 +39,23 @@
       </el-card>
 
       <el-card style="margin-top:18px">
-        <template #header>余额流水</template>
+        <template #header>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span>余额流水</span>
+            <div style="display:flex;gap:8px">
+              <el-input
+                v-model="txTaskIdFilter"
+                placeholder="按任务 ID 查询"
+                clearable
+                style="width:160px"
+                size="small"
+                @keyup.enter="fetchTx(1)"
+                @clear="fetchTx(1)"
+              />
+              <el-button size="small" type="primary" @click="fetchTx(1)">查询</el-button>
+            </div>
+          </div>
+        </template>
         <el-table :data="txList" stripe>
           <el-table-column prop="type" label="类型" width="100">
             <template #default="{ row }">
@@ -57,6 +73,14 @@
             <template #default="{ row }">
               <span v-if="row.balance_after" style="color:#617086;font-size:12px">
                 ¥{{ (row.balance_after / 1e6).toFixed(4) }}
+              </span>
+              <span v-else style="color:#ccc;font-size:12px">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="关联任务" width="120">
+            <template #default="{ row }">
+              <span v-if="row.metrics?.task_id" style="color:#409eff;font-size:12px;font-family:monospace">
+                #{{ row.metrics.task_id }}
               </span>
               <span v-else style="color:#ccc;font-size:12px">—</span>
             </template>
@@ -265,6 +289,7 @@ const site = useSiteStore()
 const txList = ref([])
 const txPage = ref(1)
 const txTotal = ref(0)
+const txTaskIdFilter = ref('')
 
 // 充值订单
 const orderList = ref([])
@@ -304,7 +329,7 @@ onMounted(() => {
 
 async function fetchTx(p = txPage.value) {
   txPage.value = p
-  const res = await userApi.getTransactions(p, 20)
+  const res = await userApi.getTransactions(p, 20, txTaskIdFilter.value.trim())
   txList.value = res.transactions ?? []
   txTotal.value = res.total ?? 0
 }

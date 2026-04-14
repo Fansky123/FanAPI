@@ -51,4 +51,6 @@ type TaskResult struct {
 	CreditsCharged int64         `json:"credits_charged,omitempty"`
 	Request        JSON          `json:"request,omitempty"`
 	Result         JSON          `json:"result,omitempty"`
+	CreatedAt      time.Time     `json:"created_at,omitempty"`
+	FinishedAt     *time.Time    `json:"finished_at,omitempty"`
 }

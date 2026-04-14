@@ -114,8 +114,15 @@
                 {{ row.credits_charged?.toLocaleString?.() ?? row.credits_charged ?? '-' }} cr
               </template>
             </el-table-column>
-            <el-table-column label="消息" min-width="180" show-overflow-tooltip>
+            <el-table-column label="消息" min-width="140" show-overflow-tooltip>
               <template #default="{ row }">{{ row.msg || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="创建时间" width="180" :formatter="fmtTime" prop="created_at" />
+            <el-table-column label="结束时间" width="180">
+              <template #default="{ row }">
+                <span v-if="row.finished_at">{{ fmtTime(row, null, row.finished_at) }}</span>
+                <span v-else>-</span>
+              </template>
             </el-table-column>
             <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">

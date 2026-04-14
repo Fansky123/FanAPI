@@ -165,33 +165,52 @@ func UserListLLMLogs(c *gin.Context) {
 	}
 	offset := (page - 1) * pageSize
 
-	sess := db.Engine.Where("user_id = ?", userID)
-
-	if v := c.Query("status"); v != "" {
-		sess.And("status = ?", v)
+	type filterSet struct {
+		status    string
+		corrID    string
+		model     string
+		channelID string
+		startAt   string
+		endAt     string
 	}
-	if v := c.Query("corr_id"); v != "" {
-		sess.And("corr_id = ?", v)
-	}
-	if v := c.Query("model"); v != "" {
-		sess.And("model = ?", v)
-	}
-	if v := c.Query("channel_id"); v != "" {
-		sess.And("channel_id = ?", v)
-	}
-	if v := c.Query("start_at"); v != "" {
-		if t, err := parseDateTime(v, false); err == nil {
-			sess.And("created_at >= ?", t)
-		}
-	}
-	if v := c.Query("end_at"); v != "" {
-		if t, err := parseDateTime(v, true); err == nil {
-			sess.And("created_at <= ?", t)
-		}
+	f := filterSet{
+		status:    c.Query("status"),
+		corrID:    c.Query("corr_id"),
+		model:     c.Query("model"),
+		channelID: c.Query("channel_id"),
+		startAt:   c.Query("start_at"),
+		endAt:     c.Query("end_at"),
 	}
 
-	var total int64
-	countSess := *sess
+	applyFilters := func() *xorm.Session {
+		s := db.Engine.Where("user_id = ?", userID)
+		if f.status != "" {
+			s.And("status = ?", f.status)
+		}
+		if f.corrID != "" {
+			s.And("corr_id = ?", f.corrID)
+		}
+		if f.model != "" {
+			s.And("model = ?", f.model)
+		}
+		if f.channelID != "" {
+			s.And("channel_id = ?", f.channelID)
+		}
+		if f.startAt != "" {
+			if t, err := parseDateTime(f.startAt, false); err == nil {
+				s.And("created_at >= ?", t)
+			}
+		}
+		if f.endAt != "" {
+			if t, err := parseDateTime(f.endAt, true); err == nil {
+				s.And("created_at <= ?", t)
+			}
+		}
+		return s
+	}
+
+	countSess := applyFilters()
+	defer countSess.Close()
 	total, err := countSess.Count(new(model.LLMLog))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败，请稍后重试"})
@@ -200,7 +219,9 @@ func UserListLLMLogs(c *gin.Context) {
 
 	var logs []model.LLMLog
 	// 用户列表不返回 upstream_request / upstream_response / upstream_url 等上游信息
-	err = sess.Cols("id", "corr_id", "model", "is_stream",
+	listSess := applyFilters()
+	defer listSess.Close()
+	err = listSess.Cols("id", "corr_id", "model", "is_stream",
 		"upstream_status", "usage", "status", "error_msg", "created_at").
 		OrderBy("id DESC").Limit(pageSize, offset).Find(&logs)
 	if err != nil {

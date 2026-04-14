@@ -2,12 +2,41 @@ package handler
 
 import (
 	"fmt"
+	"sync"
 
+	"fanapi/docs"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swaggo/swag"
 )
+
+var swaggerMu sync.Mutex
+
+// SwaggerJSON 动态将 swagger host 替换为实际请求域名后返回 JSON spec。
+func SwaggerJSON(c *gin.Context) {
+	host := c.Request.Host
+	if fwd := c.GetHeader("X-Forwarded-Host"); fwd != "" {
+		host = fwd
+	}
+	schemes := []string{"http"}
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		schemes = []string{"https"}
+	}
+
+	swaggerMu.Lock()
+	docs.SwaggerInfo.Host = host
+	docs.SwaggerInfo.Schemes = schemes
+	doc, err := swag.ReadDoc()
+	swaggerMu.Unlock()
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "swagger doc error"})
+		return
+	}
+	c.Data(200, "application/json; charset=utf-8", []byte(doc))
+}
 
 const scalarHTMLTpl = `<!doctype html>
 <html lang="zh-CN">
@@ -20,7 +49,7 @@ const scalarHTMLTpl = `<!doctype html>
 <body>
 <script
   id="api-reference"
-  data-url="/swagger/doc.json"
+  data-url="/openapi.json"
   data-configuration='{"theme":"default","darkMode":false,"layout":"sidebar","hideDarkModeToggle":true}'
 ><\/script>
 <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"><\/script>

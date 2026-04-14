@@ -85,18 +85,31 @@ func Recharge(ctx context.Context, userID, adminID, credits int64) error {
 	return WriteTx(ctx, userID, 0, 0, "", "recharge", credits, 0, nil)
 }
 
-// ListTransactions 返回用户的分页计费历史。
-func ListTransactions(ctx context.Context, userID int64, page, pageSize int) ([]model.BillingTransaction, error) {
+// ListTransactions 返回用户的分页计费历史。corrID/taskID 非空时分别按对应字段过滤。
+func ListTransactions(ctx context.Context, userID int64, page, pageSize int, corrID, taskID string) ([]model.BillingTransaction, error) {
 	var txs []model.BillingTransaction
-	err := db.Engine.Where("user_id = ?", userID).
-		Desc("created_at").
+	sess := db.Engine.Where("user_id = ?", userID)
+	if corrID != "" {
+		sess.And("corr_id = ?", corrID)
+	}
+	if taskID != "" {
+		sess.And("metrics->>'task_id' = ?", taskID)
+	}
+	err := sess.Desc("created_at").
 		Limit(pageSize, (page-1)*pageSize).
 		Find(&txs)
 	return txs, err
 }
 
-// CountTransactions 返回用户的计费记录总数。
-func CountTransactions(ctx context.Context, userID int64) (int64, error) {
-	count, err := db.Engine.Where("user_id = ?", userID).Count(&model.BillingTransaction{})
+// CountTransactions 返回用户的计费记录总数。corrID/taskID 非空时分别按对应字段过滤。
+func CountTransactions(ctx context.Context, userID int64, corrID, taskID string) (int64, error) {
+	sess := db.Engine.Where("user_id = ?", userID)
+	if corrID != "" {
+		sess.And("corr_id = ?", corrID)
+	}
+	if taskID != "" {
+		sess.And("metrics->>'task_id' = ?", taskID)
+	}
+	count, err := sess.Count(&model.BillingTransaction{})
 	return count, err
 }

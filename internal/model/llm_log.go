@@ -27,6 +27,7 @@ type LLMLog struct {
 	Status           string    `xorm:"notnull default('pending') 'status'" json:"status"`
 	ErrorMsg         string    `xorm:"text 'error_msg'" json:"error_msg,omitempty"`
 	CreatedAt        time.Time `xorm:"created 'created_at'" json:"created_at"`
+	UpdatedAt        time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
 }
 
 func (*LLMLog) TableName() string { return "llm_logs" }

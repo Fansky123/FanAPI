@@ -26,8 +26,8 @@ export const userApi = {
   getProfile: () => http.get('/user/profile'),
   getBalance: () => http.get('/user/balance'),
   getStats: () => http.get('/user/stats'),
-  getTransactions: (page = 1, size = 20) =>
-    http.get('/user/transactions', { params: { page, size } }),
+  getTransactions: (page = 1, size = 20, taskId = '') =>
+    http.get('/user/transactions', { params: { page, size, ...(taskId ? { task_id: taskId } : {}) } }),
   listAPIKeys: () => http.get('/user/apikeys'),
   createAPIKey: (name) => http.post('/user/apikeys', { name }),
   deleteAPIKey: (id) => http.delete(`/user/apikeys/${id}`),

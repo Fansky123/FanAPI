@@ -1,4 +1,4 @@
-// @title           FanAPI
+// @title           DAGEAPI
 // @version         1.0
 // @description     LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询
 // @host            localhost:8080
@@ -82,8 +82,10 @@ func main() {
 	// 健康检查（无需认证）
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 
-	// Swagger 接口文档
+	// Swagger 接口文档静态资源
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// OpenAPI spec（动态替换域名）
+	r.GET("/openapi.json", handler.SwaggerJSON)
 
 	// API 文档页面（无需认证）
 	r.GET("/docs", handler.APIDocs)
@@ -174,6 +176,7 @@ func main() {
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)
 		authed.GET("/v1/tasks/:id", handler.GetTask)
+		authed.GET("/v1/tasks/:id/billing", handler.GetTaskBilling)
 		authed.GET("/v1/llm-logs", handler.UserListLLMLogs)
 		authed.GET("/v1/llm-logs/:id", handler.UserGetLLMLog)
 

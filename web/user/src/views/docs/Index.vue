@@ -14,7 +14,7 @@ onMounted(() => {
   // 挂载 Scalar 容器元素
   const el = document.createElement('div')
   el.id = 'api-reference'
-  el.setAttribute('data-url', '/api/swagger/doc.json')
+  el.setAttribute('data-url', '/api/openapi.json')
   el.setAttribute(
     'data-configuration',
     JSON.stringify({ theme: 'default', darkMode: false, layout: 'sidebar', hideDarkModeToggle: true })

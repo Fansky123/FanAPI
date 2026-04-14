@@ -64,7 +64,13 @@
           </template>
         </el-table-column>
         <el-table-column prop="corr_id" label="Corr ID" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="时间" min-width="180" :formatter="fmtTime" />
+        <el-table-column prop="created_at" label="请求时间" width="180" :formatter="fmtTime" />
+        <el-table-column label="结束时间" width="180">
+          <template #default="{ row }">
+            <span v-if="row.status !== 'pending'">{{ fmtTime(row, null, row.updated_at) }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </el-table>
 
       <el-pagination

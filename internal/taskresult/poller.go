@@ -229,6 +229,9 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	switch statusVal {
 	case 2: // 成功
 		result := toJSON(mappedResp)
+		if task.Type == "image" {
+			result = convertResultURLs(result, ch.BaseURL)
+		}
 		db.Engine.Where("id = ?", task.ID).
 			Cols("status", "progress", "result", "upstream_response").
 			Update(&model.Task{
