@@ -35,25 +35,23 @@ else
     echo "[3/4] NATS 已运行 ✓"
 fi
 
-# ---------- 4. Build ----------
-echo "[4/4] 编译..."
-go build -o /tmp/fanapi-server ./cmd/server
-go build -o /tmp/fanapi-script ./cmd/script
-echo "      编译完成 ✓"
+# ---------- 4. Stop old processes ----------
+pkill -f "cmd/server" 2>/dev/null || true
+pkill -f "cmd/script" 2>/dev/null || true
+pkill -f "vite" 2>/dev/null || true
+pkill -f "esbuild" 2>/dev/null || true
+rm -f /tmp/server.pid /tmp/script.pid /tmp/user-web.pid
+sleep 1
 
 # ---------- 5. Start services ----------
-pkill -f "fanapi-server" 2>/dev/null || true
-pkill -f "fanapi-script" 2>/dev/null || true
-pkill -f "vite" 2>/dev/null || true
-sleep 1
 
 echo ""
 echo ">>> 启动 API Server (port 8080)..."
-/tmp/fanapi-server &>/tmp/server.log &
+go run ./cmd/server &>/tmp/server.log &
 echo $! > /tmp/server.pid
 
 echo ">>> 启动 Script Worker..."
-/tmp/fanapi-script &>/tmp/script.log &
+go run ./cmd/script &>/tmp/script.log &
 echo $! > /tmp/script.pid
 
 # ---------- 前端（需要 Node.js） ----------
@@ -71,7 +69,7 @@ else
     echo "      cd web/admin && npm install && npm run dev"
 fi
 
-sleep 2
+sleep 8
 
 # ---------- 6. Health check ----------
 if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
@@ -80,7 +78,7 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  API Server:    http://localhost:8080"
     echo "  API 文档:      http://localhost:8080/docs"
     if command -v npm &>/dev/null; then
-    echo "  前端:          http://localhost:3000"
+    echo "  前端:          http://localhost:3000 (或 3001，见 /tmp/user-web.log)"
     echo "  管理端:        http://localhost:3000/admin"
     fi
     echo ""
