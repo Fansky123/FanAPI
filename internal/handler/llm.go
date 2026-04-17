@@ -341,10 +341,29 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 
 	proto := effectiveProtocol(ch)
 
-	// 1. request_script（JS）映射（在协议转换之前，允许微调原始请求）
+	// 1. 号池 Sticky Key 分配（在 request_script 之前，以便脚本可用 poolKey 变量）
+	entityID := apiKeyIDVal
+	if entityID == 0 {
+		entityID = userID
+	}
+	var poolKey *model.PoolKey
+	if ch.KeyPoolID > 0 {
+		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, entityID)
+		if pkErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "key pool error: " + pkErr.Error()})
+			return
+		}
+		poolKey = pk
+	}
+	poolKeyValue := ""
+	if poolKey != nil {
+		poolKeyValue = poolKey.Value
+	}
+
+	// 2. request_script（JS）映射（在协议转换之前，允许微调原始请求）
 	mappedReq := reqData
 	if ch.RequestScript != "" {
-		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData)
+		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData, poolKeyValue)
 		if scriptErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "入参映射错误: " + scriptErr.Error()})
 			return
@@ -426,21 +445,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 	_, _ = db.Engine.Insert(llmLog)
 
-	// 6. 号池 Sticky Key 分配
-	entityID := apiKeyIDVal
-	if entityID == 0 {
-		entityID = userID
-	}
-	var poolKey *model.PoolKey
-	if ch.KeyPoolID > 0 {
-		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, entityID)
-		if pkErr != nil {
-			llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, 0, "key pool error: "+pkErr.Error())
-			return
-		}
-		poolKey = pk
-	}
-
+	// 6. 号池 Key 已在步骤1分配，直接发送上游请求
 	// 7. 发送上游请求
 	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
 	if err != nil {
@@ -692,10 +697,18 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	upReq.Header.Set("Accept", "text/event-stream")
 
 	// 复制渠道静态 Headers，同时记录静态 API Key
+	poolKeyVal := ""
+	if poolKey != nil {
+		poolKeyVal = poolKey.Value
+	}
+	poolKeyUsedInHeaders := false
 	apiKey := ""
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
-			resolved := script.ResolveHeaderValue(sv)
+			if strings.Contains(sv, "{{pool_key}}") {
+				poolKeyUsedInHeaders = true
+			}
+			resolved := script.ResolveHeaderValue(sv, poolKeyVal)
 			if strings.EqualFold(k, "authorization") && strings.HasPrefix(resolved, "Bearer ") {
 				apiKey = strings.TrimPrefix(resolved, "Bearer ")
 			}
@@ -703,8 +716,11 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 		}
 	}
 
-	// 号池 Key 覆盖静态 Key
+	// 号池 Key 覆盖（fallback：Header 里没用 {{pool_key}} 占位符时走 Authorization: Bearer）
 	if poolKey != nil {
+		if !poolKeyUsedInHeaders {
+			upReq.Header.Set("Authorization", "Bearer "+poolKey.Value)
+		}
 		apiKey = poolKey.Value
 	}
 

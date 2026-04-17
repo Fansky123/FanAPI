@@ -102,6 +102,20 @@ func AddPoolKey(c *gin.Context) {
 	c.JSON(http.StatusCreated, key)
 }
 
+// ToggleKeyPool PATCH /admin/key-pools/:id/toggle
+func ToggleKeyPool(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
+		return
+	}
+	if err := service.ToggleKeyPool(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // RemovePoolKey DELETE /admin/pool-keys/:id
 func RemovePoolKey(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

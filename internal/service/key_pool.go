@@ -111,6 +111,20 @@ func CreateKeyPool(ctx context.Context, pool *model.KeyPool) error {
 	return err
 }
 
+// ToggleKeyPool 切换号池启用/停用状态。
+func ToggleKeyPool(ctx context.Context, poolID int64) error {
+	pool := &model.KeyPool{}
+	found, err := db.Engine.ID(poolID).Get(pool)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("号池 %d 不存在", poolID)
+	}
+	_, err = db.Engine.ID(poolID).Cols("is_active").Update(&model.KeyPool{IsActive: !pool.IsActive})
+	return err
+}
+
 // DeleteKeyPool 软删除号池。
 func DeleteKeyPool(ctx context.Context, poolID int64) error {
 	_, err := db.Engine.Where("id = ?", poolID).Update(&model.KeyPool{IsActive: false})

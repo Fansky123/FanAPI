@@ -159,6 +159,7 @@ func main() {
 			admin.GET("/key-pools", handler.ListKeyPools)
 			admin.POST("/key-pools", handler.CreateKeyPool)
 			admin.DELETE("/key-pools/:id", handler.DeleteKeyPool)
+			admin.PATCH("/key-pools/:id/toggle", handler.ToggleKeyPool)
 			admin.GET("/key-pools/:id/keys", handler.ListPoolKeys)
 			admin.POST("/key-pools/:id/keys", handler.AddPoolKey)
 			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)

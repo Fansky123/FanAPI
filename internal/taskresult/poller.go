@@ -118,6 +118,16 @@ func pollPendingTasks(ctx context.Context) {
 
 func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	queryURL := strings.ReplaceAll(ch.QueryURL, "{id}", task.UpstreamTaskID)
+	// 号池 Key 注入 URL
+	var poolKeyValue string
+	if ch.KeyPoolID > 0 {
+		if pk, pkErr := service.GetOrAssignPoolKey(ctx, ch.KeyPoolID, task.UserID); pkErr == nil && pk != nil {
+			poolKeyValue = pk.Value
+		}
+	}
+	if poolKeyValue != "" {
+		queryURL = strings.ReplaceAll(queryURL, "{{pool_key}}", poolKeyValue)
+	}
 
 	method := ch.QueryMethod
 	if method == "" {
@@ -145,10 +155,19 @@ func pollOneTask(ctx context.Context, task *model.Task, ch *model.Channel) {
 	if method == "POST" {
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
+	// Header 注入（含 {{pool_key}} 占位符替换）
+	poolKeyUsedInHeaders := false
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
-			httpReq.Header.Set(k, script.ResolveHeaderValue(sv))
+			if strings.Contains(sv, "{{pool_key}}") {
+				poolKeyUsedInHeaders = true
+			}
+			httpReq.Header.Set(k, script.ResolveHeaderValue(sv, poolKeyValue))
 		}
+	}
+	// Fallback：Header 里没有 {{pool_key}} 占位符，自动注入 Authorization
+	if poolKeyValue != "" && !poolKeyUsedInHeaders && !strings.Contains(ch.QueryURL, "{{pool_key}}") {
+		httpReq.Header.Set("Authorization", "Bearer "+poolKeyValue)
 	}
 
 	resp, err := http.DefaultClient.Do(httpReq)

@@ -20,13 +20,17 @@ import (
 //   - {{timestamp}}           当前 Unix 时间戳（秒）
 //   - {{timestamp_ms}}        当前 Unix 时间戳（毫秒）
 //   - {{random_string:N}}     N 位随机字母数字字符串
-func ResolveHeaderValue(val string) string {
+//   - {{pool_key}}            号池分配的 API Key（原始值，不加任何前缀）
+func ResolveHeaderValue(val, poolKeyValue string) string {
 	if !strings.Contains(val, "{{") {
 		return val
 	}
 	return placeholderRe.ReplaceAllStringFunc(val, func(m string) string {
 		inner := m[2 : len(m)-2] // 去掉 {{ 和 }}
 		switch {
+		case inner == "pool_key":
+			return poolKeyValue
+
 		case inner == "uuid":
 			return uuid.New().String()
 
@@ -60,14 +64,14 @@ func ResolveHeaderValue(val string) string {
 }
 
 // ResolveHeaders 对 Headers map 的所有值执行占位符替换，返回新的 map（不修改原始数据）。
-func ResolveHeaders(headers map[string]interface{}) map[string]interface{} {
+func ResolveHeaders(headers map[string]interface{}, poolKeyValue string) map[string]interface{} {
 	if len(headers) == 0 {
 		return headers
 	}
 	out := make(map[string]interface{}, len(headers))
 	for k, v := range headers {
 		if sv, ok := v.(string); ok {
-			out[k] = ResolveHeaderValue(sv)
+			out[k] = ResolveHeaderValue(sv, poolKeyValue)
 		} else {
 			out[k] = v
 		}

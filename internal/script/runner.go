@@ -40,14 +40,15 @@ func getProgram(scriptSrc string) (*goja.Program, error) {
 }
 
 // RunMapRequest 执行 JS 脚本中的 mapRequest(input) 函数，将平台标准请求映射为上游格式。
-//
-// 脚本示例：
+// poolKeyValue 会以全局变量 poolKey 注入到 VM 中，展示示例：
 //
 //	function mapRequest(input) {
-//	    return { ...input, model: "vendor-model-name" };
+//	    return { ...input, model: "vendor-model-name", api_key: poolKey };
 //	}
-func RunMapRequest(scriptSrc string, input map[string]interface{}) (map[string]interface{}, error) {
-	return runMapFn(scriptSrc, "mapRequest", input)
+func RunMapRequest(scriptSrc string, input map[string]interface{}, poolKeyValue string) (map[string]interface{}, error) {
+	return runMapFnWithGlobals(scriptSrc, "mapRequest", input, map[string]interface{}{
+		"poolKey": poolKeyValue,
+	})
 }
 
 // RunMapResponse 执行 JS 脚本中的 mapResponse(input) 函数，将上游响应映射为平台标准格式。
@@ -108,6 +109,10 @@ func RunCheckError(scriptSrc string, response map[string]interface{}) (string, e
 }
 
 func runMapFn(scriptSrc, fnName string, input map[string]interface{}) (map[string]interface{}, error) {
+	return runMapFnWithGlobals(scriptSrc, fnName, input, nil)
+}
+
+func runMapFnWithGlobals(scriptSrc, fnName string, input map[string]interface{}, globals map[string]interface{}) (map[string]interface{}, error) {
 	prog, err := getProgram(scriptSrc)
 	if err != nil {
 		return nil, err
@@ -117,6 +122,9 @@ func runMapFn(scriptSrc, fnName string, input map[string]interface{}) (map[strin
 	vm := goja.New()
 	if _, err := vm.RunProgram(prog); err != nil {
 		return nil, fmt.Errorf("script run error: %w", err)
+	}
+	for k, v := range globals {
+		vm.Set(k, v)
 	}
 
 	fn, ok := goja.AssertFunction(vm.Get(fnName))

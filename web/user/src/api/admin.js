@@ -16,6 +16,7 @@ export const keyPoolApi = {
   listPools: (channelId) => http.get('/admin/key-pools', channelId ? { params: { channel_id: channelId } } : undefined),
   createPool: (data) => http.post('/admin/key-pools', data),
   deletePool: (id) => http.delete(`/admin/key-pools/${id}`),
+  togglePool: (id) => http.patch(`/admin/key-pools/${id}/toggle`),
   listKeys: (poolId) => http.get(`/admin/key-pools/${poolId}/keys`),
   addKey: (poolId, data) => http.post(`/admin/key-pools/${poolId}/keys`, data),
   removeKey: (id) => http.delete(`/admin/pool-keys/${id}`),

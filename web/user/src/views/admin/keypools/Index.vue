@@ -31,11 +31,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
+        <el-table-column label="操作" width="260" align="center">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="openKeyDrawer(row)">
               <el-icon><Key /></el-icon> 管理 Keys
             </el-button>
+            <el-button
+              size="small"
+              :type="row.is_active ? 'warning' : 'success'"
+              plain
+              @click="togglePool(row)"
+            >{{ row.is_active ? '停用' : '启用' }}</el-button>
             <el-popconfirm title="确认删除此号池及其所有 Key？" @confirm="deletePool(row.id)">
               <template #reference>
                 <el-button size="small" type="danger">删除</el-button>
@@ -185,6 +191,12 @@ async function submitCreatePool() {
   await keyPoolApi.createPool({ channel_id: poolForm.channel_id, name: poolForm.name })
   ElMessage.success('号池创建成功')
   createPoolVisible.value = false
+  fetchPools()
+}
+
+async function togglePool(row) {
+  await keyPoolApi.togglePool(row.id)
+  ElMessage.success(row.is_active ? '已停用' : '已启用')
   fetchPools()
 }
 
