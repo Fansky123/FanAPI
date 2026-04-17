@@ -69,11 +69,14 @@ type Channel struct {
 	AuthRegion  string `xorm:"default('') 'auth_region'" json:"auth_region"`
 	AuthService string `xorm:"default('') 'auth_service'" json:"auth_service"`
 	// 负载均衡
-	Weight    int       `xorm:"notnull default(1) 'weight'" json:"weight"`     // 加权随机权重，越大被选中概率越高
-	Priority  int       `xorm:"notnull default(0) 'priority'" json:"priority"` // 优先级，越大越优先（同模型多渠道时）
-	IsActive  bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
-	CreatedAt time.Time `xorm:"created 'created_at'" json:"created_at"`
-	UpdatedAt time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
+	Weight   int  `xorm:"notnull default(1) 'weight'" json:"weight"`     // 加权随机权重，越大被选中概率越高
+	Priority int  `xorm:"notnull default(0) 'priority'" json:"priority"` // 优先级，越大越优先（同模型多渠道时）
+	IsActive bool `xorm:"notnull default(true) 'is_active'" json:"is_active"`
+	// 展示字段
+	IconURL     string    `xorm:"notnull default('') 'icon_url'" json:"icon_url"`    // 模型图标 URL
+	Description string    `xorm:"text default('') 'description'" json:"description"` // 模型描述
+	CreatedAt   time.Time `xorm:"created 'created_at'" json:"created_at"`
+	UpdatedAt   time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
 }
 
 func (*Channel) TableName() string { return "channels" }

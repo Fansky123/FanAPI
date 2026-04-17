@@ -136,6 +136,100 @@ const (
 	errRateMinReqs   = 5   // 触发错误率过滤的最小请求数
 )
 
+// SelectChannelStable 返回按售价升序排列的可用渠道列表。
+// 稳定密钥使用此函数：先尝试最便宜的渠道，失败后依次尝试更贵的渠道。
+func SelectChannelStable(ctx context.Context, modelName string, excludeIDs ...int64) ([]model.Channel, error) {
+	channels, err := listChannelsByModel(ctx, modelName)
+	if err != nil {
+		return nil, err
+	}
+	if len(channels) == 0 {
+		return nil, fmt.Errorf("无可用渠道: %s", modelName)
+	}
+
+	excluded := make(map[int64]bool, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = true
+	}
+
+	var candidates []model.Channel
+	for _, ch := range channels {
+		if !excluded[ch.ID] && ch.IsActive {
+			candidates = append(candidates, ch)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("所有渠道均已尝试或不可用")
+	}
+
+	// 按售价升序排列（最便宜的优先）
+	sort.Slice(candidates, func(i, j int) bool {
+		return channelBasePrice(candidates[i]) < channelBasePrice(candidates[j])
+	})
+	return candidates, nil
+}
+
+// channelBasePrice 提取渠道的基础售价用于排序比较。
+func channelBasePrice(ch model.Channel) float64 {
+	cfg := map[string]interface{}(ch.BillingConfig)
+	switch ch.BillingType {
+	case "token":
+		return mapFloat64(cfg, "input_price_per_1m_tokens") + mapFloat64(cfg, "output_price_per_1m_tokens")
+	case "image":
+		if sp := mapFloat64(cfg, "default_size_price"); sp > 0 {
+			return sp
+		}
+		if raw, ok := cfg["size_prices"]; ok {
+			if sp, ok := raw.(map[string]interface{}); ok {
+				var min float64 = -1
+				for _, v := range sp {
+					if p, ok := toFloat64(v); ok && (min < 0 || p < min) {
+						min = p
+					}
+				}
+				if min >= 0 {
+					return min
+				}
+			}
+		}
+		return mapFloat64(cfg, "base_price")
+	case "count":
+		return mapFloat64(cfg, "price_per_count")
+	case "audio":
+		return mapFloat64(cfg, "price_per_second")
+	case "video":
+		return mapFloat64(cfg, "base_price")
+	default:
+		return 0
+	}
+}
+
+func mapFloat64(m map[string]interface{}, key string) float64 {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	f, _ := toFloat64(v)
+	return f
+}
+
+func toFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	default:
+		return 0, false
+	}
+}
+
 // SelectChannel 使用以下策略选取最优渠道：
 //  1. 按优先级降序排序（选最高优先级组）
 //  2. 错误率过滤（跳过近 5 分钟内错误率 >50% 的渠道）

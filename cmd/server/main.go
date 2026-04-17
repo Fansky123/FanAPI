@@ -21,6 +21,7 @@ import (
 	"fanapi/internal/handler"
 	"fanapi/internal/middleware"
 	"fanapi/internal/mq"
+	"fanapi/internal/service"
 	"fanapi/internal/taskresult"
 	"fanapi/pkg/mailer"
 
@@ -72,8 +73,13 @@ func main() {
 	taskresult.StartBatchWriter(ctx)
 	taskresult.StartPoller(ctx)
 
+	// 启动 OCPC 定时上报调度器
+	service.StartOcpcScheduler(ctx)
+
 	m := mailer.New(&cfg.SMTP)
 	authH := handler.NewAuthHandler(&cfg.Server, m)
+	wechatH := handler.NewWechatHandler(&cfg.Server)
+	wechatMPH := handler.NewWechatMPHandler(&cfg.Server)
 
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -109,6 +115,15 @@ func main() {
 		auth.POST("/login", authH.Login)
 		auth.POST("/forgot-password", authH.ForgotPassword)
 		auth.POST("/reset-password", authH.ResetPassword)
+		// 微信公众号 OAuth 扫码登录（snsapi_userinfo 网页授权）
+		auth.POST("/wechat/init", wechatH.Init)
+		auth.GET("/wechat/callback", wechatH.Callback)
+		auth.GET("/wechat/poll", wechatH.Poll)
+		// 微信公众号场景二维码扫码登录（关注即登录）
+		auth.GET("/wechat-mp/qrcode", wechatMPH.GetQRCode)
+		auth.GET("/wechat-mp/event", wechatMPH.Event)
+		auth.POST("/wechat-mp/event", wechatMPH.Event)
+		auth.GET("/wechat-mp/poll", wechatMPH.Poll)
 	}
 
 	// 需认证的用户路由（JWT 或 API Key）
@@ -128,6 +143,7 @@ func main() {
 			user.PUT("/password", authH.ChangePassword)
 			user.POST("/bind-email", authH.BindEmail)
 			user.POST("/cards/redeem", handler.RedeemCard)
+			user.GET("/cards/redeem-history", handler.GetRedeemHistory)
 			user.GET("/payment-orders", handler.GetUserPaymentOrders)
 		}
 
@@ -150,6 +166,7 @@ func main() {
 			admin.POST("/users/:id/recharge", handler.Recharge)
 			admin.PUT("/users/:id/password", handler.ResetUserPassword)
 			admin.PUT("/users/:id/group", handler.SetUserGroup)
+			admin.PUT("/users/:id/role", handler.SetUserRole)
 			admin.GET("/transactions", handler.ListAllTransactions)
 			admin.GET("/tasks", handler.ListTasks)
 			admin.GET("/tasks/:id", handler.GetAdminTask)
@@ -164,6 +181,15 @@ func main() {
 			// 系统设置
 			admin.GET("/settings", handler.GetSettings)
 			admin.PUT("/settings", handler.UpdateSettings)
+			// OCPC 转化上报 + 平台账户管理
+			admin.POST("/ocpc/upload", handler.TriggerOcpcUpload)
+			admin.GET("/ocpc/schedule", handler.GetOcpcSchedule)
+			admin.PUT("/ocpc/schedule", handler.UpdateOcpcSchedule)
+			admin.GET("/ocpc/platforms", handler.ListOcpcPlatforms)
+			admin.POST("/ocpc/platforms", handler.CreateOcpcPlatform)
+			admin.PUT("/ocpc/platforms/:id", handler.UpdateOcpcPlatform)
+			admin.DELETE("/ocpc/platforms/:id", handler.DeleteOcpcPlatform)
+			admin.PATCH("/ocpc/platforms/:id/toggle", handler.ToggleOcpcPlatform)
 		}
 
 		// Epay 充值（需要 JWT 认证）
@@ -172,6 +198,16 @@ func main() {
 		// 中台支付（需要 JWT 认证）
 		authed.POST("/pay/apply/create", handler.CreatePayApplyOrder)
 		authed.GET("/pay/order/status", handler.GetPaymentOrderStatus)
+
+		// 客服端路由（JWT + agent 或 admin 角色）
+		agentGrp := authed.Group("/agent")
+		agentGrp.Use(middleware.Agent())
+		{
+			agentGrp.GET("/users", handler.AgentListUsers)
+			agentGrp.POST("/users/:id/recharge", handler.AgentRecharge)
+			agentGrp.GET("/invite", handler.AgentGetInvite)
+			agentGrp.PUT("/wechat-qr", handler.AgentUpdateWechatQR)
+		}
 
 		// 用户任务查询（支持 JWT 或 API Key）
 		authed.GET("/v1/tasks", handler.ListUserTasks)

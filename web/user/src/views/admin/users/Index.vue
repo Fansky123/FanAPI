@@ -36,11 +36,14 @@
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="注册时间" :formatter="fmtTime" />
-      <el-table-column label="操作" width="240" align="center">
+      <el-table-column label="操作" width="280" align="center">
         <template #default="{ row }">
           <el-button size="small" type="success" @click="openRecharge(row)">充值</el-button>
           <el-button size="small" type="warning" @click="openResetPwd(row)">改密</el-button>
           <el-button size="small" @click="openSetGroup(row)">分组</el-button>
+          <el-button size="small" :type="row.role === 'agent' ? 'danger' : 'info'" @click="toggleAgent(row)">
+            {{ row.role === 'agent' ? '取消客服' : '设为客服' }}
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -100,7 +103,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { userApi } from '@/api/admin'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const users = ref([])
 const page = ref(1)
@@ -174,6 +177,15 @@ async function doSetGroup() {
   await userApi.setGroup(groupUser.value.id, groupInput.value)
   ElMessage.success('已更新定价分组')
   showSetGroup.value = false
+  fetchUsers()
+}
+
+async function toggleAgent(user) {
+  const newRole = user.role === 'agent' ? 'user' : 'agent'
+  const label = newRole === 'agent' ? '设为客服' : '取消客服权限'
+  await ElMessageBox.confirm(`确认将用户 "${user.username}" ${label}？`, '角色变更', { type: 'warning' })
+  await userApi.setRole(user.id, newRole)
+  ElMessage.success(`已${label}`)
   fetchUsers()
 }
 

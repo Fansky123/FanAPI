@@ -1,7 +1,6 @@
 package script
 
 import (
-	"fmt"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -86,5 +85,5 @@ func randomString(n int) string {
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
-	return fmt.Sprintf("%s", b)
+	return string(b)
 }

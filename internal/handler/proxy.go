@@ -99,8 +99,14 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		apiKeyIDVal = apiKeyID.(int64)
 	}
 
+	// 获取密钥类型（稳定密钥使用售价升序路由）
+	keyType, _ := c.Get("key_type")
+	isStable := keyType == "stable"
+
 	// 渠道解析：优先 channel_id 查询参数（兼容旧客户端），否则用 reqData["model"] 按渠道名路由。
 	var ch *model.Channel
+	var stableChannels []model.Channel // 稳定密钥：按价格排序的候选列表
+
 	if channelIDStr := c.Query("channel_id"); channelIDStr != "" {
 		channelID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
 		if parseErr != nil {
@@ -119,11 +125,26 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 			c.JSON(http.StatusBadRequest, gin.H{"error": "请指定 model 或 channel_id"})
 			return
 		}
-		var chErr error
-		ch, chErr = service.GetChannelByName(c.Request.Context(), routingModel)
-		if chErr != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
-			return
+		if isStable {
+			var chErr error
+			stableChannels, chErr = service.SelectChannelStable(c.Request.Context(), routingModel)
+			if chErr != nil {
+				// 兜底：按 name 精确查找（稳定密钥优先保证可用性）
+				chSingle, nameErr := service.GetChannelByName(c.Request.Context(), routingModel)
+				if nameErr != nil {
+					c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+					return
+				}
+				stableChannels = []model.Channel{*chSingle}
+			}
+			ch = &stableChannels[0]
+		} else {
+			var chErr error
+			ch, chErr = service.SelectChannel(c.Request.Context(), routingModel)
+			if chErr != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+				return
+			}
 		}
 	}
 	channelID := ch.ID
@@ -203,29 +224,39 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 
 	// 发布到 NATS；消息携带渠道完整配置，worker 只需 NATS 连接
+	// 稳定密钥：将剩余待试渠道 ID（跳过当前渠道）存入 RetryChannelIDs，
+	// 结果处理器在失败时按顺序换下一个渠道重试。
+	var retryChannelIDs []int64
+	for i := range stableChannels {
+		if stableChannels[i].ID != channelID {
+			retryChannelIDs = append(retryChannelIDs, stableChannels[i].ID)
+		}
+	}
+
 	natSubject := fmt.Sprintf("task.%s.%d", taskType, channelID)
 	job := &model.TaskJob{
-		TaskID:         task.ID,
-		TaskType:       taskType,
-		UserID:         userID,
-		APIKeyID:       apiKeyIDVal,
-		CorrID:         corrID,
-		CreditsCharged: cost,
-		ChannelID:      channelID,
-		BaseURL:        ch.BaseURL,
-		Method:         ch.Method,
-		Headers:        ch.Headers,
-		TimeoutMs:      ch.TimeoutMs,
-		QueryTimeoutMs: ch.QueryTimeoutMs,
-		RequestScript:  ch.RequestScript,
-		ResponseScript: ch.ResponseScript,
-		ErrorScript:    ch.ErrorScript,
-		QueryURL:       ch.QueryURL,
-		QueryMethod:    ch.QueryMethod,
-		QueryScript:    ch.QueryScript,
-		PoolKeyID:      poolKeyID,
-		PoolKeyValue:   poolKeyValue,
-		Payload:        reqData,
+		TaskID:          task.ID,
+		TaskType:        taskType,
+		UserID:          userID,
+		APIKeyID:        apiKeyIDVal,
+		CorrID:          corrID,
+		CreditsCharged:  cost,
+		ChannelID:       channelID,
+		BaseURL:         ch.BaseURL,
+		Method:          ch.Method,
+		Headers:         ch.Headers,
+		TimeoutMs:       ch.TimeoutMs,
+		QueryTimeoutMs:  ch.QueryTimeoutMs,
+		RequestScript:   ch.RequestScript,
+		ResponseScript:  ch.ResponseScript,
+		ErrorScript:     ch.ErrorScript,
+		QueryURL:        ch.QueryURL,
+		QueryMethod:     ch.QueryMethod,
+		QueryScript:     ch.QueryScript,
+		PoolKeyID:       poolKeyID,
+		PoolKeyValue:    poolKeyValue,
+		Payload:         reqData,
+		RetryChannelIDs: retryChannelIDs,
 	}
 	msgBytes, _ := json.Marshal(job)
 	if pubErr := mq.Publish(natSubject, msgBytes); pubErr != nil {
@@ -354,6 +385,81 @@ func bindMusicRequest(bodyBytes []byte) (*model.MusicRequest, error) {
 // CreateMusicTask 创建 Suno 音乐生成任务
 // @Summary      创建音乐生成任务（Suno）
 // @Description  异步任务，每次生成 2 首；提交后返回 task_id，通过 GET /v1/tasks/:id 轮询结果（items 数组）。
+// @Description
+// @Description  ## 创作模式说明
+// @Description
+// @Description  | input_type | 说明 |
+// @Description  |-----------|------|
+// @Description  | `10` | 灵感模式：填写 `gpt_description_prompt`，平台自动生成歌词 |
+// @Description  | `20` | 自定义模式：手动填写 `prompt`（歌词）、`tags`（风格）、`title` |
+// @Description
+// @Description  ---
+// @Description
+// @Description  ### 续写模式（Extend）
+// @Description
+// @Description  在已有音频基础上续写，`continue_clip_id` 填目标音频 URL 或 clip ID，`continue_at` 为续写起始时间（秒）。
+// @Description
+// @Description  ```json
+// @Description  {
+// @Description    "model": "suno",
+// @Description    "mv_version": "chirp-v5",
+// @Description    "input_type": "20",
+// @Description    "make_instrumental": false,
+// @Description    "prompt": "[Verse 1]\n小狗汪汪叫\n...",
+// @Description    "tags": "",
+// @Description    "title": "为你歌唱",
+// @Description    "continue_clip_id": "https://cdn1.suno.ai/7c395650-62f2-4c4f-8b68-cf55b874c96c.mp3",
+// @Description    "continue_at": "27"
+// @Description  }
+// @Description  ```
+// @Description
+// @Description  ---
+// @Description
+// @Description  ### 添加人声（Add Vocals / overpainting）
+// @Description
+// @Description  给纯音乐轨道添加人声。`task` 设为 `overpainting`，`metadata_params` 中指定目标音频及起止时间（秒）。
+// @Description
+// @Description  ```json
+// @Description  {
+// @Description    "model": "suno",
+// @Description    "mv_version": "chirp-v4-5+",
+// @Description    "input_type": "20",
+// @Description    "make_instrumental": false,
+// @Description    "prompt": "[Verse 1]\nUsah lepas kau pergi\n...",
+// @Description    "tags": "pop,female voice",
+// @Description    "title": "Hi,melancholic",
+// @Description    "task": "overpainting",
+// @Description    "metadata_params": {
+// @Description      "overpainting_clip_id": "https://cdn1.suno.ai/21ae9c64-86ab-435a-b810-ed62727caf0a.mp3",
+// @Description      "overpainting_start_s": 0,
+// @Description      "overpainting_end_s": 57.9
+// @Description    }
+// @Description  }
+// @Description  ```
+// @Description
+// @Description  ---
+// @Description
+// @Description  ### 添加伴奏（Add Instrumental / underpainting）
+// @Description
+// @Description  给人声轨道添加纯音乐伴奏。`task` 设为 `underpainting`，`make_instrumental` 设为 `true`，`prompt` 留空，`metadata_params` 中指定目标音频及起止时间（秒）。
+// @Description
+// @Description  ```json
+// @Description  {
+// @Description    "model": "suno",
+// @Description    "mv_version": "chirp-v4-5+",
+// @Description    "input_type": "20",
+// @Description    "make_instrumental": true,
+// @Description    "prompt": "",
+// @Description    "tags": "pop,female voice",
+// @Description    "title": "Hi,melancholic",
+// @Description    "task": "underpainting",
+// @Description    "metadata_params": {
+// @Description      "underpainting_clip_id": "https://cdn1.suno.ai/21ae9c64-86ab-435a-b810-ed62727caf0a.mp3",
+// @Description      "underpainting_start_s": 0,
+// @Description      "underpainting_end_s": 57.9
+// @Description    }
+// @Description  }
+// @Description  ```
 // @Tags         媒体生成
 // @Accept       json
 // @Produce      json

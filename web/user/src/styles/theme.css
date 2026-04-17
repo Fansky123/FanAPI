@@ -20,13 +20,13 @@
   --ow-sidebar-w:  220px;
   --ow-header-h:   48px;
   /* layout shell 专属（亮色） */
-  --ow-layout-sidebar:  #edf3ff;
-  --ow-layout-border:   #d0e2ff;
+  --ow-layout-sidebar:  #ffffff;
+  --ow-layout-border:   #e5e6eb;
   --ow-nav-color:       #4e5969;
-  --ow-nav-hover:       rgba(255,255,255,.65);
-  --ow-nav-active:      #ffffff;
-  --ow-content-bg:      #ffffff;
-  --ow-chip-bg:         rgba(255,255,255,.8);
+  --ow-nav-hover:       #f5f7fa;
+  --ow-nav-active:      #f0f4ff;
+  --ow-content-bg:      #f2f3f5;
+  --ow-chip-bg:         rgba(22, 93, 255, 0.06);
 }
 
 * { box-sizing: border-box; }

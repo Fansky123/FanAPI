@@ -1,220 +1,202 @@
 <template>
   <div class="logs-page">
-    <el-tabs v-model="activeTab" @tab-change="onTabChange">
-      <!-- ── LLM 日志 ── -->
-      <el-tab-pane label="LLM 日志" name="llm">
-        <el-card class="toolbar-card">
-          <div class="toolbar-row">
-            <el-input v-model="llm.filters.corr_id" placeholder="Corr ID" clearable style="width:220px" />
-            <el-input v-model="llm.filters.model" placeholder="Model" clearable style="width:160px" />
-            <el-select v-model="llm.filters.status" placeholder="状态" clearable style="width:120px">
-              <el-option label="pending" value="pending" />
-              <el-option label="ok" value="ok" />
-              <el-option label="error" value="error" />
-              <el-option label="refunded" value="refunded" />
-            </el-select>
-            <el-date-picker
-              v-model="llm.filters.dateRange"
-              type="datetimerange"
-              range-separator="至"
-              start-placeholder="开始时间"
-              end-placeholder="结束时间"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              style="width:380px"
-            />
-            <el-button type="primary" @click="llmSearch">查询</el-button>
-            <el-button @click="llmReset">重置</el-button>
+    <div class="page-title-header">
+      <h2>调用日志</h2>
+    </div>
+
+    <div class="content-card filter-card">
+      <div class="toolbar-row">
+        <el-select v-model="task.filters.type" placeholder="全部类型" clearable style="width:130px">
+          <el-option label="图片生成" value="image" />
+          <el-option label="视频生成" value="video" />
+          <el-option label="音频生成" value="audio" />
+          <el-option label="音乐生成" value="music" />
+        </el-select>
+        <el-select v-model="task.filters.status" placeholder="全部状态" clearable style="width:130px">
+          <el-option label="排队中" value="pending" />
+          <el-option label="处理中" value="processing" />
+          <el-option label="已完成" value="done" />
+          <el-option label="失败" value="failed" />
+        </el-select>
+        <el-input v-model="task.filters.task_id" placeholder="任务 ID" clearable style="width:130px" @keyup.enter="taskSearch" />
+        <el-date-picker
+          v-model="task.filters.dateRange"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          style="width:360px"
+        />
+        <el-button type="primary" @click="taskSearch">查询</el-button>
+        <el-button @click="taskReset">重置</el-button>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <el-table :data="task.list" stripe border size="default">
+        <el-table-column prop="task_id" label="任务 ID" width="90" align="center" />
+        <el-table-column label="类型" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="typeTagType(row.task_type)" size="small">{{ typeLabel(row.task_type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="请求时间" width="180" :formatter="fmtTime" />
+        <el-table-column label="消耗积分" width="140" align="right">
+          <template #default="{ row }">
+            <span v-if="row.credits_charged" style="color:#f56c6c;font-weight:600">
+              -{{ (row.credits_charged / 1e6).toFixed(4) }}
+            </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="taskStatusType(statusCode(row.status))" size="small">{{ taskStatusLabel(statusCode(row.status)) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="错误信息" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.msg" style="color:#f56c6c;font-size:12px">{{ row.msg }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row.task_id)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-model:current-page="task.page"
+        :page-size="20"
+        :total="task.total"
+        layout="total, prev, pager, next"
+        style="margin-top:16px"
+        @current-change="fetchTask"
+      />
+    </div>
+
+    <!-- 任务详情抽屉 -->
+    <el-drawer v-model="drawerVisible" title="任务详情" direction="rtl" size="560px" destroy-on-close>
+      <div v-if="detailLoading" style="padding:40px;text-align:center">
+        <el-icon class="is-loading" style="font-size:32px"><Loading /></el-icon>
+      </div>
+      <div v-else-if="currentTask" class="detail-body">
+        <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+          <el-descriptions-item label="任务 ID">{{ currentTask.task_id }}</el-descriptions-item>
+          <el-descriptions-item label="类型">
+            <el-tag :type="typeTagType(currentTask.task_type)" size="small">{{ typeLabel(currentTask.task_type) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="状态" :span="2">
+            <el-tag :type="taskStatusType(statusCode(currentTask.status))" size="small">{{ taskStatusLabel(statusCode(currentTask.status)) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="消耗积分" :span="2">
+            <span v-if="currentTask.credits_charged" style="color:#f56c6c;font-weight:600">
+              -{{ (currentTask.credits_charged / 1e6).toFixed(6) }}
+            </span>
+            <span v-else>—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">{{ fmtTime(null, null, currentTask.created_at) }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentTask.finished_at" label="完成时间" :span="2">{{ fmtTime(null, null, currentTask.finished_at) }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentTask.upstream_task_id" label="上游任务 ID" :span="2">
+            <span style="font-family:monospace;font-size:12px">{{ currentTask.upstream_task_id }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="currentTask.msg" label="备注" :span="2">
+            <span style="color:#f56c6c">{{ currentTask.msg }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 请求参数 -->
+        <template v-if="currentTask.request && Object.keys(currentTask.request).length">
+          <div class="detail-section">
+            <span class="detail-section-title">请求参数</span>
+            <el-button size="small" plain type="primary" style="margin-left:auto" @click="copyJson(currentTask.request)">
+              <el-icon><CopyDocument /></el-icon> 复制
+            </el-button>
           </div>
-        </el-card>
+          <pre class="detail-pre">{{ JSON.stringify(currentTask.request, null, 2) }}</pre>
+        </template>
 
-        <el-card>
-          <el-table :data="llm.list" stripe border>
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="model" label="Model" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="is_stream" label="流式" width="70">
-              <template #default="{ row }">
-                <el-tag :type="row.is_stream ? 'primary' : 'info'" size="small">{{ row.is_stream ? '是' : '否' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="扣费积分" width="140">
-              <template #default="{ row }">
-                <span v-if="row.credits_charged" style="color:#f56c6c">-{{ row.credits_charged.toLocaleString() }} cr</span>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="Token 用量" min-width="160">
-              <template #default="{ row }">
-                <span v-if="row.usage">
-                  ↑{{ row.usage.prompt_tokens ?? '-' }} / ↓{{ row.usage.completion_tokens ?? '-' }}
-                  <el-tag v-if="row.usage.estimated" type="warning" size="small">估算</el-tag>
-                </span>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="llmStatusType(row.status)" size="small">{{ row.status }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="corr_id" label="Corr ID" min-width="240" show-overflow-tooltip />
-            <el-table-column prop="created_at" label="时间" min-width="180" :formatter="fmtTime" />
-          </el-table>
-          <el-pagination
-            v-model:current-page="llm.page"
-            :page-size="20"
-            :total="llm.total"
-            layout="total, prev, pager, next"
-            style="margin-top:16px"
-            @current-change="fetchLlm"
-          />
-        </el-card>
-      </el-tab-pane>
-
-      <!-- ── 任务记录 ── -->
-      <el-tab-pane label="异步任务" name="task">
-        <el-card class="toolbar-card">
-          <div class="toolbar-row">
-            <el-input v-model="task.filters.task_id" placeholder="Task ID" clearable style="width:150px" />
-            <el-select v-model="task.filters.type" placeholder="任务类型" clearable style="width:130px">
-              <el-option label="图片" value="image" />
-              <el-option label="视频" value="video" />
-              <el-option label="音频" value="audio" />
-            </el-select>
-            <el-select v-model="task.filters.status" placeholder="状态" clearable style="width:120px">
-              <el-option label="排队中" value="pending" />
-              <el-option label="处理中" value="processing" />
-              <el-option label="成功" value="done" />
-              <el-option label="失败" value="failed" />
-            </el-select>
-            <el-date-picker
-              v-model="task.filters.dateRange"
-              type="datetimerange"
-              range-separator="至"
-              start-placeholder="开始时间"
-              end-placeholder="结束时间"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              style="width:380px"
-            />
-            <el-button type="primary" @click="taskSearch">查询</el-button>
-            <el-button @click="taskReset">重置</el-button>
+        <!-- 结果 / 响应 -->
+        <template v-if="currentTask.result && Object.keys(currentTask.result).length">
+          <div class="detail-section">
+            <span class="detail-section-title">响应结果</span>
+            <el-button size="small" plain type="primary" style="margin-left:auto" @click="copyJson(currentTask.result)">
+              <el-icon><CopyDocument /></el-icon> 复制
+            </el-button>
           </div>
-        </el-card>
+          <pre class="detail-pre">{{ JSON.stringify(currentTask.result, null, 2) }}</pre>
+        </template>
 
-        <el-card>
-          <el-table :data="task.list" stripe border>
-            <el-table-column prop="task_id" label="Task ID" width="110" />
-            <el-table-column prop="task_type" label="类型" width="90" />
-            <el-table-column prop="status" label="状态" width="110">
-              <template #default="{ row }">
-                <el-tag :type="taskStatusType(row.status)" size="small">{{ taskStatusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="扣费积分" width="130">
-              <template #default="{ row }">
-                {{ row.credits_charged?.toLocaleString?.() ?? row.credits_charged ?? '-' }} cr
-              </template>
-            </el-table-column>
-            <el-table-column label="消息" min-width="140" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.msg || '-' }}</template>
-            </el-table-column>
-            <el-table-column label="创建时间" width="180" :formatter="fmtTime" prop="created_at" />
-            <el-table-column label="结束时间" width="180">
-              <template #default="{ row }">
-                <span v-if="row.finished_at">{{ fmtTime(row, null, row.finished_at) }}</span>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" align="center">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="openDetail(row.task_id)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-pagination
-            v-model:current-page="task.page"
-            :page-size="20"
-            :total="task.total"
-            layout="total, prev, pager, next"
-            style="margin-top:16px"
-            @current-change="fetchTask"
-          />
-        </el-card>
+        <!-- 生成结果：直接展示媒体 -->
+        <template v-if="currentTask.url || currentTask.items?.length">
+          <div class="detail-section">
+            <span class="detail-section-title">生成结果</span>
+            <span v-if="currentTask.items?.length" style="font-size:12px;color:#86909c;margin-left:6px">（{{ currentTask.items.length }} 项）</span>
+          </div>
 
-        <el-drawer v-model="drawerVisible" title="任务详情" size="52%">
-          <template v-if="currentTask">
-            <el-descriptions :column="2" border style="margin-bottom:16px">
-              <el-descriptions-item label="Task ID">{{ currentTask.task_id }}</el-descriptions-item>
-              <el-descriptions-item label="任务类型">{{ currentTask.task_type }}</el-descriptions-item>
-              <el-descriptions-item label="状态">
-                <el-tag :type="taskStatusType(currentTask.status)" size="small">{{ taskStatusLabel(currentTask.status) }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="扣费积分">{{ currentTask.credits_charged ?? '-' }} cr</el-descriptions-item>
-              <el-descriptions-item label="第三方任务 ID" :span="2">{{ currentTask.upstream_task_id || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="消息" :span="2">{{ currentTask.msg || '-' }}</el-descriptions-item>
-            </el-descriptions>
-            <div class="json-block">
-              <div class="json-title">提交的请求体</div>
-              <pre>{{ pretty(currentTask.request) }}</pre>
-            </div>
-            <div class="json-block">
-              <div class="json-title">任务结果</div>
-              <pre>{{ pretty(currentTask.result) }}</pre>
+          <!-- 单个结果 -->
+          <template v-if="currentTask.url && !currentTask.items?.length">
+            <div class="media-result-box">
+              <img v-if="currentTask.task_type === 'image'" :src="currentTask.url" class="result-media result-img" @click="openMediaLink(currentTask.url)" alt="生成图片" />
+              <video v-else-if="currentTask.task_type === 'video'" :src="currentTask.url" class="result-media result-video" controls />
+              <audio v-else-if="currentTask.task_type === 'audio' || currentTask.task_type === 'music'" :src="currentTask.url" class="result-audio" controls />
+              <a v-else :href="currentTask.url" target="_blank" class="result-link">{{ currentTask.url }}</a>
+              <a v-if="currentTask.task_type === 'image'" :href="currentTask.url" target="_blank" class="result-dl-btn">↗ 在新标签查看原图</a>
             </div>
           </template>
-        </el-drawer>
-      </el-tab-pane>
-    </el-tabs>
+
+          <!-- 多个结果（items） -->
+          <div v-for="(item, i) in currentTask.items" :key="i" class="media-result-box" style="margin-bottom:12px">
+            <template v-if="currentTask.task_type === 'image'">
+              <img :src="itemUrl(item)" class="result-media result-img" @click="openMediaLink(itemUrl(item))" alt="生成图片" />
+              <a :href="itemUrl(item)" target="_blank" class="result-dl-btn">↗ 查看原图</a>
+            </template>
+            <template v-else-if="currentTask.task_type === 'video'">
+              <video :src="itemUrl(item)" class="result-media result-video" controls />
+            </template>
+            <template v-else-if="currentTask.task_type === 'audio' || currentTask.task_type === 'music'">
+              <div v-if="itemTitle(item)" style="font-size:13px;font-weight:600;color:#1d2129;margin-bottom:4px">{{ itemTitle(item) }}</div>
+              <div v-if="itemTags(item)" style="font-size:12px;color:#86909c;margin-bottom:6px">{{ itemTags(item) }}</div>
+              <audio :src="itemUrl(item)" class="result-audio" controls />
+              <a v-if="itemCover(item)" :href="itemCover(item)" target="_blank">
+                <img :src="itemCover(item)" class="music-cover" alt="封面" />
+              </a>
+            </template>
+            <template v-else>
+              <a :href="itemUrl(item)" target="_blank" class="result-link">{{ itemUrl(item) }}</a>
+            </template>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { taskApi, llmLogApi } from '@/api'
+import { taskApi } from '@/api'
+import { Loading, CopyDocument } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
-const route = useRoute()
-const activeTab = ref(route.query.tab === 'task' ? 'task' : 'llm')
-
-// ── LLM 日志状态 ──
-const llm = reactive({
-  list: [], page: 1, total: 0,
-  filters: { corr_id: '', model: '', status: '', dateRange: null }
-})
-
-// ── 任务状态 ──
 const task = reactive({
   list: [], page: 1, total: 0,
   filters: { task_id: '', type: '', status: '', dateRange: null }
 })
+
 const drawerVisible = ref(false)
+const detailLoading = ref(false)
 const currentTask = ref(null)
 
-onMounted(() => {
-  fetchLlm()
-  fetchTask()
-})
+onMounted(fetchTask)
 
-function onTabChange() {}
-
-// LLM
-function llmSearch() { llm.page = 1; fetchLlm() }
-function llmReset() { Object.assign(llm.filters, { corr_id: '', model: '', status: '', dateRange: null }); llm.page = 1; fetchLlm() }
-async function fetchLlm() {
-  const params = { page: llm.page, page_size: 20 }
-  if (llm.filters.corr_id) params.corr_id = llm.filters.corr_id
-  if (llm.filters.model) params.model = llm.filters.model
-  if (llm.filters.status) params.status = llm.filters.status
-  if (llm.filters.dateRange?.[0]) params.start_at = llm.filters.dateRange[0]
-  if (llm.filters.dateRange?.[1]) params.end_at = llm.filters.dateRange[1]
-  const res = await llmLogApi.list(params)
-  llm.list = res.logs ?? []
-  llm.total = res.total ?? 0
-}
-function llmStatusType(s) { return ({ ok: 'success', error: 'danger', refunded: 'warning', pending: 'info' }[s] ?? 'info') }
-
-// Task
 function taskSearch() { task.page = 1; fetchTask() }
-function taskReset() { Object.assign(task.filters, { task_id: '', type: '', status: '', dateRange: null }); task.page = 1; fetchTask() }
+function taskReset() {
+  Object.assign(task.filters, { task_id: '', type: '', status: '', dateRange: null })
+  task.page = 1; fetchTask()
+}
+
 async function fetchTask() {
   const params = { page: task.page, size: 20 }
   if (task.filters.task_id) params.task_id = task.filters.task_id
@@ -222,33 +204,145 @@ async function fetchTask() {
   if (task.filters.status) params.status = task.filters.status
   if (task.filters.dateRange?.[0]) params.start_at = task.filters.dateRange[0]
   if (task.filters.dateRange?.[1]) params.end_at = task.filters.dateRange[1]
-  const res = await taskApi.list(params)
-  task.list = res.tasks ?? []
-  task.total = res.total ?? 0
+  try {
+    const res = await taskApi.list(params)
+    task.list = res.tasks ?? []
+    task.total = res.total ?? 0
+  } catch {}
 }
+
 async function openDetail(id) {
-  const res = await taskApi.get(id)
-  currentTask.value = res
   drawerVisible.value = true
+  detailLoading.value = true
+  currentTask.value = null
+  try {
+    currentTask.value = await taskApi.get(id)
+  } finally {
+    detailLoading.value = false
+  }
 }
-function pretty(value) { return value ? JSON.stringify(value, null, 2) : '-' }
-function taskStatusType(s) { return ({ pending: 'info', processing: 'warning', done: 'success', failed: 'danger' }[s] ?? 'info') }
-function taskStatusLabel(s) { return ({ pending: '排队中', processing: '处理中', done: '已完成', failed: '失败' }[s] ?? s) }
-function fmtTime(row, col, val) { return val ? new Date(val).toLocaleString('zh-CN') : '-' }
+
+// TaskResult.status: 0=pending,1=processing,2=done,3=failed
+function statusCode(s) {
+  return (['pending', 'processing', 'done', 'failed'][s] ?? String(s))
+}
+
+function taskStatusType(s) {
+  return ({ pending: 'info', processing: 'warning', done: 'success', failed: 'danger' }[s] ?? 'info')
+}
+function taskStatusLabel(s) {
+  return ({ pending: '排队中', processing: '处理中', done: '已完成', failed: '失败' }[s] ?? s)
+}
+
+function typeTagType(t) {
+  return ({ image: '', video: 'warning', audio: 'success', music: 'danger' }[t] ?? 'info')
+}
+function typeLabel(t) {
+  return ({ image: '图片生成', video: '视频生成', audio: '音频生成', music: '音乐生成' }[t] ?? t ?? '—')
+}
+
+function fmtTime(row, col, val) {
+  return val ? new Date(val).toLocaleString('zh-CN') : '-'
+}
+
+function copyJson(obj) {
+  navigator.clipboard.writeText(JSON.stringify(obj, null, 2)).then(() => {
+    ElMessage({ message: '已复制', type: 'success', duration: 1200 })
+  })
+}
+
+// 从 item 对象中提取 URL（兼容 { url }, { audio_url }, 字符串本身）
+function itemUrl(item) {
+  if (typeof item === 'string') return item
+  return item.url || item.audio_url || item.video_url || item.image_url || ''
+}
+function itemTitle(item) { return item?.title || item?.name || '' }
+function itemTags(item) { return item?.tags || item?.style || '' }
+function itemCover(item) { return item?.image_url || item?.cover_url || item?.cover || '' }
+
+function openMediaLink(url) {
+  if (url && url.startsWith('data:')) return // base64 图片点击不跳转
+  window.open(url, '_blank')
+}
 </script>
 
 <style scoped>
-.logs-page { max-width: 1400px; }
-.toolbar-card { margin-bottom: 16px; }
-.toolbar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.json-block { margin-bottom: 16px; }
-.json-title { font-weight: 700; margin-bottom: 8px; color: #1a2b45; }
-pre {
-  margin: 0; padding: 12px;
-  background: #f7fafd;
-  border: 1px solid #e4ecf7;
-  border-radius: 6px;
-  overflow: auto; white-space: pre-wrap; word-break: break-all;
-  font-family: monospace; font-size: .82rem;
+.logs-page { display: flex; flex-direction: column; padding-bottom: 60px; }
+
+.page-title-header {
+  padding: 15px 24px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #f0f1f5;
+  box-shadow: rgba(0,0,0,0.02) 0px 10px 20px 0px;
+  margin-bottom: 15px;
 }
+.page-title-header h2 { margin: 0; font-size: 20px; font-weight: 600; color: rgb(26, 27, 28); }
+
+.content-card { background: #ffffff; border-radius: 12px; padding: 20px; margin-bottom: 15px; border: 1px solid #f0f1f5; }
+.filter-card { padding: 16px 20px; }
+.toolbar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.detail-body { padding: 4px 0; }
+.detail-section { display: flex; align-items: center; margin: 16px 0 8px; }
+.detail-section-title { font-size: 13px; font-weight: 600; color: #1d2129; }
+.detail-pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.result-url-row { margin-bottom: 8px; }
+.result-link {
+  color: #165dff;
+  font-size: 12px;
+  word-break: break-all;
+  text-decoration: none;
+}
+.result-link:hover { text-decoration: underline; }
+
+/* 媒体结果展示 */
+.media-result-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.result-media { border-radius: 8px; }
+.result-img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  cursor: zoom-in;
+  border: 1px solid #e4e7ed;
+}
+.result-video {
+  width: 100%;
+  max-height: 360px;
+  background: #000;
+}
+.result-audio {
+  width: 100%;
+}
+.music-cover {
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #e4e7ed;
+}
+.result-dl-btn {
+  font-size: 12px;
+  color: #165dff;
+  text-decoration: none;
+}
+.result-dl-btn:hover { text-decoration: underline; }
 </style>

@@ -18,6 +18,7 @@
         <el-menu-item index="/admin/tasks"><el-icon><Document /></el-icon>任务中心</el-menu-item>
         <el-menu-item index="/admin/llm-logs"><el-icon><ChatLineSquare /></el-icon>LLM 日志</el-menu-item>
         <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
+        <el-menu-item index="/admin/ocpc"><el-icon><Promotion /></el-icon>OCPC 上报</el-menu-item>
         <el-menu-item index="/admin/settings"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
@@ -79,6 +80,7 @@ const titles = {
   '/admin/billing': '账单流水',
   '/admin/tasks': '任务中心',
   '/admin/cards': '卡密管理',
+  '/admin/ocpc': 'OCPC 上报',
   '/admin/llm-logs': 'LLM 日志',
   '/admin/settings': '系统设置',
 }

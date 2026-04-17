@@ -26,6 +26,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 			}
 			c.Set("user_id", apiKey.UserID)
 			c.Set("api_key_id", apiKey.ID)
+			c.Set("key_type", apiKey.KeyType)
 			c.Set("auth_type", "apikey")
 			// 加载用户以获取 group（分组定价）
 			user := &model.User{}
@@ -40,6 +41,22 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
+			// First try to validate as API Key (supports "Authorization: Bearer sk-xxx")
+			if apiKey, err := service.LookupAPIKey(c.Request.Context(), tokenStr); err == nil {
+				c.Set("user_id", apiKey.UserID)
+				c.Set("api_key_id", apiKey.ID)
+				c.Set("key_type", apiKey.KeyType)
+				c.Set("auth_type", "apikey")
+				user := &model.User{}
+				if found, _ := db.Engine.ID(apiKey.UserID).Get(user); found {
+					c.Set("user_group", user.Group)
+				}
+				c.Next()
+				return
+			}
+
+			// Fall back to JWT
 			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid

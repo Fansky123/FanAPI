@@ -145,6 +145,32 @@ func RedeemCard(c *gin.Context) {
 	})
 }
 
+// GET /user/cards/redeem-history?page=1&size=20
+// 查询当前用户的兑换记录
+func GetRedeemHistory(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+
+	var records []model.Card
+	total, err := db.Engine.
+		Where("used_by = ? AND status = 'used'", userID).
+		OrderBy("used_at DESC").
+		Limit(size, (page-1)*size).
+		FindAndCount(&records)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"records": records, "total": total})
+}
+
 // genCode 生成随机卡密，格式：FANAPI-XXXXXXXXXXXXXXXX（16位大写hex）
 func genCode() (string, error) {
 	b := make([]byte, 8)

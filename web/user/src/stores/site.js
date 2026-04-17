@@ -13,6 +13,12 @@ export const useSiteStore = defineStore('site', () => {
   const noticeContent = ref('')
   const contactInfo = ref('')
   const qrcodeUrl = ref('')
+  const plans = ref([])
+  const allowCustom = ref(true)
+  const qqGroupUrl = ref('')
+  const wechatCsUrl = ref('')
+  const wechatLoginEnabled = ref(false)
+  const wechatMPLoginEnabled = ref(false)
   const loaded = ref(false)
 
   async function fetchSettings() {
@@ -33,6 +39,14 @@ export const useSiteStore = defineStore('site', () => {
       if (s.notice_content !== undefined) noticeContent.value = s.notice_content
       if (s.contact_info !== undefined) contactInfo.value = s.contact_info
       if (s.qrcode_url !== undefined) qrcodeUrl.value = s.qrcode_url
+      if (s.recharge_plans) {
+        try { plans.value = JSON.parse(s.recharge_plans) } catch { plans.value = [] }
+      }
+      allowCustom.value = s.recharge_allow_custom !== 'false'
+      if (s.qq_group_url !== undefined) qqGroupUrl.value = s.qq_group_url
+      if (s.wechat_cs_url !== undefined) wechatCsUrl.value = s.wechat_cs_url
+      wechatLoginEnabled.value = s.wechat_login_enabled === 'true'
+      wechatMPLoginEnabled.value = s.wechat_mp_login_enabled === 'true'
       loaded.value = true
     } catch {
       // 静默失败，使用默认值
@@ -47,5 +61,10 @@ export const useSiteStore = defineStore('site', () => {
     document.documentElement.classList.toggle('dark', darkMode.value)
   }
 
-  return { siteName, logoUrl, headerHtml, footerHtml, epayEnabled, payApplyEnabled, noticeTitle, noticeContent, contactInfo, qrcodeUrl, loaded, fetchSettings, darkMode, toggleDark }
+  return {
+    siteName, logoUrl, headerHtml, footerHtml, epayEnabled, payApplyEnabled,
+    noticeTitle, noticeContent, contactInfo, qrcodeUrl, plans, allowCustom,
+    qqGroupUrl, wechatCsUrl, wechatLoginEnabled, wechatMPLoginEnabled,
+    loaded, fetchSettings, darkMode, toggleDark,
+  }
 })

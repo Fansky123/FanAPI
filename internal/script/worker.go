@@ -106,16 +106,17 @@ func handleTask(msg *nats.Msg) {
 // execJob 执行一个 TaskJob 并返回 WorkerResult，永不返回 nil。
 func execJob(ctx context.Context, job *model.TaskJob) *model.WorkerResult {
 	base := &model.WorkerResult{
-		TaskID:         job.TaskID,
-		TaskType:       job.TaskType,
-		UserID:         job.UserID,
-		APIKeyID:       job.APIKeyID,
-		CorrID:         job.CorrID,
-		CreditsCharged: job.CreditsCharged,
-		ChannelID:      job.ChannelID,
-		PoolKeyID:      job.PoolKeyID,
-		RetryCount:     job.RetryCount,
-		Payload:        job.Payload, // 保留下来以便服务器在 OutcomeRateLimited 时重新发布
+		TaskID:          job.TaskID,
+		TaskType:        job.TaskType,
+		UserID:          job.UserID,
+		APIKeyID:        job.APIKeyID,
+		CorrID:          job.CorrID,
+		CreditsCharged:  job.CreditsCharged,
+		ChannelID:       job.ChannelID,
+		PoolKeyID:       job.PoolKeyID,
+		RetryCount:      job.RetryCount,
+		Payload:         job.Payload, // 保留下来以便服务器在 OutcomeRateLimited / 稳定密钥重试时重新发布
+		RetryChannelIDs: job.RetryChannelIDs,
 	}
 
 	fail := func(msg string) *model.WorkerResult {

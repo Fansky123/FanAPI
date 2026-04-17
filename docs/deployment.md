@@ -22,6 +22,8 @@
   - [场景二：修改了后端 Go 代码](#场景二修改了后端-go-代码api-逻辑handleerservice-等)
   - [场景三：修改了前端代码](#场景三修改了前端代码vue-页面样式api-路径等)
 - [常用维护命令](#常用维护命令)
+- [日志说明与排查指南](#日志说明与排查指南)
+- [任务全链路追踪（数据库查询）](#任务全链路追踪数据库查询)
 
 ---
 
@@ -972,3 +974,429 @@ iptables -A INPUT -p tcp --dport 4222 ! -s 127.0.0.1 -j DROP
 
 # 或使用阿里云/腾讯云安全组：不开放 5432 / 6379 / 4222 入站规则（推荐）
 ```
+
+---
+
+## 任务全链路追踪（数据库查询）
+
+当一个异步任务出现问题（卡住、失败、结果不对）时，可通过以下 SQL 追踪它从 **API 创建 → Worker 执行 → 结果写回** 的完整过程。所有数据存储在三张表中：
+
+| 表 | 存储内容 |
+|---|---|
+| `tasks` | 任务主体：请求参数、上游请求/响应、执行结果、错误信息 |
+| `billing_transactions` | 计费流水：预扣 / 结算 / 退款每步操作 |
+| `channels` | 渠道配置：任务用的哪个上游渠道 |
+
+---
+
+### 第一步：查任务主体
+
+```sql
+SELECT
+    id,
+    type,                 -- image / video / audio / music
+    status,               -- pending / processing / done / failed
+    progress,
+    channel_id,
+    api_key_id,
+    user_id,
+    corr_id,              -- 关联计费流水的唯一 ID
+    upstream_task_id,     -- 异步渠道：第三方任务 ID（如有，说明走了轮询）
+    error_msg,            -- 失败时的错误描述
+    credits_charged,      -- 实际扣除的 credits
+    request,              -- 用户提交的原始参数（model、prompt 等）
+    upstream_request,     -- Worker 实际发给上游的请求（含 _url、_headers）
+    upstream_response,    -- 上游原始返回的 JSON
+    result,               -- response_script 映射后的标准结果（url、items 等）
+    created_at,           -- 任务创建时间
+    updated_at            -- 最后更新时间（完成 / 失败时间）
+FROM tasks
+WHERE id = <任务ID>;
+```
+
+**关键字段说明：**
+
+| 字段 | 排查用途 |
+|---|---|
+| `request` | 确认用户提交的参数是否正确 |
+| `upstream_request._url` | Worker 实际请求的上游 URL（可直接用于 curl 复现） |
+| `upstream_request._headers` | 请求头（`Authorization` 已脱敏为 `Bearer ****`） |
+| `upstream_response` | 上游原始返回，失败时看具体报错内容 |
+| `result` | 脚本映射后的最终结果，成功时应含 `url` 或 `items` |
+| `error_msg` | 平台侧错误描述（脚本报错、上游超时等） |
+| `upstream_task_id` | 非空说明走了异步轮询；若任务卡在 `processing` 检查此字段 |
+| `corr_id` | 用于关联下方计费流水查询 |
+
+> 在 psql 命令行用 `\x` 切换垂直展示模式，JSON 字段更易阅读。GUI 工具（DBeaver / pgAdmin / TablePlus）直接点开 JSON 列即可。
+
+---
+
+### 第二步：查计费流水
+
+```sql
+SELECT
+    id,
+    type,          -- hold=预扣  settle=结算  refund=退款  charge=直扣
+    credits,       -- 操作的 credits 数（正=扣出，负=退回）
+    cost,          -- 上游进价成本
+    balance_after, -- 操作后用户余额快照
+    metrics,       -- 计费详情（token 数 / 分辨率 / 时长等）
+    created_at
+FROM billing_transactions
+WHERE corr_id = (SELECT corr_id FROM tasks WHERE id = <任务ID>)
+ORDER BY created_at;
+```
+
+**正常流水模式：**
+
+| 结果 | 流水条数 | 顺序 |
+|---|---|---|
+| 任务成功 | 2 条 | `hold`（提交时预扣）→ `settle`（完成后按实际用量结算，多退少补） |
+| 任务失败 | 2 条 | `hold`（提交时预扣）→ `refund`（失败后全额退款） |
+
+若只有 `hold` 没有后续流水，说明任务还在处理中，或 Worker 结果尚未被 `result-writer` 写回。
+
+---
+
+### 第三步：查关联渠道配置
+
+```sql
+SELECT
+    id,
+    name,
+    type,
+    base_url,
+    billing_type,
+    billing_config,
+    request_script,
+    response_script,
+    query_url
+FROM channels
+WHERE id = (SELECT channel_id FROM tasks WHERE id = <任务ID>);
+```
+
+用于确认任务使用的是哪个渠道、脚本内容是否符合预期、`query_url` 是否配置正确（异步轮询任务）。
+
+---
+
+### 三步合并（快速一览）
+
+将 `<任务ID>` 替换为实际值，依次执行：
+
+```sql
+-- 步骤 1：任务主体（psql 用户建议先执行 \x 开启垂直展示）
+SELECT id, type, status, error_msg, upstream_task_id, corr_id,
+       request, upstream_request, upstream_response, result,
+       created_at, updated_at
+FROM tasks WHERE id = <任务ID>;
+
+-- 步骤 2：计费流水
+SELECT type, credits, cost, balance_after, metrics, created_at
+FROM billing_transactions
+WHERE corr_id = (SELECT corr_id FROM tasks WHERE id = <任务ID>)
+ORDER BY created_at;
+
+-- 步骤 3：渠道配置
+SELECT id, name, type, base_url, billing_type, billing_config,
+       request_script, response_script, query_url
+FROM channels
+WHERE id = (SELECT channel_id FROM tasks WHERE id = <任务ID>);
+```
+
+---
+
+### 同步查看 Worker 日志
+
+结合容器日志可以看到 Worker 处理该任务的实时过程：
+
+```bash
+# 在日志中过滤指定任务 ID（将 12 替换为实际 ID）
+docker compose logs api script --no-log-prefix 2>&1 | grep "task 12\b"
+```
+
+**成功任务的典型日志顺序：**
+
+```
+[script worker] subscribed to task.>              ← Worker 启动订阅
+（无报错日志 = request_script / upstream 调用正常）
+[result-proc] subscribed to result.>              ← API 侧结果处理器
+[result-writer] batch done update (1 rows): <nil> ← 写入 DB 成功（nil = 无错误）
+```
+
+**失败任务的典型日志：**
+
+```
+[worker] task 12: request mapping error: ...      ← request_script 报错
+[worker] task 12: response mapping error: ...     ← response_script 报错
+[worker] task 12: upstream error: ...             ← 上游 HTTP 调用失败
+[worker] task 12: result too large (...), ...     ← 上游响应体超过 55MB 限制
+```
+
+---
+
+## 日志说明与排查指南
+
+### 日志输出位置
+
+FanAPI 使用 Go 标准 `log` 包，所有日志直接写到 **stdout / stderr**，不产生本地日志文件。查看方式如下：
+
+**Docker 部署：**
+
+```bash
+# 实时追踪 API Server（含 nginx + fanapi-server + result-processor）
+docker compose logs -f api
+
+# 实时追踪 Script Worker
+docker compose logs -f script
+
+# 只看最近 200 行，不跟踪
+docker compose logs --tail=200 api
+
+# 关键字过滤（例：只看 error）
+docker compose logs -f api 2>&1 | grep -i error
+```
+
+**物理机（systemd）部署：**
+
+```bash
+# 实时查看 API Server 日志（写到文件）
+sudo tail -f /var/log/fanapi/server.log
+
+# 实时查看 Script Worker 日志
+sudo tail -f /var/log/fanapi/script.log
+
+# 使用 journalctl（如未配置写文件）
+sudo journalctl -u fanapi-server -f
+sudo journalctl -u fanapi-script -f
+
+# 只看最近 100 行
+sudo journalctl -u fanapi-server -n 100 --no-pager
+```
+
+**NATS Server：**
+
+```bash
+docker logs nats -f --tail=100
+```
+
+---
+
+### 日志前缀速查表
+
+所有模块的日志都带有固定前缀，便于快速定位问题来源：
+
+| 前缀 | 所在模块 | 说明 |
+|---|---|---|
+| `[worker]` | `internal/script/worker.go` | 任务消息解析失败、上游 HTTP 调用失败、NATS 发布结果失败 |
+| `[script worker]` | `internal/script/worker.go` | Worker 启动时的订阅信息 |
+| `[result-proc]` | `internal/taskresult/handler.go` | 结果消息解析失败 |
+| `[result-writer]` | `internal/taskresult/writer.go` | 批量写入数据库失败 |
+| `[register]` `[login]` `[apikey]` | `internal/service/auth.go` | 用户注册/登录/密钥相关 DB 错误 |
+| `[ocpc/...]` | `internal/service/ocpc.go` | OCPC 广告回传失败 |
+| _(无前缀)_ | `cmd/server/main.go` `cmd/script/main.go` | 启动阶段连接失败（DB / Redis / NATS）|
+
+---
+
+### 常见问题日志特征与修复
+
+#### ① 任务卡在「排队中」不动
+
+**现象**：提交任务后状态长期为 `pending`，`/v1/tasks/:id` 返回 `code=150`。
+
+**排查：**
+
+```bash
+# 检查 script worker 是否正在运行并消费消息
+docker compose logs script -f --tail=50
+
+# 应能看到类似输出：
+# [script worker] subscribed to task.> (consumer: workers-all)
+```
+
+如果没有上述输出，说明 script worker 未运行或启动失败，查看启动报错：
+
+```bash
+docker compose logs script 2>&1 | grep -i "fatal\|error\|panic"
+```
+
+---
+
+#### ② 任务失败，想查上游返回了什么
+
+Script Worker 会把**上游请求**（含目标 URL、请求头脱敏版本）和**上游响应**存入数据库的 `tasks` 表：
+
+```sql
+SELECT id, status, error_msg, upstream_task_id,
+       upstream_request, upstream_response
+FROM tasks
+WHERE id = <任务ID>;
+```
+
+- `upstream_request._url` — 实际请求的上游 URL
+- `upstream_request._headers` — 请求头（Authorization 已脱敏为 `Bearer ****`）
+- `upstream_response` — 上游原始响应 JSON
+- `error_msg` — 平台侧错误描述
+
+可用 `upstream_request` 的内容直接复现 curl 请求：
+
+```bash
+curl -X POST "<upstream_request._url>" \
+  -H "Authorization: Bearer <真实Key>" \
+  -H "Content-Type: application/json" \
+  -d '<upstream_request 去掉 _url/_headers 字段后的 JSON>'
+```
+
+---
+
+#### ③ JS 脚本执行报错
+
+每个渠道有四段可配置的 JS 脚本，报错时日志前缀和错误信息各不相同：
+
+| 脚本字段 | 触发阶段 | 日志前缀 | 错误样式 |
+|---|---|---|---|
+| `request_script` | Worker 发起上游请求前 | `[worker]` | `request mapping error: ...` |
+| `response_script` | Worker 收到上游响应后 | `[worker]` | `response mapping error: ...` |
+| `error_script` | Worker 检测上游错误时 | `[worker]` | `error_script failed: ...` |
+| `query_script` | Poller 每次轮询后 | `[poller]` | `query_script error: ...` |
+
+---
+
+**日志特征速查：**
+
+```
+# request_script 语法错误（脚本无法编译）
+[worker] task 123: request mapping error: script compile error: Unexpected token at script:5:10
+
+# request_script 运行时错误（函数内部抛出异常）
+[worker] task 123: request mapping error: "mapRequest" execution error: TypeError: ...
+
+# response_script 运行时错误
+[worker] task 123: response mapping error: "mapResponse" execution error: ReferenceError: xxx is not defined at script:12:5
+
+# response_script 返回类型错误（没有返回对象）
+[worker] task 123: response mapping error: function "mapResponse" must return an object, got string
+
+# error_script 报错（不影响任务继续，只打印日志）
+[worker] task 123: error_script failed: "checkError" execution error: ...
+
+# query_script 报错（轮询停止，upstream_response 已写入 DB）
+[poller] task 123: query_script error: "mapResponse" execution error: TypeError: ...
+```
+
+---
+
+**排查步骤：**
+
+**第一步：从日志确认是哪段脚本出错，以及错误位置（行号:列号）**
+
+```bash
+docker compose logs script api --no-log-prefix 2>&1 | grep "task 123"
+```
+
+**第二步：查数据库，拿到脚本的输入数据**
+
+```sql
+-- 查任务，拿到上游原始返回（response_script / query_script 的输入）
+SELECT
+    upstream_request,   -- request_script 的输入
+    upstream_response,  -- response_script / query_script 的输入
+    error_msg           -- 脚本报错的完整错误信息
+FROM tasks
+WHERE id = 123;
+```
+
+> **重要**：`upstream_response` 在脚本执行前已写入数据库，即使脚本报错也能查到上游真实返回了什么。
+
+**第三步：在本地复现错误**
+
+把数据库中拿到的 `upstream_response` 内容粘贴到浏览器控制台，本地运行脚本：
+
+```javascript
+// 把 upstream_response 的内容粘贴为 output 的值
+const output = { /* 粘贴 upstream_response JSON */ };
+
+// 粘贴渠道中配置的脚本内容，然后调用对应函数
+function mapResponse(output) {
+    // ... 渠道中配置的脚本 ...
+}
+
+console.log(mapResponse(output));  // 查看输出或报错
+```
+
+**第四步：修复脚本并验证**
+
+进入**管理后台 → 渠道管理 → 对应渠道**，修改对应脚本字段，保存后**立即生效，无需重启任何服务**。
+
+再重新提交一次任务验证是否正常。
+
+---
+
+**常见脚本错误原因：**
+
+| 错误信息 | 原因 | 修复方向 |
+|---|---|---|
+| `script compile error: Unexpected token` | JS 语法错误，如少了括号、逗号 | 检查脚本语法，在浏览器控制台粘贴测试 |
+| `function "mapRequest" not found` | 脚本里没有定义 `mapRequest` 函数 | 确保函数名拼写正确 |
+| `function "mapResponse" must return an object` | 脚本 `return` 了字符串/null 而不是对象 | 确保返回 `{}` 格式的对象 |
+| `ReferenceError: xxx is not defined` | 脚本里引用了不存在的变量或字段 | 检查字段名是否与上游返回的 JSON 一致 |
+| `TypeError: Cannot read properties of undefined` | 访问了 `undefined` 的子字段，如 `output.data[0].url` 但 `data` 为空 | 加防御判断：`output.data && output.data[0] && output.data[0].url` |
+
+---
+
+#### ④ NATS 消息体过大（上游返回了 base64 图片）
+
+**日志特征：**
+
+```
+[worker] task 123: result too large (58623102 bytes), stripping upstream_response
+[worker] task 123: result still too large (57001234 bytes), marking failed
+```
+
+**原因**：上游 API 在响应中内联了 base64 图片数据，体积超过 55MB NATS 软限制。
+
+**修复**：修改渠道的 `response_script`，只提取图片 URL，不透传整个响应体：
+
+```javascript
+function mapResponse(output) {
+    // ✅ 只返回 URL，不透传整个响应
+    return { url: output.data[0].url, status: 2 };
+}
+```
+
+---
+
+#### ⑤ 启动失败（连接中间件报错）
+
+**日志特征（无前缀，出现在进程启动时）：**
+
+```
+db: failed to connect to `host=host-gateway`: dial error: ...
+redis: WRONGPASS invalid username-password pair
+nats: nats: no servers available for connection
+```
+
+对照[502 排查表](#502-bad-gateway--fanapi-server-未启动)逐项检查。
+
+---
+
+#### ⑥ 持久化日志到文件（Docker）
+
+默认 Docker 日志存在内存中，重启后丢失较旧的记录。如需持久化，在 `docker-compose.yml` 中添加：
+
+```yaml
+services:
+  api:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+  script:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+```
+
+日志文件位于宿主机 `/var/lib/docker/containers/<容器ID>/<容器ID>-json.log`，`max-file: "10"` 表示最多保留 10 个轮转文件（共 500MB）。

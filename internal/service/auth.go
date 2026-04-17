@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -24,7 +25,8 @@ import (
 )
 
 // Register 创建新用户（用户名 + 密码，无需邀算验证）。
-func Register(ctx context.Context, username, password string) (*model.User, error) {
+// inviterID 非 nil 时记录邀请人。
+func Register(ctx context.Context, username, password string, inviterID *int64) (*model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -35,6 +37,8 @@ func Register(ctx context.Context, username, password string) (*model.User, erro
 		PasswordHash: string(hash),
 		Role:         "user",
 		IsActive:     true,
+		InviteCode:   generateInviteCode(),
+		InviterID:    inviterID,
 	}
 	if _, err := db.Engine.Insert(user); err != nil {
 		log.Printf("[register] db insert error: %v", err)
@@ -44,6 +48,13 @@ func Register(ctx context.Context, username, password string) (*model.User, erro
 		return nil, fmt.Errorf("注册失败，请稍后重试")
 	}
 	return user, nil
+}
+
+// generateInviteCode 生成 16 位十六进制邀请码。
+func generateInviteCode() string {
+	b := make([]byte, 8)
+	rand.Read(b) //nolint:errcheck
+	return hex.EncodeToString(b)
 }
 
 // Login 验证用户名或邂算密码，验证成功返回 JWT。
@@ -72,6 +83,58 @@ func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.Se
 		return "", nil, fmt.Errorf("用户名或密码错误")
 	}
 
+	exp := time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)
+	claims := jwt.MapClaims{
+		"sub":   user.ID,
+		"role":  user.Role,
+		"group": user.Group,
+		"exp":   exp.Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(cfg.JWTSecret))
+	return signed, user, err
+}
+
+// LoginOrRegisterWithOpenID 通过微信 OpenID 获取或创建用户，返回 JWT。
+// nickname 为微信昵称（首次注册时用作用户名前缀）。
+func LoginOrRegisterWithOpenID(ctx context.Context, openid, nickname string, inviterID *int64, cfg *config.ServerConfig) (string, *model.User, error) {
+	user := &model.User{}
+	found, err := db.Engine.Where("wechat_openid = ?", openid).Get(user)
+	if err != nil {
+		return "", nil, fmt.Errorf("内部错误，请稍后重试")
+	}
+	if !found {
+		// 首次微信登录：自动注册
+		base := nickname
+		if base == "" {
+			base = "wx"
+		}
+		b := make([]byte, 3)
+		rand.Read(b) //nolint:errcheck
+		username := fmt.Sprintf("%s_%s", base, hex.EncodeToString(b))
+		// 生成随机密码（用户无需密码登录，但字段不能为空）
+		rawPwd := make([]byte, 16)
+		rand.Read(rawPwd)
+		hash, _ := bcrypt.GenerateFromPassword(rawPwd, bcrypt.DefaultCost)
+		user = &model.User{
+			Username:     username,
+			PasswordHash: string(hash),
+			Role:         "user",
+			IsActive:     true,
+			InviteCode:   generateInviteCode(),
+			InviterID:    inviterID,
+			WechatOpenID: openid,
+		}
+		if _, err := db.Engine.Insert(user); err != nil {
+			// 并发重复注册时再次查询
+			if found2, _ := db.Engine.Where("wechat_openid = ?", openid).Get(user); !found2 {
+				return "", nil, fmt.Errorf("注册失败，请稍后重试")
+			}
+		}
+	}
+	if !user.IsActive {
+		return "", nil, fmt.Errorf("账号已被禁用，请联系管理员")
+	}
 	exp := time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
@@ -185,7 +248,7 @@ func DecryptAPIKey(cipherText, secret string) (string, error) {
 }
 
 // GenerateAPIKey 创建新 API Key 并将加密副本存入 DB（供用户后续查看）。
-func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (string, error) {
+func GenerateAPIKey(ctx context.Context, userID int64, name, keyType, secret string) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -198,11 +261,15 @@ func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (str
 		return "", err
 	}
 
+	if keyType == "" {
+		keyType = "low_price"
+	}
 	apiKey := &model.APIKey{
 		UserID:    userID,
 		KeyHash:   keyHash,
 		RawKeyEnc: rawKeyEnc,
 		Name:      name,
+		KeyType:   keyType,
 		IsActive:  true,
 	}
 	if _, err := db.Engine.Insert(apiKey); err != nil {
@@ -215,17 +282,17 @@ func GenerateAPIKey(ctx context.Context, userID int64, name, secret string) (str
 func LookupAPIKey(ctx context.Context, rawKey string) (*model.APIKey, error) {
 	h := sha256.Sum256([]byte(rawKey))
 	keyHash := hex.EncodeToString(h[:])
-	cacheKey := fmt.Sprintf("apikey:%s", keyHash)
+	cacheKey := fmt.Sprintf("apikey2:%s", keyHash)
 
-	// 先查 Redis 缓存
-	userIDStr, err := cache.Client.Get(ctx, cacheKey).Result()
-	if err == nil && userIDStr != "" {
-		// 解析缓存的 user_id
-		var userID int64
-		fmt.Sscanf(userIDStr, "%d", &userID)
-		now := time.Now()
-		db.Engine.Where("key_hash = ?", keyHash).Cols("last_used_at").Update(&model.APIKey{LastUsedAt: &now})
-		return &model.APIKey{KeyHash: keyHash, UserID: userID, IsActive: true}, nil
+	// 先查 Redis 缓存（存储完整 APIKey JSON）
+	cached, err := cache.Client.Get(ctx, cacheKey).Bytes()
+	if err == nil && len(cached) > 0 {
+		var apiKey model.APIKey
+		if jsonErr := json.Unmarshal(cached, &apiKey); jsonErr == nil {
+			now := time.Now()
+			db.Engine.Where("key_hash = ?", keyHash).Cols("last_used_at").Update(&model.APIKey{LastUsedAt: &now})
+			return &apiKey, nil
+		}
 	}
 
 	apiKey := &model.APIKey{}
@@ -238,8 +305,10 @@ func LookupAPIKey(ctx context.Context, rawKey string) (*model.APIKey, error) {
 		return nil, fmt.Errorf("API Key 无效")
 	}
 
-	// 缓存 {userID} 30 分钟
-	cache.Client.Set(ctx, cacheKey, fmt.Sprintf("%d", apiKey.UserID), 30*time.Minute)
+	// 缓存完整 APIKey 30 分钟
+	if b, jsonErr := json.Marshal(apiKey); jsonErr == nil {
+		cache.Client.Set(ctx, cacheKey, b, 30*time.Minute)
+	}
 	now := time.Now()
 	apiKey.LastUsedAt = &now
 	db.Engine.Where("id = ?", apiKey.ID).Cols("last_used_at").Update(apiKey)

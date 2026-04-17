@@ -365,7 +365,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "异步任务，每次生成 2 首；提交后返回 task_id，通过 GET /v1/tasks/:id 轮询结果（items 数组）。",
+                "description": "异步任务，每次生成 2 首；提交后返回 task_id，通过 GET /v1/tasks/:id 轮询结果（items 数组）。\n\n## 创作模式说明\n\n| input_type | 说明 |\n|-----------|------|\n| ` + "`" + `10` + "`" + ` | 灵感模式：填写 ` + "`" + `gpt_description_prompt` + "`" + `，平台自动生成歌词 |\n| ` + "`" + `20` + "`" + ` | 自定义模式：手动填写 ` + "`" + `prompt` + "`" + `（歌词）、` + "`" + `tags` + "`" + `（风格）、` + "`" + `title` + "`" + ` |\n\n---\n\n### 续写模式（Extend）\n\n在已有音频基础上续写，` + "`" + `continue_clip_id` + "`" + ` 填目标音频 URL 或 clip ID，` + "`" + `continue_at` + "`" + ` 为续写起始时间（秒）。\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"model\": \"suno\",\n\"mv_version\": \"chirp-v5\",\n\"input_type\": \"20\",\n\"make_instrumental\": false,\n\"prompt\": \"[Verse 1]\\n小狗汪汪叫\\n...\",\n\"tags\": \"\",\n\"title\": \"为你歌唱\",\n\"continue_clip_id\": \"https://cdn1.suno.ai/7c395650-62f2-4c4f-8b68-cf55b874c96c.mp3\",\n\"continue_at\": \"27\"\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n---\n\n### 添加人声（Add Vocals / overpainting）\n\n给纯音乐轨道添加人声。` + "`" + `task` + "`" + ` 设为 ` + "`" + `overpainting` + "`" + `，` + "`" + `metadata_params` + "`" + ` 中指定目标音频及起止时间（秒）。\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"model\": \"suno\",\n\"mv_version\": \"chirp-v4-5+\",\n\"input_type\": \"20\",\n\"make_instrumental\": false,\n\"prompt\": \"[Verse 1]\\nUsah lepas kau pergi\\n...\",\n\"tags\": \"pop,female voice\",\n\"title\": \"Hi,melancholic\",\n\"task\": \"overpainting\",\n\"metadata_params\": {\n\"overpainting_clip_id\": \"https://cdn1.suno.ai/21ae9c64-86ab-435a-b810-ed62727caf0a.mp3\",\n\"overpainting_start_s\": 0,\n\"overpainting_end_s\": 57.9\n}\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n---\n\n### 添加伴奏（Add Instrumental / underpainting）\n\n给人声轨道添加纯音乐伴奏。` + "`" + `task` + "`" + ` 设为 ` + "`" + `underpainting` + "`" + `，` + "`" + `make_instrumental` + "`" + ` 设为 ` + "`" + `true` + "`" + `，` + "`" + `prompt` + "`" + ` 留空，` + "`" + `metadata_params` + "`" + ` 中指定目标音频及起止时间（秒）。\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"model\": \"suno\",\n\"mv_version\": \"chirp-v4-5+\",\n\"input_type\": \"20\",\n\"make_instrumental\": true,\n\"prompt\": \"\",\n\"tags\": \"pop,female voice\",\n\"title\": \"Hi,melancholic\",\n\"task\": \"underpainting\",\n\"metadata_params\": {\n\"underpainting_clip_id\": \"https://cdn1.suno.ai/21ae9c64-86ab-435a-b810-ed62727caf0a.mp3\",\n\"underpainting_start_s\": 0,\n\"underpainting_end_s\": 57.9\n}\n}\n` + "`" + `` + "`" + `` + "`" + `",
                 "consumes": [
                     "application/json"
                 ],
@@ -534,6 +534,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/tasks/{id}/billing": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回指定任务的全部计费流水及汇总（净扣费、是否已退款）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "任务"
+                ],
+                "summary": "查询任务计费明细",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "net_charged": {
+                                    "type": "integer"
+                                },
+                                "refunded": {
+                                    "type": "boolean"
+                                },
+                                "total_charged": {
+                                    "type": "integer"
+                                },
+                                "total_refunded": {
+                                    "type": "integer"
+                                },
+                                "transactions": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/model.BillingTransaction"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "任务不存在",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/video": {
             "post": {
                 "security": [
@@ -610,6 +670,49 @@ const docTemplate = `{
                 },
                 "voice": {
                     "type": "string"
+                }
+            }
+        },
+        "model.BillingTransaction": {
+            "type": "object",
+            "properties": {
+                "api_key_id": {
+                    "type": "integer"
+                },
+                "balance_after": {
+                    "description": "操作后用户余额快照",
+                    "type": "integer"
+                },
+                "channel_id": {
+                    "type": "integer"
+                },
+                "corr_id": {
+                    "description": "关联 hold+settle 流水对",
+                    "type": "string"
+                },
+                "cost": {
+                    "description": "支付给上游的进价 credits（成本），profit = credits - cost",
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "credits": {
+                    "description": "向用户收取的售价 credits",
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/model.JSON"
+                },
+                "type": {
+                    "description": "类型：charge/hold/settle/refund/recharge",
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -721,8 +824,14 @@ const docTemplate = `{
                 "code": {
                     "type": "integer"
                 },
+                "created_at": {
+                    "type": "string"
+                },
                 "credits_charged": {
                     "type": "integer"
+                },
+                "finished_at": {
+                    "type": "string"
                 },
                 "items": {
                     "description": "生成结果列表（多结果任务，如音乐每次返回两首）",
@@ -806,7 +915,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8080",
 	BasePath:         "",
 	Schemes:          []string{"http", "https"},
-	Title:            "FanAPI",
+	Title:            "DAGEAPI",
 	Description:      "LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

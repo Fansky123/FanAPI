@@ -43,25 +43,51 @@ func (h *AuthHandler) SendCode(c *gin.Context) {
 // POST /auth/register — 仅需用户名 + 密码，无需邮箱验证
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required,min=3,max=32"`
-		Password string `json:"password" binding:"required,min=8"`
+		Username   string `json:"username" binding:"required,min=3,max=32"`
+		Password   string `json:"password" binding:"required,min=8"`
+		InviteCode string `json:"invite_code"` // 邀请码（可选）
+		// 广告追踪参数（可选，用于 OCPC 转化上报）
+		PlatformID int64  `json:"platform_id"` // ocpc_platforms.id（落地页 URL 中的 ocpc_id）
+		BdVid      string `json:"bd_vid"`
+		QhClickID  string `json:"qh_click_id"`
+		SourceID   string `json:"source_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	user, err := service.Register(c.Request.Context(), req.Username, req.Password)
+	// 解析邀请人
+	var inviterID *int64
+	var inviterQR string
+	if req.InviteCode != "" {
+		inviter := &model.User{}
+		if found, _ := db.Engine.Where("invite_code = ?", req.InviteCode).Cols("id", "wechat_qr").Get(inviter); found {
+			inviterID = &inviter.ID
+			inviterQR = inviter.WechatQR
+		}
+	}
+	user, err := service.Register(c.Request.Context(), req.Username, req.Password, inviterID)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
+
+	// 记录广告追踪参数（用于 OCPC 转化上报）
+	ip := clientIP(c)
+	ua := c.GetHeader("User-Agent")
+	service.CreateOrUpdateOcpcRecord(c.Request.Context(), user.ID, req.PlatformID, req.BdVid, req.QhClickID, req.SourceID, ip, ua)
+
 	// 注册后自动登录
 	token, _, tokenErr := service.Login(c.Request.Context(), req.Username, req.Password, h.cfg)
 	if tokenErr != nil {
 		c.JSON(http.StatusCreated, gin.H{"id": user.ID, "username": user.Username})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
+	resp := gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}}
+	if inviterQR != "" {
+		resp["inviter_wechat_qr"] = inviterQR
+	}
+	c.JSON(http.StatusCreated, resp)
 }
 
 // POST /auth/login — 用户名或邮箱 + 密码
@@ -89,7 +115,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "role": user.Role}})
+	// 如果用户是被客服邀请的，返回该客服的微信二维码
+	var inviterQR string
+	if user.InviterID != nil {
+		inviter := &model.User{}
+		if found, _ := db.Engine.ID(*user.InviterID).Cols("wechat_qr").Get(inviter); found {
+			inviterQR = inviter.WechatQR
+		}
+	}
+	resp := gin.H{"token": token, "user": gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "role": user.Role}}
+	if inviterQR != "" {
+		resp["inviter_wechat_qr"] = inviterQR
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GET /user/profile
@@ -162,14 +200,18 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // POST /user/apikeys  (requires auth)
 func (h *AuthHandler) CreateAPIKey(c *gin.Context) {
 	var req struct {
-		Name string `json:"name" binding:"required"`
+		Name    string `json:"name" binding:"required"`
+		KeyType string `json:"key_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.KeyType != "stable" {
+		req.KeyType = "low_price"
+	}
 	userID := c.MustGet("user_id").(int64)
-	rawKey, err := service.GenerateAPIKey(c.Request.Context(), userID, req.Name, h.cfg.JWTSecret)
+	rawKey, err := service.GenerateAPIKey(c.Request.Context(), userID, req.Name, req.KeyType, h.cfg.JWTSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -235,7 +277,7 @@ func (h *AuthHandler) GetTransactions(c *gin.Context) {
 func (h *AuthHandler) ListModels(c *gin.Context) {
 	var channels []model.Channel
 	if err := db.Engine.Where("is_active = true").
-		Cols("id", "name", "model", "type", "protocol", "billing_type", "billing_config").
+		Cols("id", "name", "model", "type", "protocol", "billing_type", "billing_config", "icon_url", "description").
 		Find(&channels); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -257,6 +299,8 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		BillingType  string `json:"billing_type"`
 		PriceDisplay string `json:"price_display"`         // 默认价格
 		GroupPrice   string `json:"group_price,omitempty"` // 用户专属价格（与默认不同时才返回）
+		IconURL      string `json:"icon_url"`
+		Description  string `json:"description"`
 	}
 
 	result := make([]channelInfo, 0, len(channels))
@@ -280,6 +324,8 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 			BillingType:  ch.BillingType,
 			PriceDisplay: defaultPrice,
 			GroupPrice:   groupPrice,
+			IconURL:      ch.IconURL,
+			Description:  ch.Description,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"channels": result})
@@ -363,7 +409,7 @@ func (h *AuthHandler) ListAPIKeys(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	var keys []model.APIKey
 	if err := db.Engine.Where("user_id = ?", userID).
-		Cols("id", "name", "key_hash", "raw_key_enc", "is_active", "last_used_at", "created_at").
+		Cols("id", "name", "key_hash", "raw_key_enc", "key_type", "is_active", "last_used_at", "created_at").
 		Desc("id").
 		Find(&keys); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -373,6 +419,7 @@ func (h *AuthHandler) ListAPIKeys(c *gin.Context) {
 	type apiKeyItem struct {
 		ID         int64       `json:"id"`
 		Name       string      `json:"name"`
+		KeyType    string      `json:"key_type"`
 		KeyPrefix  string      `json:"key_prefix"`
 		RawKey     string      `json:"raw_key"`
 		Viewable   bool        `json:"viewable"`
@@ -397,9 +444,14 @@ func (h *AuthHandler) ListAPIKeys(c *gin.Context) {
 		} else {
 			prefix = k.KeyHash
 		}
+		keyType := k.KeyType
+		if keyType == "" {
+			keyType = "low_price"
+		}
 		items = append(items, apiKeyItem{
 			ID:         k.ID,
 			Name:       k.Name,
+			KeyType:    keyType,
 			KeyPrefix:  prefix,
 			RawKey:     rawKey,
 			Viewable:   viewable,
@@ -446,12 +498,9 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 // DELETE /user/apikeys/:id
 func (h *AuthHandler) DeleteAPIKey(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
-	keyID := c.Param("id")
-	// Sanitize keyID
-	keyID = strings.TrimSpace(keyID)
+	keyID := strings.TrimSpace(c.Param("id"))
 	affected, err := db.Engine.Where("id = ? AND user_id = ?", keyID, userID).
-		Cols("is_active").
-		Update(&model.APIKey{IsActive: false})
+		Delete(&model.APIKey{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -460,7 +509,7 @@ func (h *AuthHandler) DeleteAPIKey(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "API Key 不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "API Key 已撤销"})
+	c.JSON(http.StatusOK, gin.H{"message": "API Key 已删除"})
 }
 
 // GET /user/stats — 用户仪表盘统计（最近7天消耗趋势 + 累计/今日积分）
@@ -523,4 +572,17 @@ func (h *AuthHandler) GetUserStats(c *gin.Context) {
 		"daily_credits":  dailyCredits,
 		"daily_requests": dailyRequests,
 	})
+}
+
+// clientIP 从请求头获取真实客户端 IP。
+func clientIP(c *gin.Context) string {
+	ip := c.GetHeader("X-Forwarded-For")
+	if idx := strings.Index(ip, ","); idx != -1 {
+		ip = ip[:idx]
+	}
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		ip = c.ClientIP()
+	}
+	return ip
 }

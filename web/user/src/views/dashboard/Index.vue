@@ -1,109 +1,82 @@
 <template>
   <div class="dashboard">
-    <!-- 左侧主内容 -->
-    <div class="dashboard-main">
-      <!-- 统计卡片 -->
-      <div class="stat-row">
-        <div class="stat-card">
-          <div class="stat-val">{{ fmtCredits(store.balance) }}</div>
-          <div class="stat-label">剩余积分</div>
-        </div>
-        <div class="stat-divider" />
-        <div class="stat-card">
-          <div class="stat-val">{{ fmtCredits(stats.total_consumed) }}</div>
-          <div class="stat-label">累计消耗积分</div>
-        </div>
-        <div class="stat-divider" />
-        <div class="stat-card">
-          <div class="stat-val">{{ fmtCredits(stats.today_consumed) }}</div>
-          <div class="stat-label">今日消耗积分</div>
-        </div>
+    <!-- Row 1: Stats card -->
+    <div class="summary-card">
+      <div class="summary-item">
+        <div class="summary-item-new">{{ fmtCredits(store.balance) }}</div>
+        <div class="summary-item-title">剩余积分</div>
       </div>
-
-      <!-- 快速入门 -->
-      <div class="guide-card">
-        <div class="guide-title">快速入门步骤：</div>
-        <div class="guide-list">
-          <div class="guide-item">
-            第一步：点击左侧【API 密钥】创建密钥
-            <router-link to="/keys" class="guide-link">立即前往</router-link>
-          </div>
-          <div class="guide-item">
-            第二步：点击左侧【模型列表】查看模型 ID 和接口调用地址
-            <router-link to="/models" class="guide-link">立即前往</router-link>
-          </div>
-          <div class="guide-item">
-            第三步：点击左侧【文本对话】在线体验所有 AI 聊天模型
-            <router-link to="/playground" class="guide-link">立即前往</router-link>
-          </div>
-          <div class="guide-item">
-            第四步：点击左侧【充值积分】充值积分或兑换卡密
-            <router-link to="/recharge" class="guide-link">立即前往</router-link>
-          </div>
-        </div>
+      <div class="summary-divider" />
+      <div class="summary-item">
+        <div class="summary-item-new">{{ fmtCredits(stats.total_consumed) }}</div>
+        <div class="summary-item-title">累计消耗积分</div>
       </div>
-
-      <!-- 积分消耗趋势 -->
-      <div class="chart-card">
-        <div class="chart-title">积分消耗趋势（最近7天）</div>
-        <div class="chart-wrap">
-          <canvas ref="creditsChart" height="80"></canvas>
-          <div ref="creditsTooltip" class="chart-tooltip"></div>
-        </div>
-      </div>
-
-      <!-- 请求次数统计 -->
-      <div class="chart-card">
-        <div class="chart-title">请求次数统计（最近7天）</div>
-        <div class="chart-wrap">
-          <canvas ref="reqChart" height="80"></canvas>
-          <div ref="reqTooltip" class="chart-tooltip"></div>
-        </div>
+      <div class="summary-divider" />
+      <div class="summary-item">
+        <div class="summary-item-new">{{ fmtCredits(stats.today_consumed) }}</div>
+        <div class="summary-item-title">今日消耗积分</div>
       </div>
     </div>
 
-    <!-- 右侧公告面板（仅在有内容时显示） -->
-    <div class="dashboard-side" v-if="siteStore.noticeTitle || siteStore.noticeContent || siteStore.contactInfo || siteStore.qrcodeUrl">
-      <div class="side-card side-card--full">
-        <!-- 公告 -->
-        <template v-if="siteStore.noticeTitle || siteStore.noticeContent">
-          <div class="side-title" v-if="siteStore.noticeTitle">{{ siteStore.noticeTitle }}</div>
-          <div class="notice-lines">
-            <div
-              class="notice-line"
-              v-for="(line, i) in noticeLines"
-              :key="i"
-            >{{ line }}</div>
-          </div>
-        </template>
+    <!-- Row 2: Guide card -->
+    <div class="novice-guide-card">
+      <div class="tips-bar">
+        <span class="tips-icon">&#x26A0;</span>
+        <span><b>Tips：</b>使用的过程中遇到任何问题，可以添加 QQ 交流群进行咨询：<b style="color:rgb(0,124,255)">{{ siteStore.contactInfo || '1022415589' }}</b>，我们会尽快回答你的问题。</span>
+      </div>
 
-        <!-- 分隔线 -->
-        <div
-          class="side-divider"
-          v-if="(siteStore.noticeTitle || siteStore.noticeContent) && (siteStore.contactInfo || siteStore.qrcodeUrl)"
-        />
+      <div class="guide-header">快速入门步骤：</div>
+      <div class="guide-steps">
+        <div class="guide-step">
+          <span>第一步：点击左侧【API 密钥】创建密钥</span>
+          <router-link to="/keys" class="guide-link">立即前往</router-link>
+        </div>
+        <div class="guide-step">
+          <span>第二步：点击左侧【模型列表】点击模型卡片查看模型ID和接口调用地址</span>
+          <router-link to="/models" class="guide-link">立即前往</router-link>
+        </div>
+        <div class="guide-step">
+          <span>第三步：点击左侧【文本对话】可以在线体验所有的AI聊天模型</span>
+          <router-link to="/playground" class="guide-link">立即前往</router-link>
+        </div>
+        <div class="guide-step">
+          <span>第四步：点击左侧【图片生成】可以在线体验所有的图片生成模型</span>
+          <router-link to="/image-gen" class="guide-link">立即前往</router-link>
+        </div>
+        <div class="guide-step">
+          <span>第五步：点击左侧【积分充值】充值积分</span>
+          <router-link to="/recharge" class="guide-link">立即前往</router-link>
+        </div>
+      </div>
 
-        <!-- 联系方式 + 二维码 -->
-        <template v-if="siteStore.contactInfo || siteStore.qrcodeUrl">
-          <div class="side-title">联系我们</div>
-          <div class="contact-lines" v-if="siteStore.contactInfo">
-            <div
-              class="contact-line"
-              v-for="(line, i) in contactLines"
-              :key="i"
-            >{{ line }}</div>
-          </div>
-          <div class="qrcode-wrap" v-if="siteStore.qrcodeUrl">
-            <img :src="siteStore.qrcodeUrl" alt="联系二维码" class="qrcode-img" @error="qrcodeErr = true" v-if="!qrcodeErr" />
-          </div>
-        </template>
+      <div class="tips-bar">
+        <span class="tips-icon">&#x26A0;</span>
+        <span><b>Tips：</b>本站大模型接口网关：<b style="color:rgb(0,124,255)">{{ currentHost }}</b>，将模型基址替换为接口网关，完全兼容 OpenAI 协议。</span>
+      </div>
+    </div>
+
+    <!-- Row 3: Credits trend chart -->
+    <div class="summary-count-card">
+      <div class="chart-title">积分消耗趋势</div>
+      <div class="chart-wrap">
+        <canvas ref="creditsChart" height="80"></canvas>
+        <div ref="creditsTooltip" class="chart-tooltip"></div>
+      </div>
+    </div>
+
+    <!-- Row 4: Requests chart -->
+    <div class="cash-trend-card">
+      <div class="chart-title">请求次数统计</div>
+      <div class="chart-wrap">
+        <canvas ref="reqChart" height="80"></canvas>
+        <div ref="reqTooltip" class="chart-tooltip"></div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import { userApi } from '@/api'
@@ -115,14 +88,7 @@ const creditsChart = ref(null)
 const reqChart = ref(null)
 const creditsTooltip = ref(null)
 const reqTooltip = ref(null)
-const qrcodeErr = ref(false)
-
-const noticeLines = computed(() =>
-  (siteStore.noticeContent || '').split('\n').filter(l => l.trim())
-)
-const contactLines = computed(() =>
-  (siteStore.contactInfo || '').split('\n').filter(l => l.trim())
-)
+const currentHost = window.location.host
 
 function fmtCredits(v) {
   if (!v) return '0.00'
@@ -134,7 +100,7 @@ function buildDays(data, key) {
   for (let i = 6; i >= 0; i--) {
     const d = new Date()
     d.setDate(d.getDate() - i)
-    const label = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const label = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
     const found = (data || []).find(r => r.day === label)
     days.push({ label, value: found ? (found[key] ?? 0) : 0 })
   }
@@ -159,7 +125,6 @@ function drawLineChart(canvas, datasets, labels) {
   function render(hoverIdx = -1) {
     ctx.clearRect(0, 0, W, H)
 
-    // Grid lines
     ctx.strokeStyle = '#e5e6eb'
     ctx.lineWidth = 1
     ctx.setLineDash([])
@@ -173,7 +138,6 @@ function drawLineChart(canvas, datasets, labels) {
       ctx.fillText(val.toFixed(val < 1 ? 2 : 0), pad.left - 6, y + 4)
     }
 
-    // X labels
     ctx.fillStyle = '#86909c'
     ctx.font = '11px sans-serif'
     ctx.textAlign = 'center'
@@ -182,7 +146,6 @@ function drawLineChart(canvas, datasets, labels) {
       ctx.fillText(label, x, H - 8)
     })
 
-    // Hover vertical dashed line
     if (hoverIdx >= 0) {
       const hx = pad.left + (hoverIdx / (labels.length - 1)) * cW
       ctx.save()
@@ -193,7 +156,6 @@ function drawLineChart(canvas, datasets, labels) {
       ctx.restore()
     }
 
-    // Lines + dots
     datasets.forEach((ds, di) => {
       ctx.strokeStyle = colors[di] || '#165dff'
       ctx.lineWidth = 2
@@ -258,7 +220,7 @@ async function loadStats() {
     setupTooltip(creditsChart.value, creditsTooltip.value, creditsState, (idx) => {
       const day = creditDays[idx].label
       const val = fmtCredits(creditDays[idx].value)
-      return `<div class="tip-day">${day}</div><div class="tip-row">消耗积分 <b>${val}</b></div>`
+      return '<div class="tip-day">' + day + '</div><div class="tip-row">消耗积分 <b>' + val + '</b></div>'
     })
 
     const reqDays = buildDays(res.daily_requests, 'success')
@@ -270,12 +232,12 @@ async function loadStats() {
     ], reqDays.map(d => d.label))
     setupTooltip(reqChart.value, reqTooltip.value, reqState, (idx) => {
       const day = reqDays[idx].label
-      return `<div class="tip-day">${day}</div>` +
-        `<div class="tip-row"><span class="tip-dot" style="background:#165dff"></span>成功 <b>${reqDays[idx].value}</b></div>` +
-        `<div class="tip-row"><span class="tip-dot" style="background:#ff7d00"></span>失败 <b>${failDays[idx].value}</b></div>`
+      return '<div class="tip-day">' + day + '</div>' +
+        '<div class="tip-row"><span class="tip-dot" style="background:#165dff"></span>成功 <b>' + reqDays[idx].value + '</b></div>' +
+        '<div class="tip-row"><span class="tip-dot" style="background:#ff7d00"></span>失败 <b>' + failDays[idx].value + '</b></div>'
     })
   } catch {
-    // 静默失败
+    // silent
   }
 }
 
@@ -289,126 +251,121 @@ onMounted(() => {
 .dashboard {
   width: 100%;
   display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  gap: 16px;
-}
-
-/* 左侧主内容 */
-.dashboard-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
-/* 右侧公告面板 */
-.dashboard-side {
-  width: 260px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-}
-
-.side-card {
+/* Row 1: Stats card */
+.summary-card {
   background: #fff;
-  border-radius: 6px;
-  border: 1px solid #e5e6eb;
-  padding: 18px 16px;
-}
-.side-card--full {
-  flex: 1;
-}
-.side-divider {
-  height: 1px;
-  background: #f0f1f5;
-  margin: 16px 0;
-}
-.side-title {
-  font-size: .95rem;
-  font-weight: 700;
-  color: var(--ow-primary, #165dff);
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #f0f1f5;
-}
-.notice-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.notice-line {
-  font-size: .85rem;
-  color: #4e5969;
-  line-height: 1.6;
-  padding-left: 10px;
-  border-left: 3px solid var(--ow-primary, #165dff);
-}
-.contact-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-.contact-line {
-  font-size: .85rem;
-  color: #4e5969;
-  line-height: 1.6;
-}
-.qrcode-wrap {
-  display: flex;
-  justify-content: center;
-}
-.qrcode-img {
-  width: 100%;
-  max-width: 180px;
-  border-radius: 8px;
-  border: 1px solid #e5e6eb;
-}
-
-/* 统计卡片 */
-.stat-row {
-  background: #fff;
-  border-radius: 6px;
-  border: 1px solid #e5e6eb;
+  border-radius: 12px;
   display: flex;
   align-items: center;
-  padding: 0;
+  margin-bottom: 15px;
   overflow: hidden;
 }
-.stat-card {
+.summary-item {
   flex: 1;
-  padding: 28px 24px;
+  padding: 40px 25px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.stat-val { font-size: 1.8rem; font-weight: 700; color: #1d2129; line-height: 1.2; }
-.stat-label { margin-top: 8px; font-size: .85rem; color: #86909c; }
-.stat-divider { width: 1px; height: 60px; background: #e5e6eb; flex-shrink: 0; }
+.summary-item-new {
+  font-size: 30px;
+  font-weight: 700;
+  color: #1d2129;
+  line-height: 1.2;
+}
+.summary-item-title {
+  margin-top: 8px;
+  font-size: 15px;
+  color: rgb(101, 101, 101);
+}
+.summary-divider {
+  width: 1px;
+  height: 60px;
+  background: #e5e6eb;
+  flex-shrink: 0;
+}
 
-/* 快速入门 */
-.guide-card {
+/* Row 2: Guide card */
+.novice-guide-card {
   background: #fff;
-  border-radius: 6px;
-  border: 1px solid #e5e6eb;
-  padding: 20px 24px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+  padding: 15px;
 }
-.guide-title { font-size: 1.05rem; font-weight: 700; color: var(--ow-primary, #165dff); margin-bottom: 14px; }
-.guide-list { display: flex; flex-direction: column; gap: 10px; }
-.guide-item { font-size: .9rem; color: #4e5969; }
-.guide-link { color: var(--ow-primary, #165dff); text-decoration: none; margin-left: 8px; font-weight: 500; }
+.tips-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgb(255, 251, 235);
+  border: 1px solid rgb(253, 230, 138);
+  color: rgb(146, 64, 14);
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.tips-icon {
+  color: rgb(217, 119, 6);
+  flex-shrink: 0;
+  font-size: 15px;
+  margin-top: 1px;
+}
+.guide-header {
+  font-size: 23px;
+  font-weight: 700;
+  color: rgb(22, 93, 255);
+  margin: 15px 0 10px;
+}
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.guide-step {
+  font-size: 15px;
+  color: #1d2129;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.guide-link {
+  color: rgb(0, 124, 255);
+  text-decoration: none;
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-weight: 500;
+}
 .guide-link:hover { text-decoration: underline; }
 
-/* 图表 */
-.chart-card {
+/* Row 3 & 4: Chart cards */
+.summary-count-card {
   background: #fff;
-  border-radius: 6px;
-  border: 1px solid #e5e6eb;
-  padding: 20px 24px;
+  border-radius: 12px;
+  padding: 8px;
+  margin-bottom: 15px;
 }
-.chart-title { font-size: .95rem; font-weight: 600; color: #1d2129; margin-bottom: 16px; }
-canvas { width: 100%; display: block; cursor: crosshair; }
+.cash-trend-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+}
+.chart-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #1d2129;
+  margin-bottom: 16px;
+  padding: 8px 8px 0;
+}
+canvas {
+  width: 100%;
+  display: block;
+  cursor: crosshair;
+}
 .chart-wrap { position: relative; }
 .chart-tooltip {
   display: none;
@@ -431,10 +388,4 @@ canvas { width: 100%; display: block; cursor: crosshair; }
 .chart-tooltip :deep(.tip-row) { display: flex; align-items: center; gap: 4px; }
 .chart-tooltip :deep(.tip-dot) { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .chart-tooltip :deep(b) { margin-left: auto; padding-left: 12px; font-weight: 600; }
-
-/* 小屏幕降级为纵向 */
-@media (max-width: 900px) {
-  .dashboard { flex-direction: column; }
-  .dashboard-side { width: 100%; }
-}
 </style>

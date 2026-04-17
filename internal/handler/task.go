@@ -235,6 +235,8 @@ func buildTaskResult(task *model.Task) model.TaskResult {
 		ChannelID:      task.ChannelID,
 		CreditsCharged: task.CreditsCharged,
 		CreatedAt:      task.CreatedAt,
+		Request:        task.Request,  // 原始请求参数
+		Result:         task.Result,   // 映射后的响应结果
 	}
 	switch task.Status {
 	case "pending":

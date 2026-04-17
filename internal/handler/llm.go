@@ -234,6 +234,7 @@ func GeminiProxy(c *gin.Context) { llmProxy(c) }
 // llmProxy 是三条 LLM 路由的共同实现。
 // 支持：
 //   - 多渠道负载均衡（加权随机 + 优先级 + 错误率自动屏蔽）
+//   - 稳定密钥：按售价升序尝试，失败自动切换更贵的渠道
 //   - 格式互转（OpenAI ↔ Claude / Gemini）
 //   - 认证扩展（bearer / query_param / basic / sigv4）
 //   - 用户分组定价
@@ -252,6 +253,10 @@ func llmProxy(c *gin.Context) {
 		userGroup, _ = raw.(string)
 	}
 
+	// 获取密钥类型（稳定密钥使用价格升序路由）
+	keyType, _ := c.Get("key_type")
+	isStable := keyType == "stable"
+
 	channelIDStr := c.Query("channel_id")
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -268,6 +273,7 @@ func llmProxy(c *gin.Context) {
 	// 渠道选择
 	var ch *model.Channel
 	var triedIDs []int64
+	var stableChannels []model.Channel // 稳定密钥：按价格排好序的渠道列表
 
 	if channelIDStr != "" {
 		// 直接指定 channel_id，不走负载均衡
@@ -287,23 +293,39 @@ func llmProxy(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "请在请求体 model 字段填写模型名称，或通过 channel_id 参数指定渠道"})
 			return
 		}
-		ch, err = service.SelectChannel(c.Request.Context(), routingModel)
-		if err != nil {
-			// 兜底：按 name 精确查找（兼容旧行为）
-			ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+		if isStable {
+			// 稳定密钥：获取按价格升序排列的渠道列表
+			stableChannels, err = service.SelectChannelStable(c.Request.Context(), routingModel)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
-				return
+				// 兜底：按 name 精确查找（兼容旧行为）
+				ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+				if err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+					return
+				}
+			} else {
+				ch = &stableChannels[0]
+			}
+		} else {
+			ch, err = service.SelectChannel(c.Request.Context(), routingModel)
+			if err != nil {
+				// 兜底：按 name 精确查找（兼容旧行为）
+				ch, err = service.GetChannelByName(c.Request.Context(), routingModel)
+				if err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在: " + routingModel})
+					return
+				}
 			}
 		}
 	}
 
-	llmProxyWithChannel(c, ch, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+	llmProxyWithChannel(c, ch, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 }
 
 // llmProxyWithChannel 执行实际的上游请求，支持失败重试（换渠道）。
+// stableChannels 非空时使用稳定模式（价格升序），否则使用正常负载均衡。
 func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]interface{},
-	userID, apiKeyIDVal int64, userGroup string, triedIDs []int64) {
+	userID, apiKeyIDVal int64, userGroup string, triedIDs []int64, stableChannels []model.Channel) {
 
 	const maxRetries = 3
 
@@ -425,7 +447,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		service.RecordChannelError(c.Request.Context(), channelID)
 		// 尝试换渠道重试
 		if len(triedIDs) < maxRetries {
-			if nextCh := selectNextChannel(c, reqData, triedIDs); nextCh != nil {
+			if nextCh := selectNextChannel(c, reqData, triedIDs, stableChannels); nextCh != nil {
 				// 退回已扣的 hold
 				if totalHold > 0 {
 					_ = billing.Refund(c.Request.Context(), userID, totalHold)
@@ -433,7 +455,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
 				}
-				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 				return
 			}
 		}
@@ -463,14 +485,14 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		service.RecordChannelError(c.Request.Context(), channelID)
 		// 5xx 时尝试换渠道
 		if resp.StatusCode >= 500 && len(triedIDs) < maxRetries {
-			if nextCh := selectNextChannel(c, reqData, triedIDs); nextCh != nil {
+			if nextCh := selectNextChannel(c, reqData, triedIDs, stableChannels); nextCh != nil {
 				if totalHold > 0 {
 					_ = billing.Refund(c.Request.Context(), userID, totalHold)
 					_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "channel_retry"})
 					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
 				}
-				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs)
+				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 				return
 			}
 		}
@@ -532,7 +554,25 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 }
 
 // selectNextChannel 为重试选择下一个渠道，排除已尝试过的渠道 ID。
-func selectNextChannel(c *gin.Context, reqData map[string]interface{}, excludeIDs []int64) *model.Channel {
+// stableChannels 非空时按列表顺序选取下一个未尝试的渠道（稳定密钥模式）。
+func selectNextChannel(c *gin.Context, reqData map[string]interface{}, excludeIDs []int64, stableChannels []model.Channel) *model.Channel {
+	excluded := make(map[int64]bool, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = true
+	}
+
+	// 稳定密钥：按价格升序列表顺序选取下一个未尝试的渠道
+	if len(stableChannels) > 0 {
+		for i := range stableChannels {
+			if !excluded[stableChannels[i].ID] {
+				ch := stableChannels[i]
+				return &ch
+			}
+		}
+		return nil
+	}
+
+	// 普通密钥：使用负载均衡选取
 	routingModel, _ := reqData["model"].(string)
 	if routingModel == "" {
 		return nil

@@ -26,6 +26,7 @@ export const userApi = {
   recharge: (id, amount) => http.post(`/admin/users/${id}/recharge`, { amount }),
   resetPassword: (id, password) => http.put(`/admin/users/${id}/password`, { password }),
   setGroup: (id, group) => http.put(`/admin/users/${id}/group`, { group }),
+  setRole: (id, role) => http.put(`/admin/users/${id}/role`, { role }),
 }
 
 export const txApi = {
@@ -55,5 +56,19 @@ export const llmLogApi = {
 export const settingsApi = {
   get: () => http.get('/admin/settings'),
   update: (data) => http.put('/admin/settings', data),
+}
+
+export const ocpcApi = {
+  upload: () => http.post('/admin/ocpc/upload'),
+  getSchedule: () => http.get('/admin/ocpc/schedule'),
+  updateSchedule: (data) => http.put('/admin/ocpc/schedule', data),
+}
+
+export const ocpcPlatformApi = {
+  list: () => http.get('/admin/ocpc/platforms'),
+  create: (data) => http.post('/admin/ocpc/platforms', data),
+  update: (id, data) => http.put(`/admin/ocpc/platforms/${id}`, data),
+  delete: (id) => http.delete(`/admin/ocpc/platforms/${id}`),
+  toggle: (id) => http.patch(`/admin/ocpc/platforms/${id}/toggle`),
 }
 

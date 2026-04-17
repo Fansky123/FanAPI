@@ -79,6 +79,18 @@
         <el-form-item label="标准模型名" required>
           <el-input v-model="form.model" placeholder="如：nano-banana-pro（用于前端分组）" />
         </el-form-item>
+        <el-form-item label="模型图标 URL">
+          <div style="display:flex;gap:8px;align-items:center;width:100%">
+            <el-input v-model="form.icon_url" placeholder="https://example.com/icon.png（留空则显示首字母）" clearable style="flex:1" />
+            <el-button size="small" @click="iconFileInput.click()">本地上传</el-button>
+            <input ref="iconFileInput" type="file" accept="image/*" style="display:none" @change="onIconFile" />
+            <img v-if="form.icon_url" :src="form.icon_url" style="width:32px;height:32px;border-radius:6px;border:1px solid #e4e7ed;object-fit:contain;flex-shrink:0" @error="(e)=>e.target.style.display='none'" />
+          </div>
+          <div style="font-size:11px;color:#aaa;margin-top:4px">支持公网 URL、base64 或本地上传，显示在模型列表卡片左上角</div>
+        </el-form-item>
+        <el-form-item label="模型描述">
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="简要描述该模型的特点和适用场景" />
+        </el-form-item>
         <el-form-item label="接口类型" required>
           <el-select v-model="form.type" style="width:100%" @change="val => { if (!editRow) { form.timeout_ms = defaultTimeoutByType[val] ?? 60000; form.query_timeout_ms = defaultQueryTimeoutByType[val] ?? 30000 } }">
             <el-option label="LLM 对话" value="llm" />
@@ -335,6 +347,16 @@ import { ElMessage } from 'element-plus'
 const channels = ref([])
 const dialogVisible = ref(false)
 const editRow = ref(null)
+const iconFileInput = ref(null)
+
+function onIconFile(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = ev => { form.icon_url = ev.target.result }
+  reader.readAsDataURL(file)
+  e.target.value = ''
+}
 
 // 按渠道类型推荐的超时默认值
 const defaultTimeoutByType      = { llm: 60000, image: 180000, video: 300000, audio: 180000 }
@@ -347,8 +369,8 @@ const emptyForm = () => ({
   request_script: '', response_script: '',
   query_url: '', query_method: 'GET', query_timeout_ms: defaultQueryTimeoutByType.llm, query_script: '', error_script: '',
   key_pool_id: 0,
-  is_active: true,
-  // 负载均衡
+  is_active: true,  // 展示字段
+  icon_url: '', description: '',  // 负载均衡
   weight: 1, priority: 0,
   // 认证扫展
   auth_type: 'bearer', auth_param_name: '', auth_region: '', auth_service: '',
@@ -467,7 +489,10 @@ async function saveChannel() {
     error_script: form.error_script,
     key_pool_id: form.key_pool_id ?? 0,
     is_active: form.is_active,
-    // 躺证扩展
+    // 展示字段
+    icon_url: form.icon_url || '',
+    description: form.description || '',
+    // 认证扪展
     auth_type: form.auth_type || 'bearer',
     auth_param_name: form.auth_param_name || '',
     auth_region: form.auth_region || '',

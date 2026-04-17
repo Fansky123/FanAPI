@@ -126,6 +126,120 @@ func handleResult(msg *nats.Msg) {
 				Cols("upstream_request", "upstream_response").
 				Update(&model.Task{UpstreamRequest: upstreamReq, UpstreamResponse: upstreamResp})
 		}
+
+		// 稳定密钥：若还有备用渠道，换渠道重试而不是直接失败
+		if len(res.RetryChannelIDs) > 0 {
+			nextChannelID := res.RetryChannelIDs[0]
+			remaining := res.RetryChannelIDs[1:]
+			nextCh, chErr := service.GetChannel(ctx, nextChannelID)
+			if chErr == nil {
+				log.Printf("[result-proc] task %d failed on channel %d, retrying with channel %d (stable key)", res.TaskID, res.ChannelID, nextChannelID)
+
+				// 退回当前渠道的费用
+				if res.CreditsCharged > 0 {
+					var chargeTx model.BillingTransaction
+					upstreamCostOld := int64(0)
+					if found, _ := db.Engine.Where("corr_id = ? AND type = ?", res.CorrID, "charge").Get(&chargeTx); found {
+						upstreamCostOld = chargeTx.Cost
+					}
+					_ = billing.Refund(ctx, res.UserID, res.CreditsCharged)
+					_ = service.WriteTx(ctx, res.UserID, res.ChannelID, res.APIKeyID, res.CorrID, "refund", res.CreditsCharged, upstreamCostOld, model.JSON{
+						"task_id": res.TaskID,
+						"reason":  "stable_key_channel_retry",
+					})
+				}
+
+				// 按新渠道重新计费
+				var userGroup string
+				var task model.Task
+				if found, _ := db.Engine.ID(res.TaskID).Cols("request").Get(&task); found {
+					// 从任务请求中恢复 user_group（通过 user 表查询）
+					var user model.User
+					if ufound, _ := db.Engine.ID(res.UserID).Cols("group").Get(&user); ufound {
+						userGroup = user.Group
+					}
+				}
+				newCost, _, calcErr := billing.CalcForUser(nextCh, res.Payload, userGroup)
+				newUpstreamCost, _ := billing.CalcUpstreamCost(nextCh, res.Payload)
+				if calcErr != nil {
+					log.Printf("[result-proc] task %d: calc cost for retry channel %d failed: %v, marking failed", res.TaskID, nextChannelID, calcErr)
+					failTaskDB(ctx, res.TaskID, res.UserID, res.ChannelID, res.APIKeyID, res.CorrID, 0, res.ErrorMsg)
+					_ = msg.Ack()
+					return
+				}
+				if newCost > 0 {
+					if chargeErr := billing.Charge(ctx, res.UserID, newCost); chargeErr != nil {
+						log.Printf("[result-proc] task %d: charge for retry channel %d failed: %v, marking failed", res.TaskID, nextChannelID, chargeErr)
+						failTaskDB(ctx, res.TaskID, res.UserID, res.ChannelID, res.APIKeyID, res.CorrID, 0, res.ErrorMsg)
+						_ = msg.Ack()
+						return
+					}
+				}
+				// 写新的扣费流水
+				newCorrID := res.CorrID + "_r" + fmt.Sprintf("%d", nextChannelID)
+				_ = service.WriteTx(ctx, res.UserID, nextChannelID, res.APIKeyID, newCorrID, "charge", newCost, newUpstreamCost, model.JSON{
+					"task_id":      res.TaskID,
+					"retry_of":     res.ChannelID,
+					"stable_retry": true,
+				})
+
+				// 更新 DB 中的渠道和费用
+				db.Engine.Where("id = ?", res.TaskID).Cols("channel_id", "credits_charged", "corr_id", "status").
+					Update(&model.Task{
+						ChannelID:      nextChannelID,
+						CreditsCharged: newCost,
+						CorrID:         newCorrID,
+						Status:         "processing",
+					})
+
+				// 分配号池 Key
+				var poolKeyID int64
+				var poolKeyValue string
+				if nextCh.KeyPoolID > 0 {
+					pk, pkErr := service.GetOrAssignPoolKey(ctx, nextCh.KeyPoolID, res.UserID)
+					if pkErr == nil {
+						poolKeyID = pk.ID
+						poolKeyValue = pk.Value
+					}
+				}
+
+				// 重新发布到新渠道
+				retryJob := &model.TaskJob{
+					TaskID:          res.TaskID,
+					TaskType:        res.TaskType,
+					UserID:          res.UserID,
+					APIKeyID:        res.APIKeyID,
+					CorrID:          newCorrID,
+					CreditsCharged:  newCost,
+					ChannelID:       nextChannelID,
+					BaseURL:         nextCh.BaseURL,
+					Method:          nextCh.Method,
+					Headers:         nextCh.Headers,
+					TimeoutMs:       nextCh.TimeoutMs,
+					QueryTimeoutMs:  nextCh.QueryTimeoutMs,
+					RequestScript:   nextCh.RequestScript,
+					ResponseScript:  nextCh.ResponseScript,
+					ErrorScript:     nextCh.ErrorScript,
+					QueryURL:        nextCh.QueryURL,
+					QueryMethod:     nextCh.QueryMethod,
+					QueryScript:     nextCh.QueryScript,
+					PoolKeyID:       poolKeyID,
+					PoolKeyValue:    poolKeyValue,
+					Payload:         res.Payload,
+					RetryChannelIDs: remaining,
+				}
+				data, _ := json.Marshal(retryJob)
+				subject := fmt.Sprintf("task.%s.%d", res.TaskType, nextChannelID)
+				if pubErr := mq.Publish(subject, data); pubErr != nil {
+					log.Printf("[result-proc] task %d: retry publish to channel %d failed: %v", res.TaskID, nextChannelID, pubErr)
+					failTaskDB(ctx, res.TaskID, res.UserID, nextChannelID, res.APIKeyID, newCorrID, newCost, "retry publish failed: "+pubErr.Error())
+				}
+				_ = msg.Ack()
+				return
+			}
+			log.Printf("[result-proc] task %d: could not load retry channel %d: %v, trying remaining", res.TaskID, nextChannelID, chErr)
+		}
+
 		failTaskDB(ctx, res.TaskID, res.UserID, res.ChannelID, res.APIKeyID, res.CorrID, res.CreditsCharged, res.ErrorMsg)
 
 	default:

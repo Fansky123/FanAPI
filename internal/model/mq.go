@@ -35,6 +35,10 @@ type TaskJob struct {
 
 	// 重试计数器——服务器在 429 轮转 Key 重试时递增
 	RetryCount int `json:"retry_count,omitempty"`
+
+	// 稳定密钥失败重试：按售价升序排列的剩余待试渠道 ID 列表（不含当前渠道）。
+	// 结果处理器在 OutcomeFailed 时若此列表非空，则换下一个渠道重新发布任务。
+	RetryChannelIDs []int64 `json:"retry_channel_ids,omitempty"`
 }
 
 // WorkerResult 结果常量。
@@ -73,6 +77,7 @@ type WorkerResult struct {
 	UpstreamResponse map[string]interface{} `json:"upstream_response,omitempty"`
 
 	// 传回给服务器以便在 OutcomeRateLimited 时重新发布
-	RetryCount int                    `json:"retry_count,omitempty"`
-	Payload    map[string]interface{} `json:"payload,omitempty"`
+	RetryCount      int                    `json:"retry_count,omitempty"`
+	Payload         map[string]interface{} `json:"payload,omitempty"`
+	RetryChannelIDs []int64                `json:"retry_channel_ids,omitempty"` // 稳定密钥：剩余待试渠道 ID
 }
