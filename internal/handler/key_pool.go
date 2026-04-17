@@ -10,17 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListKeyPools GET /admin/key-pools?channel_id=xxx
+// ListKeyPools GET /admin/key-pools?channel_id=xxx  (channel_id 可选，不传则返回全部号池)
 func ListKeyPools(c *gin.Context) {
-	channelIDStr := c.Query("channel_id")
-	if channelIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 channel_id"})
-		return
-	}
-	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
-		return
+	var channelID int64
+	if s := c.Query("channel_id"); s != "" {
+		var err error
+		channelID, err = strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_id 格式错误"})
+			return
+		}
 	}
 	pools, err := service.ListKeyPools(c.Request.Context(), channelID)
 	if err != nil {

@@ -161,7 +161,7 @@ const loadingPools = ref(false)
 async function fetchPools() {
   loadingPools.value = true
   try {
-    const res = await keyPoolApi.listPools(0)
+    const res = await keyPoolApi.listPools()
     pools.value = Array.isArray(res) ? res : (res.pools ?? [])
   } finally {
     loadingPools.value = false
