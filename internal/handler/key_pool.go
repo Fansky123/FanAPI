@@ -40,6 +40,7 @@ func CreateKeyPool(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 channel_id 和号池名称"})
 		return
 	}
+	pool.IsActive = true
 	if err := service.CreateKeyPool(c.Request.Context(), &pool); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -93,6 +94,7 @@ func AddPoolKey(c *gin.Context) {
 		return
 	}
 	key.PoolID = poolID
+	key.IsActive = true
 	if err := service.AddPoolKey(c.Request.Context(), &key); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

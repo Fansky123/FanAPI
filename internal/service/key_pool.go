@@ -92,14 +92,15 @@ func rotatePoolKey(ctx context.Context, poolID, entityID int64, assignKey string
 
 // ---- 管理接口 ----
 
-// ListKeyPools 返回号池列表。channelID > 0 时按渠道过滤，否则返回全部活跃号池。
+// ListKeyPools 返回号池列表（管理端，不过滤 is_active，软删除通过前端展示状态区分）。
+// channelID > 0 时按渠道过滤，否则返回全部号池。
 func ListKeyPools(ctx context.Context, channelID int64) ([]model.KeyPool, error) {
-	var pools []model.KeyPool
+	pools := make([]model.KeyPool, 0)
 	var err error
 	if channelID > 0 {
-		err = db.Engine.Where("channel_id = ? AND is_active = true", channelID).Find(&pools)
+		err = db.Engine.Where("channel_id = ?", channelID).OrderBy("id ASC").Find(&pools)
 	} else {
-		err = db.Engine.Where("is_active = true").Find(&pools)
+		err = db.Engine.OrderBy("id ASC").Find(&pools)
 	}
 	return pools, err
 }
@@ -118,7 +119,7 @@ func DeleteKeyPool(ctx context.Context, poolID int64) error {
 
 // ListPoolKeys 返回号池内所有 Key（含排序，供管理界面展示）。
 func ListPoolKeys(ctx context.Context, poolID int64) ([]model.PoolKey, error) {
-	var keys []model.PoolKey
+	keys := make([]model.PoolKey, 0)
 	err := db.Engine.Where("pool_id = ?", poolID).OrderBy("priority ASC, id ASC").Find(&keys)
 	return keys, err
 }
