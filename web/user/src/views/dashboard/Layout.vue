@@ -13,51 +13,93 @@
       <!-- 导航 -->
       <nav class="ow-nav">
         <router-link to="/dashboard" class="ow-nav-item" :class="{ active: route.path === '/dashboard' }">
-          <div class="menu-item"><span class="menu-item-title">数据看板</span></div>
+          <div class="menu-item">
+            <el-icon class="nav-icon"><DataAnalysis /></el-icon>
+            <span class="menu-item-title">数据看板</span>
+          </div>
         </router-link>
         <router-link to="/models" class="ow-nav-item" :class="{ active: route.path === '/models' }">
-          <div class="menu-item"><span class="menu-item-title">模型列表</span></div>
+          <div class="menu-item">
+            <el-icon class="nav-icon"><Grid /></el-icon>
+            <span class="menu-item-title">模型列表</span>
+          </div>
         </router-link>
         <router-link to="/tasks" class="ow-nav-item" :class="{ active: route.path === '/tasks' || route.path === '/llm-logs' }">
-          <div class="menu-item"><span class="menu-item-title">调用日志</span></div>
+          <div class="menu-item">
+            <el-icon class="nav-icon"><Document /></el-icon>
+            <span class="menu-item-title">调用日志</span>
+          </div>
         </router-link>
         <router-link to="/stats" class="ow-nav-item" :class="{ active: route.path === '/stats' }">
-          <div class="menu-item"><span class="menu-item-title">使用统计</span></div>
+          <div class="menu-item">
+            <el-icon class="nav-icon"><TrendCharts /></el-icon>
+            <span class="menu-item-title">使用统计</span>
+          </div>
         </router-link>
         <router-link to="/docs" class="ow-nav-item" :class="{ active: route.path === '/docs' }">
-          <div class="menu-item"><span class="menu-item-title">接口文档</span></div>
+          <div class="menu-item">
+            <el-icon class="nav-icon"><Reading /></el-icon>
+            <span class="menu-item-title">接口文档</span>
+          </div>
         </router-link>
 
         <template v-if="isLoggedIn">
           <div class="ow-nav-section">在线体验</div>
           <router-link to="/playground" class="ow-nav-item" :class="{ active: route.path === '/playground' }">
-            <div class="menu-item"><span class="menu-item-title">文本对话</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><ChatDotRound /></el-icon>
+              <span class="menu-item-title">文本对话</span>
+            </div>
           </router-link>
           <router-link to="/image-gen" class="ow-nav-item" :class="{ active: route.path === '/image-gen' }">
-            <div class="menu-item"><span class="menu-item-title">图片生成</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><Picture /></el-icon>
+              <span class="menu-item-title">图片生成</span>
+            </div>
           </router-link>
           <router-link to="/video-gen" class="ow-nav-item" :class="{ active: route.path === '/video-gen' }">
-            <div class="menu-item"><span class="menu-item-title">视频生成</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><VideoCamera /></el-icon>
+              <span class="menu-item-title">视频生成</span>
+            </div>
           </router-link>
 
           <div class="ow-nav-section">账户管理</div>
           <router-link to="/keys" class="ow-nav-item" :class="{ active: route.path === '/keys' }">
-            <div class="menu-item"><span class="menu-item-title">API 密钥</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><Key /></el-icon>
+              <span class="menu-item-title">API 密钥</span>
+            </div>
           </router-link>
           <router-link to="/recharge" class="ow-nav-item" :class="{ active: route.path === '/recharge' }">
-            <div class="menu-item"><span class="menu-item-title">积分充值</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><ShoppingCart /></el-icon>
+              <span class="menu-item-title">积分充值</span>
+            </div>
           </router-link>
           <router-link to="/exchange" class="ow-nav-item" :class="{ active: route.path === '/exchange' }">
-            <div class="menu-item"><span class="menu-item-title">兑换中心</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><Ticket /></el-icon>
+              <span class="menu-item-title">兑换中心</span>
+            </div>
           </router-link>
           <router-link to="/billing" class="ow-nav-item" :class="{ active: route.path === '/billing' }">
-            <div class="menu-item"><span class="menu-item-title">我的订单</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><Tickets /></el-icon>
+              <span class="menu-item-title">我的订单</span>
+            </div>
           </router-link>
           <router-link to="/profile" class="ow-nav-item" :class="{ active: route.path === '/profile' }">
-            <div class="menu-item"><span class="menu-item-title">个人中心</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><User /></el-icon>
+              <span class="menu-item-title">个人中心</span>
+            </div>
           </router-link>
           <router-link to="/invite" class="ow-nav-item" :class="{ active: route.path === '/invite' }">
-            <div class="menu-item"><span class="menu-item-title">邀请中心</span></div>
+            <div class="menu-item">
+              <el-icon class="nav-icon"><Share /></el-icon>
+              <span class="menu-item-title">邀请中心</span>
+            </div>
           </router-link>
         </template>
       </nav>
@@ -161,7 +203,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import {
-  Wallet, SwitchButton, ArrowDown
+  Wallet, SwitchButton, ArrowDown,
+  DataAnalysis, Grid, Document, TrendCharts, Reading,
+  ChatDotRound, Picture, VideoCamera,
+  Key, ShoppingCart, Ticket, Tickets, User, Share
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -275,7 +320,7 @@ function handleCmd(cmd) {
 /* Nav */
 .ow-nav {
   flex: 1;
-  padding: 4px 8px;
+  padding: 6px 8px;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
@@ -284,13 +329,15 @@ function handleCmd(cmd) {
 .ow-nav::-webkit-scrollbar { width: 0; }
 
 .ow-nav-section {
-  height: 40px;
+  height: 32px;
   display: flex;
   align-items: center;
-  padding: 10px 0 10px 8px;
-  font-size: 13px;
-  font-weight: 400;
-  color: rgb(126, 131, 142);
+  padding: 10px 0 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ow-subtext);
+  text-transform: uppercase;
+  letter-spacing: .06em;
   background: transparent;
   user-select: none;
 }
@@ -298,57 +345,76 @@ function handleCmd(cmd) {
 .ow-nav-item {
   display: flex;
   align-items: center;
-  height: 42px;
-  margin: 0 0 4px 0;
+  height: 38px;
+  margin: 0 0 2px 0;
   border-radius: 8px;
-  color: rgb(24, 24, 24);
+  color: var(--ow-nav-color, #475569);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 400;
   transition: background .15s, color .15s;
   cursor: pointer;
+  position: relative;
 }
 .menu-item {
   display: flex;
   align-items: center;
+  gap: 9px;
   width: 100%;
-  padding: 0 12px 0 20px;
+  padding: 0 12px 0 14px;
+}
+.nav-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  opacity: .7;
+  transition: opacity .15s;
 }
 .menu-item-title {
   display: block;
+  flex: 1;
 }
 .ow-nav-item:hover {
-  background: rgba(42, 85, 229, 0.06);
-  color: rgb(22, 93, 255);
+  background: var(--ow-nav-hover, #f8fafc);
+  color: var(--ow-primary);
 }
+.ow-nav-item:hover .nav-icon { opacity: 1; }
 .ow-nav-item.active {
-  background: rgba(42, 85, 229, 0.06);
-  color: rgb(22, 93, 255);
-  font-weight: 700;
+  background: var(--ow-nav-active, #eff6ff);
+  color: var(--ow-primary);
+  font-weight: 600;
+}
+.ow-nav-item.active .nav-icon { opacity: 1; }
+.ow-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ow-primary);
 }
 
 /* Sidebar Footer */
 .ow-sidebar-footer {
-  padding: 10px 8px;
-  border-top: 1px solid var(--ow-layout-border, #e5e6eb);
+  padding: 8px 8px 12px;
+  border-top: 1px solid var(--ow-layout-border, #e2e8f0);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .balance-row, .logout-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 9px;
+  padding: 0 14px;
   height: 36px;
   border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
   transition: background .15s, color .15s;
-  color: rgb(24, 24, 24);
+  color: var(--ow-nav-color, #475569);
 }
-.balance-row:hover { background: rgba(42, 85, 229, 0.06); color: var(--ow-primary, #165dff); }
-.logout-row:hover { background: rgba(42, 85, 229, 0.06); color: #f53f3f; }
+.balance-row:hover { background: var(--ow-nav-hover); color: var(--ow-primary); }
+.logout-row:hover { background: var(--ow-danger-bg, #fef2f2); color: var(--ow-danger, #ef4444); }
 
 .ow-footer-btn {
   display: block;

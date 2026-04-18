@@ -101,8 +101,10 @@ bash scripts/start.sh
 
 | 地址 | 说明 |
 |------|------|
-| `http://localhost:3000` | 用户端前端 |
-| `http://localhost:3000/admin` | 管理后台 |
+| `http://localhost:3000` | 用户端 |
+| `http://localhost:3000/admin` | 管理后台（管理员） |
+| `http://localhost:3000/vendor/login` | 卡商端（号商登录） |
+| `http://localhost:3000/agent/login` | 客服端（客服登录） |
 | `http://localhost:8080` | API Server |
 | `http://localhost:8080/docs` | 接口文档 |
 
@@ -674,7 +676,14 @@ sudo systemctl status fanapi-script
 curl http://localhost/health
 ```
 
-浏览器访问 `http://服务器IP` 打开用户端，`http://服务器IP/admin` 打开管理后台。
+浏览器访问各入口确认服务正常：
+
+| 地址 | 说明 |
+|------|------|
+| `http://服务器IP` | 用户端 |
+| `http://服务器IP/admin` | 管理后台（管理员） |
+| `http://服务器IP/vendor/login` | 卡商端（号商登录） |
+| `http://服务器IP/agent/login` | 客服端（客服登录） |
 
 ---
 
