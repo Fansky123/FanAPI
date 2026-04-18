@@ -49,6 +49,13 @@ export const cardApi = {
   remove: (id) => http.delete(`/admin/cards/${id}`),
 }
 
+export const withdrawApi = {
+  list: (params = {}) => http.get('/admin/withdrawals', { params }),
+  pendingCount: () => http.get('/admin/withdrawals/pending-count'),
+  approve: (id, remark = '') => http.post(`/admin/withdrawals/${id}/approve`, { remark }),
+  reject: (id, remark = '') => http.post(`/admin/withdrawals/${id}/reject`, { remark }),
+}
+
 export const llmLogApi = {
   list: (params = {}) => http.get('/admin/llm-logs', { params }),
   get: (id) => http.get(`/admin/llm-logs/${id}`),

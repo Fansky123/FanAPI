@@ -63,6 +63,7 @@ const routes = [
       { path: 'llm-logs', component: () => import('@/views/admin/llm-logs/Index.vue') },
       { path: 'settings', component: () => import('@/views/admin/settings/Index.vue') },
       { path: 'vendors', component: () => import('@/views/admin/vendors/Index.vue') },
+      { path: 'withdraw', component: () => import('@/views/admin/withdraw/Index.vue') },
     ]
   },
   // 客服端路由

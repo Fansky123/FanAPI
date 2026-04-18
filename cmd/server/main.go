@@ -152,6 +152,10 @@ func main() {
 			user.GET("/payment-orders", handler.GetUserPaymentOrders)
 			user.GET("/invite", handler.GetInviteInfo)
 			user.POST("/invite/convert", handler.ConvertFrozenBalance)
+			user.GET("/payment-qr", handler.GetPaymentQR)
+			user.PUT("/payment-qr", handler.SavePaymentQR)
+			user.POST("/withdraw", handler.SubmitWithdraw)
+			user.GET("/withdraw/history", handler.ListWithdrawHistory)
 		}
 
 		// 管理员路由（JWT 或 API Key + admin 角色）
@@ -203,6 +207,11 @@ func main() {
 			// 号商管理
 			admin.GET("/vendors", handler.AdminListVendors)
 			admin.PATCH("/vendors/:id", handler.AdminUpdateVendor)
+			// 提现管理
+			admin.GET("/withdrawals", handler.AdminListWithdrawals)
+			admin.GET("/withdrawals/pending-count", handler.AdminPendingWithdrawCount)
+			admin.POST("/withdrawals/:id/approve", handler.AdminApproveWithdrawal)
+			admin.POST("/withdrawals/:id/reject", handler.AdminRejectWithdrawal)
 		}
 
 		// Epay 充值（需要 JWT 认证）

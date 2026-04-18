@@ -38,6 +38,10 @@ export const userApi = {
   changePassword: (data) => http.put('/user/password', data),
   getInviteInfo: () => http.get('/user/invite'),
   convertFrozen: (amount = 0) => http.post('/user/invite/convert', { amount }),
+  getPaymentQR: () => http.get('/user/payment-qr'),
+  savePaymentQR: (data) => http.put('/user/payment-qr', data),
+  submitWithdraw: (amount, paymentType) => http.post('/user/withdraw', { amount, payment_type: paymentType }),
+  listWithdrawHistory: (page = 1, size = 20) => http.get('/user/withdraw/history', { params: { page, size } }),
 }
 
 // 支付相关（需 JWT）

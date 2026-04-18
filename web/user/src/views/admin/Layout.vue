@@ -20,6 +20,11 @@
         <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
         <el-menu-item index="/admin/ocpc"><el-icon><Promotion /></el-icon>OCPC 上报</el-menu-item>
         <el-menu-item index="/admin/vendors"><el-icon><Goods /></el-icon>号商管理</el-menu-item>
+        <el-menu-item index="/admin/withdraw">
+          <el-icon><Money /></el-icon>
+          提现管理
+          <el-badge v-if="pendingWithdraw > 0" :value="pendingWithdraw" type="danger" class="menu-badge" />
+        </el-menu-item>
         <el-menu-item index="/admin/settings"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
@@ -65,10 +70,9 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authApi } from '@/api/admin'
-import { settingsApi } from '@/api/admin'
+import { authApi, settingsApi, withdrawApi } from '@/api/admin'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -84,9 +88,17 @@ const titles = {
   '/admin/ocpc': 'OCPC 上报',
   '/admin/llm-logs': 'LLM 日志',
   '/admin/vendors': '号商管理',
+  '/admin/withdraw': '提现管理',
   '/admin/settings': '系统设置',
 }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')
+
+// 待处理提现徽标
+const pendingWithdraw = ref(0)
+let withdrawTimer = null
+async function pollWithdraw() {
+  try { const r = await withdrawApi.pendingCount(); pendingWithdraw.value = r.count || 0 } catch {}
+}
 
 // 动态品牌
 const siteName = ref('FanAPI')
@@ -100,7 +112,11 @@ onMounted(async () => {
     if (s.site_name) siteName.value = s.site_name
     if (s.logo_url) siteLogo.value = s.logo_url
   } catch { /* ignore */ }
+  pollWithdraw()
+  withdrawTimer = setInterval(pollWithdraw, 30000)
 })
+
+onUnmounted(() => clearInterval(withdrawTimer))
 
 // 账户菜单
 const showPwd = ref(false)
@@ -131,6 +147,7 @@ async function doChangePwd() {
 
 function logout() {
   localStorage.removeItem('admin_token')
+  clearInterval(withdrawTimer)
   router.push('/admin/login')
 }
 </script>
@@ -178,6 +195,7 @@ function logout() {
 .page-title { font-weight:700;font-size:1.1rem }
 .page-subtitle { color:#6b7a90;font-size:.82rem;margin-top:3px }
 .page-main { padding:22px }
+.menu-badge { position:absolute; right:10px; top:50%; transform:translateY(-50%); }
 @media (max-width:900px) {
   .shell { display:block }
   .sidebar { width:100% !important;padding:10px }
