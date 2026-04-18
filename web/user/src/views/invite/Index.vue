@@ -97,7 +97,7 @@ const inviteLink = computed(() => {
 
 function formatCredits(v) {
   if (!v) return '0'
-  return (v / 1e6).toFixed(4) + ' 元'
+  return (v / 1e6).toFixed(4) + ' 积分'
 }
 
 async function copyCode() {

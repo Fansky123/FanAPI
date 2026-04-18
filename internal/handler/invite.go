@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 
 	"fanapi/internal/billing"
@@ -25,6 +27,23 @@ func GetInviteInfo(c *gin.Context) {
 	if found, err := db.Engine.ID(userID).Cols("invite_code", "frozen_balance").Get(&user); err != nil || !found {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取用户信息失败"})
 		return
+	}
+
+	// 兼容旧账号：若邀请码为空则自动生成并持久化
+	if user.InviteCode == "" {
+		code := generateInviteCode()
+		if n, err := db.Engine.Exec(
+			"UPDATE users SET invite_code = $1 WHERE id = $2 AND (invite_code IS NULL OR invite_code = '')",
+			code, userID,
+		); err == nil {
+			if rows, _ := n.RowsAffected(); rows > 0 {
+				user.InviteCode = code
+			}
+		}
+		// 若并发导致 UPDATE 未命中（其他实例已写入），重新读一次
+		if user.InviteCode == "" {
+			db.Engine.ID(userID).Cols("invite_code").Get(&user) //nolint:errcheck
+		}
 	}
 
 	count, _ := db.Engine.Where("inviter_id = ?", userID).Count(&model.User{})
@@ -99,4 +118,11 @@ func ConvertFrozenBalance(c *gin.Context) {
 		"converted":         toConvert,
 		"available_balance": newBalance,
 	})
+}
+
+// generateInviteCode 生成 16 位十六进制邀请码（本包内使用）。
+func generateInviteCode() string {
+	b := make([]byte, 8)
+	rand.Read(b) //nolint:errcheck
+	return hex.EncodeToString(b)
 }
