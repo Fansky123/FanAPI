@@ -255,17 +255,30 @@ docker run -d \
 
 #### 3c. NATS（JetStream 持久化 + 大消息支持）
 
+`max_payload` 只能通过配置文件设置，先在宿主机创建配置文件，再挂载进容器：
+
 ```bash
+# 创建配置文件（不需要提前克隆代码）
+mkdir -p /opt/nats-data /opt/nats-conf
+cat > /opt/nats-conf/nats.conf << 'EOF'
+max_payload: 62914560
+jetstream {
+  store_dir: /data
+}
+EOF
+
+# 启动 NATS 容器
 docker run -d \
   --name nats \
   --restart unless-stopped \
   -p 0.0.0.0:4222:4222 \
   -v /opt/nats-data:/data \
+  -v /opt/nats-conf/nats.conf:/etc/nats.conf:ro \
   nats:latest \
-  -js -sd /data -a 0.0.0.0 -mp 62914560
+  -c /etc/nats.conf -a 0.0.0.0
 ```
 
-> `-mp 62914560` 将单条消息上限设为 **60 MB**，防止图片生成渠道返回 base64 内联数据时超过 NATS 默认 1 MB 限制（报 "result too large" 错误）。`-js -sd /data` 开启 JetStream 持久化，容器重启后队列中未处理的任务不丢失。
+> `max_payload: 62914560` 将单条消息上限设为 **60 MB**，防止图片生成渠道返回 base64 内联数据时超过 NATS 默认 1 MB 限制（报 "result too large" 错误）。`jetstream.store_dir` 开启 JetStream 持久化，容器重启后队列中未处理的任务不丢失。
 
 #### 3d. 初始化数据库表
 
