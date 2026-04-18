@@ -253,7 +253,7 @@ docker run -d \
   --requirepass "your-redis-password"
 ```
 
-#### 3c. NATS（需开启 JetStream 持久化）
+#### 3c. NATS（JetStream 持久化 + 大消息支持）
 
 ```bash
 docker run -d \
@@ -262,14 +262,17 @@ docker run -d \
   -p 0.0.0.0:4222:4222 \
   -v /opt/nats-data:/data \
   nats:latest \
-  -js -sd /data -a 0.0.0.0
+  -js -sd /data -a 0.0.0.0 -mp 62914560
 ```
+
+> `-mp 62914560` 将单条消息上限设为 **60 MB**，防止图片生成渠道返回 base64 内联数据时超过 NATS 默认 1 MB 限制（报 "result too large" 错误）。`-js -sd /data` 开启 JetStream 持久化，容器重启后队列中未处理的任务不丢失。
 
 #### 3d. 初始化数据库表
 
 ```bash
-# 执行项目根目录下的 SQL 脚本（按文件名日期顺序）
-psql -h 127.0.0.1 -U postgres -d fanapi -f scripts/migrate_*.sql
+# 先克隆代码拿到 SQL 脚本（如已克隆可跳过）
+git clone <你的仓库地址> /opt/fanapi
+psql -h 127.0.0.1 -U postgres -d fanapi -f /opt/fanapi/scripts/migrate_*.sql
 ```
 
 ---
@@ -277,7 +280,7 @@ psql -h 127.0.0.1 -U postgres -d fanapi -f scripts/migrate_*.sql
 ### 步骤 4：在服务器上准备项目文件
 
 ```bash
-# 直接在服务器上克隆代码（推荐，后续 git pull 即可升级）
+# 如果上一步已经 clone，跳过此命令
 git clone <你的仓库地址> /opt/fanapi
 cd /opt/fanapi
 ```
@@ -314,6 +317,8 @@ redis:
 
 nats:
   url: nats://host-gateway:4222  # ← 不要写 localhost
+  # memory_storage: true  # 取消注释切换为内存存储（吞吐更高，重启丢未处理消息）
+  replicas: 1              # JetStream 流副本数，生产集群建议 3
 
 smtp:
   host: smtp.example.com
@@ -321,6 +326,11 @@ smtp:
   user: no-reply@example.com
   password: SMTP密码
   from: "FanAPI <no-reply@example.com>"
+
+worker:
+  max_concurrent: 5000   # Script Worker 最大并发任务数，按服务器资源和上游限速调整
+  # subjects:            # 订阅的任务类型，默认全部；专用 Worker 示例：["task.video.*"]
+  #   - task.>
 ```
 
 ---
@@ -688,6 +698,7 @@ curl http://localhost/health
 | `nats.memory_storage` | `true` 切换为内存存储，吞吐更高但重启丢失队列中消息，默认 `false` |
 | `nats.replicas` | JetStream 流副本数，单节点填 1，生产集群建议 3，默认 1 |
 | `smtp.*` | 邮件服务配置，用于发送验证码 / 找回密码邮件 |
+| `worker.max_concurrent` | Script Worker 最大同时执行的任务数，防止高并发打垮服务器或触发上游限速，默认 `100`，根据服务器资源和上游限速适当调大 |
 | `worker.subjects` | Script Worker 订阅的 NATS 主题列表，默认 `["task.>"]`（全类型）；专用 Worker 示例：`["task.video.*"]` |
 
 ---

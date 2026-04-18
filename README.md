@@ -8,12 +8,15 @@
 - **多协议支持** — 同时支持 OpenAI、Claude、Gemini 三种协议格式（含 SSE 流式）
 - **LLM 对话** — 支持流式（SSE）和非流式代理，双阶段计费（预扣 + 结算），用户中断时按实际输出字符兜底估算
 - **请求追踪** — LLM 响应头返回 `X-Corr-Id`，可与计费流水 `corr_id` 字段精确对应，用户可查询哪笔对话扣了多少费
+- **智能路由** — 同模型多渠道按优先级+权重分流；错误率过高自动降级；连接失败、5xx 或 `error_script` 检测到业务错误（如 200 返回但额度耗尽）均自动换渠道重试（最多 3 次）
 - **异步任务** — 图片、视频、音频生成任务，支持异步轮询状态查询，失败自动退款
 - **计费系统** — 多维度计费模型（按 token / 图片 / 视频 / 音频 / 自定义脚本），余额管理与交易记录
 - **自动退费** — 任务失败（HTTP 错误、第三方业务失败、NATS 发布失败）均自动退还已扣 credits 并写退费流水
 - **卡密充值** — 管理员生成卡密，用户凭码充值
+- **邀请返佣** — 用户邀请新用户，被邀请人消费后按比例冻结返佣给邀请人；冻结积分可手动解冻为可用积分；支持全局比例及用户个人比例覆盖
+- **号商门户** — 号商独立注册/登录，提供 API Key 供平台号池使用，可查看 Key 消耗统计与收益；平台可配置全局及个人抽成比例
 - **用户系统** — 用户名+密码注册（邮箱可选，用于找回密码）、JWT 登录、API Key 管理
-- **管理后台** — 渠道 CRUD、号池管理、用户充值、交易查询、卡密管理，与用户端共享同一前端入口
+- **管理后台** — 渠道 CRUD、号池管理、用户充值、交易查询、卡密管理、号商管理，与用户端共享同一前端入口
 
 ## 技术栈
 
@@ -77,16 +80,35 @@ psql -U <user> -d <db> -f scripts/seed_chatfire.sql
 
 ### 5. 数据库迁移（非首次部署）
 
-若数据库由旧版升级，需执行迁移脚本补充新字段（新部署由 xorm `Sync2` 自动处理，无需手动执行）：
+若数据库由旧版升级，需按顺序执行迁移脚本补充新字段（新部署由 xorm `Sync2` 自动处理，无需手动执行）：
 
 ```bash
+# 添加 error_script 字段、corr_id 关联字段
 psql -U <user> -d <db> -f scripts/migrate_20260405_add_error_script_corr_id.sql
-```
 
-高并发场景建议同时执行索引优化脚本（使用 `CONCURRENTLY`，不锁表，可在线执行）：
-
-```bash
+# 高并发性能索引（使用 CONCURRENTLY，不锁表，可在线执行）
 psql -U <user> -d <db> -f scripts/migrate_20260405_add_indexes.sql
+
+# 支付订单补充字段（apply_time、apply_result 等）
+psql -U <user> -d <db> -f scripts/migrate_20260412_payment_order_apply_fields.sql
+
+# 号池 Key 类型字段（key_type: normal / low_price）
+psql -U <user> -d <db> -f scripts/migrate_20260416_add_key_type.sql
+
+# 渠道图标与描述字段（icon_url、description）
+psql -U <user> -d <db> -f scripts/migrate_20260416_channel_icon_and_desc.sql
+
+# 邀请码 / 号商关联字段（invite_code、agent_id）
+psql -U <user> -d <db> -f scripts/migrate_20260416_invite_agent.sql
+
+# OCPC 转化类型字段
+psql -U <user> -d <db> -f scripts/migrate_20260416_ocpc_conv_types.sql
+
+# 邀请返佣系统（frozen_balance、rebate_ratio、inviter_id 等）
+psql -U <user> -d <db> -f scripts/migrate_20260418_invite_rebate.sql
+
+# 号商表（vendors）及号池 Key 归属关联
+psql -U <user> -d <db> -f scripts/migrate_20260418_vendors.sql
 ```
 
 ## 渠道脚本系统
@@ -160,11 +182,32 @@ function checkError(resp) {
 | GET | `/user/profile` | 查询个人资料 |
 | GET | `/user/balance` | 查询余额 |
 | GET | `/user/transactions` | 交易记录 |
+| GET | `/user/stats` | 个人消费统计 |
 | GET | `/user/channels` | 可用频道列表（含 `routing_model` 字段） |
-| GET/POST/DELETE | `/user/apikeys` | API Key 管理 |
+| GET | `/user/apikeys` | API Key 列表 |
+| POST | `/user/apikeys` | 创建 API Key |
+| DELETE | `/user/apikeys/:id` | 删除 API Key |
 | PUT | `/user/password` | 修改密码 |
-| POST | `/user/bind-email` | 绑定邮筱 |
+| POST | `/user/bind-email` | 绑定邮箱 |
 | POST | `/user/cards/redeem` | 兑换卡密（需 JWT） |
+| GET | `/user/cards/redeem-history` | 卡密兑换记录 |
+| GET | `/user/payment-orders` | 充值订单记录 |
+| GET | `/user/invite` | 邀请信息（邀请码、已邀请人数、冻结积分余额） |
+| POST | `/user/invite/convert` | 将冻结返佣积分解冻为可用余额 |
+
+### 号商认证接口（无需鉴权）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/vendor/auth/register` | 号商注册（邮箱 + 密码） |
+| POST | `/vendor/auth/login` | 号商登录，返回 vendor JWT |
+
+### 号商门户接口（Bearer vendor JWT）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/vendor/profile` | 查询号商资料（姓名、邮箱、手续费比例、余额） |
+| GET | `/vendor/keys` | 查询名下所有号池 Key 的消耗与收益统计 |
 
 ### AI 调用接口（API Key）
 
@@ -186,12 +229,26 @@ function checkError(resp) {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| CRUD | `/admin/channels` | 频道管理 |
-| CRUD | `/admin/key-pools` | 号池管理 |
-| GET/POST/DELETE | `/admin/key-pools/:id/keys` | 号池 Key 管理 |
+| POST | `/admin/channels` | 创建渠道 |
+| GET | `/admin/channels` | 渠道列表 |
+| PUT | `/admin/channels/:id` | 更新渠道 |
+| DELETE | `/admin/channels/:id` | 删除渠道 |
+| GET | `/admin/key-pools` | 号池列表 |
+| POST | `/admin/key-pools` | 创建号池 |
+| DELETE | `/admin/key-pools/:id` | 删除号池 |
+| PATCH | `/admin/key-pools/:id/toggle` | 启用/禁用号池 |
+| GET | `/admin/key-pools/:id/keys` | 号池 Key 列表 |
+| POST | `/admin/key-pools/:id/keys` | 添加 Key 到号池 |
+| DELETE | `/admin/pool-keys/:id` | 删除号池 Key |
+| PATCH | `/admin/pool-keys/:id/vendor` | 设置 Key 归属号商 |
 | GET | `/admin/users` | 用户列表 |
 | POST | `/admin/users/:id/recharge` | 用户充值 |
 | PUT | `/admin/users/:id/password` | 重置用户密码 |
+| PUT | `/admin/users/:id/group` | 设置用户分组 |
+| PUT | `/admin/users/:id/role` | 设置用户角色 |
+| PUT | `/admin/users/:id/rebate-ratio` | 设置用户个人邀请返佣比例（覆盖全局配置） |
+| GET | `/admin/vendors` | 号商列表 |
+| PATCH | `/admin/vendors/:id` | 更新号商（启用/禁用、手续费比例、备注） |
 | GET | `/admin/transactions` | 全部交易记录 |
 | GET | `/admin/tasks` | 全部任务查询 |
 | GET | `/admin/tasks/:id` | 任务详情 |
@@ -199,9 +256,10 @@ function checkError(resp) {
 | POST | `/admin/cards/generate` | 批量生成卡密 |
 | GET | `/admin/cards` | 卡密列表 |
 | DELETE | `/admin/cards/:id` | 删除卡密 |
-| POST | `/user/cards/redeem` | 用户兑换卡密（需 JWT）|
 | GET | `/admin/llm-logs` | LLM 请求日志 |
 | GET | `/admin/llm-logs/:id` | LLM 请求日志详情 |
+| GET | `/admin/settings` | 查询系统设置 |
+| PUT | `/admin/settings` | 更新系统设置 |
 
 ## 项目结构
 
@@ -225,21 +283,28 @@ fanapi/
 ├── pkg/
 │   └── mailer/       # 邮件发送
 ├── web/
-│   └── user/         # 前端（Vue 3 + Vite，用户端 + 管理后台）
+│   └── user/         # 前端（Vue 3 + Vite，用户端 + 管理后台 + 号商门户）
 │       ├── src/views/         # 页面组件
 │       │   ├── admin/         # 管理后台页面（路由前缀 /admin）
+│       │   │   └── vendors/   # 号商管理
+│       │   ├── agent/         # 推广员门户页面
 │       │   ├── auth/          # 登录 / 注册
 │       │   ├── billing/       # 充值与账单
 │       │   ├── dashboard/     # 布局与渠道列表
 │       │   ├── docs/          # API 文档
+│       │   ├── invite/        # 邀请中心（邀请码、返佣积分）
 │       │   ├── keys/          # API Key 管理
 │       │   ├── playground/    # 在线调试
-│       │   └── tasks/         # 任务中心
+│       │   ├── tasks/         # 任务中心
+│       │   └── vendor/        # 号商门户页面（路由前缀 /vendor）
 │       └── src/api/           # API 封装
 │           ├── index.js       # 用户端 API
 │           ├── http.js        # 用户端 axios 实例
 │           ├── admin.js       # 管理端 API
-│           └── admin-http.js  # 管理端 axios 实例
+│           ├── admin-http.js  # 管理端 axios 实例
+│           ├── agent.js       # 推广员端 API
+│           ├── agent-http.js  # 推广员端 axios 实例
+│           └── vendor.js      # 号商端 API（vendor JWT）
 └── scripts/          # 数据库初始化脚本
 ```
 
@@ -467,14 +532,45 @@ function checkError(resp) {
 
 ---
 
-#### 负载均衡（多渠道分流）
+#### 负载均衡与故障重试（多渠道分流）
 
-同一个"模型名称"可以对应多个渠道，系统按以下规则选择：
+同一个"模型名称"（`Model` 字段相同）可以对应多个渠道，系统按以下规则选择：
 
-1. **先按优先级**（Priority）降序排列，优先级高的先选
+1. **先按优先级**（Priority）降序排列，只在最高可用优先级组内选择
 2. **同优先级内**按权重（Weight）加权随机分流
-3. **近期错误率过高**的渠道自动跳过（错误率 > 50% 且请求数 ≥ 5 次时降级）
-4. 请求失败时自动换下一个渠道重试
+3. **近期错误率过高**的渠道自动跳过（5 分钟窗口内错误率 > 50% 且总请求 ≥ 5 次）
+4. **失败时**自动排除当前渠道，从剩余可用渠道重新选择，最多重试 3 次（含第一次）
+
+**重试触发条件：**
+
+| 上游响应 | 行为 |
+|----------|------|
+| 连接超时 / 网络错误 | ✅ 换渠道重试 |
+| HTTP 5xx | ✅ 换渠道重试 |
+| HTTP 200，`error_script` 检测到业务错误（如额度不足、余额耗尽） | ✅ 换渠道重试 |
+| HTTP 429（限速）| ❌ 不换渠道，在同渠道号池内轮换下一个 Key |
+| HTTP 4xx（非 429）| ❌ 不重试，直接返回错误 |
+
+> **`error_script` 业务错误换渠道**：上游返回 HTTP 200 但 body 内含业务错误时（如 `{"msg":"no quota"}`），需在渠道配置 `error_script`。`checkError(resp)` 返回非空字符串即触发换渠道重试（最多共 3 次）并自动退款。对于流式响应，系统会 peek 第一行内容做检测（许多 API 在额度耗尽时即使请求了流式也会立即以 JSON 返回错误），无需额外配置，行为与非流式一致。
+
+**权重示例（3 个同模型、同优先级渠道）：**
+
+| 渠道 | Priority | Weight | 预期流量占比 |
+|------|----------|--------|-------------|
+| A | 0 | 1 | ≈ 33% |
+| B | 0 | 1 | ≈ 33% |
+| C | 0 | 1 | ≈ 33% |
+
+若 A 流量更高：A=2, B=1, C=1 → A 占 50%，B/C 各 25%。
+
+**优先级示例（主备渠道）：**
+
+| 渠道 | Priority | 说明 |
+|------|----------|------|
+| 主渠道 | 1 | 优先使用 |
+| 备用渠道 | 0 | 主渠道全部失败后才使用 |
+
+> **稳定密钥模式**（低价优先）：用户使用"低价密钥"时，渠道按进价升序排列，第一个渠道失败才换下一个，保证成本最优。
 
 ---
 
@@ -567,7 +663,47 @@ function checkError(resp) {
 
 ---
 
-### 七、统计面板
+### 七、号商管理
+
+路径：**管理后台 → Vendors**
+
+号商（API Key 供应商）可在号商门户独立注册，提交 Key 给平台使用，平台按消耗量自动核算收益。
+
+| 操作 | 说明 |
+|------|------|
+| 查看号商列表 | 显示号商 ID、用户名、邮箱、手续费比例、余额、状态 |
+| 启用/禁用 | 禁用后该号商名下的 Key 不再被分配 |
+| 设置手续费比例 | 平台从号商收益中抽取的比例（0~1，如 `0.1` = 抽 10%） |
+| 备注 | 内部备注，不展示给号商 |
+
+**号池 Key 归属设置：**
+在**号池管理 → Key 列表**中，可为每个 Key 指定归属号商（`PATCH /admin/pool-keys/:id/vendor`）。Key 被消耗后，平台按进价成本核算并按比例结算给对应号商。
+
+---
+
+### 八、系统设置
+
+路径：**管理后台 → Settings**
+
+系统设置页面分为以下 Tab：
+
+| Tab | 说明 |
+|-----|------|
+| 基础设置 | 平台名称、Logo、备案号、客服链接等 |
+| 充值设置 | 支付通道配置（易支付 / 虎皮椒）、充值选项 |
+| 邀请返佣 | 全局返佣比例（0~1）、邀请奖励规则说明 |
+| 号商设置 | 全局手续费比例（0~1），可被单个号商的个人配置覆盖 |
+| 邮件设置 | SMTP 服务器、发件人等 |
+| 推广设置 | OCPC 转化追踪相关参数 |
+
+**邀请返佣配置说明：**
+- 全局比例在"邀请返佣" Tab 中设置，所有用户默认使用该比例
+- 可在**用户管理**中针对某用户单独设置个人比例（`PUT /admin/users/:id/rebate-ratio`）覆盖全局值
+- 返佣积分写入邀请人的**冻结余额**，用户需手动在"邀请中心"点击解冻才能转为可用余额
+
+---
+
+### 九、统计面板
 
 路径：**管理后台 → Dashboard**
 

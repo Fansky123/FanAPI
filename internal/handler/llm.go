@@ -528,6 +528,26 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		var respJSON map[string]interface{}
 		var syncUsage map[string]interface{}
 		if json.Unmarshal(respBytes, &respJSON) == nil {
+			// error_script 业务错误检测：捕获上游返回 200 但 body 内含错误的情况（如额度耗尽）
+			if ch.ErrorScript != "" {
+				if bizErr, scriptErr := script.RunCheckError(ch.ErrorScript, respJSON); scriptErr == nil && bizErr != "" {
+					service.RecordChannelError(c.Request.Context(), channelID)
+					if len(triedIDs) < maxRetries {
+						if nextCh := selectNextChannel(c, reqData, triedIDs, stableChannels); nextCh != nil {
+							if totalHold > 0 {
+								_ = billing.Refund(c.Request.Context(), userID, totalHold)
+								_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "channel_retry"})
+								_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
+									Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry: " + bizErr})
+							}
+							llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+							return
+						}
+					}
+					llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, poolKeyIDVal, http.StatusOK, bizErr)
+					return
+				}
+			}
 			syncUsage = protocol.NormalizeUsage(respJSON, proto)
 		}
 
@@ -541,6 +561,41 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// ---- 流式 SSE 响应 ----
+	// error_script 业务错误检测：许多上游在额度耗尽时即使请求了流式也会立即以 JSON 返回错误。
+	// 在写出任何响应字节前 peek 第一行，若匹配 error_script 则换渠道重试。
+	if ch.ErrorScript != "" {
+		peekBuf := bufio.NewReader(resp.Body)
+		firstLineBytes, peekErr := peekBuf.ReadBytes('\n')
+		if (peekErr == nil || len(firstLineBytes) > 0) && len(firstLineBytes) > 0 {
+			firstLine := strings.TrimRight(string(firstLineBytes), "\r\n")
+			checkSrc := strings.TrimPrefix(firstLine, "data: ")
+			if checkSrc != "" && checkSrc != "[DONE]" {
+				var firstJSON map[string]interface{}
+				if json.Unmarshal([]byte(checkSrc), &firstJSON) == nil {
+					if bizErr, scriptErr := script.RunCheckError(ch.ErrorScript, firstJSON); scriptErr == nil && bizErr != "" {
+						service.RecordChannelError(c.Request.Context(), channelID)
+						if len(triedIDs) < maxRetries {
+							if nextCh := selectNextChannel(c, reqData, triedIDs, stableChannels); nextCh != nil {
+								if totalHold > 0 {
+									_ = billing.Refund(c.Request.Context(), userID, totalHold)
+									_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "refund", totalHold, upstreamCostHold, model.JSON{"reason": "channel_retry"})
+									_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
+										Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry: " + bizErr})
+								}
+								llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+								return
+							}
+						}
+						llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, poolKeyIDVal, http.StatusOK, bizErr)
+						return
+					}
+				}
+			}
+			// 第一行正常：将其拼回，后续 scanner 照常读取
+			resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(string(firstLineBytes)), peekBuf))
+		}
+	}
+
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
