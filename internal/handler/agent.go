@@ -176,6 +176,32 @@ func SetUserRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "角色已更新"})
 }
 
+// SetUserRebateRatio 设置用户个人邀请返佣比例（管理员）。
+// 传 null 清空（使用全局默认值）。
+func SetUserRebateRatio(c *gin.Context) {
+	targetID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
+		return
+	}
+	var req struct {
+		RebateRatio *float64 `json:"rebate_ratio"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.RebateRatio != nil && (*req.RebateRatio < 0 || *req.RebateRatio > 1) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rebate_ratio 须在 0~1 之间"})
+		return
+	}
+	if _, err := db.Engine.ID(targetID).Cols("rebate_ratio").Update(&model.User{RebateRatio: req.RebateRatio}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "返佣比例已更新"})
+}
+
 func safeMapVal(rows []map[string]string, key string) string {
 	if len(rows) > 0 {
 		return rows[0][key]

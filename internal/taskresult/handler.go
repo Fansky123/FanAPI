@@ -143,7 +143,7 @@ func handleResult(msg *nats.Msg) {
 						upstreamCostOld = chargeTx.Cost
 					}
 					_ = billing.Refund(ctx, res.UserID, res.CreditsCharged)
-					_ = service.WriteTx(ctx, res.UserID, res.ChannelID, res.APIKeyID, res.CorrID, "refund", res.CreditsCharged, upstreamCostOld, model.JSON{
+					_ = service.WriteTx(ctx, res.UserID, res.ChannelID, res.APIKeyID, res.PoolKeyID, res.CorrID, "refund", res.CreditsCharged, upstreamCostOld, model.JSON{
 						"task_id": res.TaskID,
 						"reason":  "stable_key_channel_retry",
 					})
@@ -177,7 +177,7 @@ func handleResult(msg *nats.Msg) {
 				}
 				// 写新的扣费流水
 				newCorrID := res.CorrID + "_r" + fmt.Sprintf("%d", nextChannelID)
-				_ = service.WriteTx(ctx, res.UserID, nextChannelID, res.APIKeyID, newCorrID, "charge", newCost, newUpstreamCost, model.JSON{
+				_ = service.WriteTx(ctx, res.UserID, nextChannelID, res.APIKeyID, 0, newCorrID, "charge", newCost, newUpstreamCost, model.JSON{
 					"task_id":      res.TaskID,
 					"retry_of":     res.ChannelID,
 					"stable_retry": true,
@@ -278,14 +278,16 @@ func failTaskDB(ctx context.Context, taskID, userID, channelID, apiKeyID int64, 
 	// 从而保持利润分析中（收费 + 退款）净额为零。
 	var chargeTx model.BillingTransaction
 	upstreamCost := int64(0)
+	poolKeyID := int64(0)
 	if found, _ := db.Engine.Where("corr_id = ? AND type = ?", corrID, "charge").Get(&chargeTx); found {
 		upstreamCost = chargeTx.Cost
+		poolKeyID = chargeTx.PoolKeyID
 	}
 
 	if err := billing.Refund(ctx, userID, credits); err != nil {
 		log.Printf("[result-proc] task %d: refund (Redis) failed: %v — proceeding to update DB", taskID, err)
 	}
-	_ = service.WriteTx(ctx, userID, channelID, apiKeyID, corrID, "refund", credits, upstreamCost, model.JSON{
+	_ = service.WriteTx(ctx, userID, channelID, apiKeyID, poolKeyID, corrID, "refund", credits, upstreamCost, model.JSON{
 		"task_id": taskID,
 		"reason":  errMsg,
 	})

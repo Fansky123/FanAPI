@@ -19,6 +19,7 @@
         <el-menu-item index="/admin/llm-logs"><el-icon><ChatLineSquare /></el-icon>LLM 日志</el-menu-item>
         <el-menu-item index="/admin/cards"><el-icon><CreditCard /></el-icon>卡密管理</el-menu-item>
         <el-menu-item index="/admin/ocpc"><el-icon><Promotion /></el-icon>OCPC 上报</el-menu-item>
+        <el-menu-item index="/admin/vendors"><el-icon><Goods /></el-icon>号商管理</el-menu-item>
         <el-menu-item index="/admin/settings"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
       </el-menu>
       <div class="sidebar-bottom" @click="logout"><el-icon><SwitchButton /></el-icon>退出</div>
@@ -82,6 +83,7 @@ const titles = {
   '/admin/cards': '卡密管理',
   '/admin/ocpc': 'OCPC 上报',
   '/admin/llm-logs': 'LLM 日志',
+  '/admin/vendors': '号商管理',
   '/admin/settings': '系统设置',
 }
 const pageTitle = computed(() => titles[route.path] ?? 'FanAPI 管理后台')

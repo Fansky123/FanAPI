@@ -59,6 +59,13 @@ export const settingsApi = {
   update: (data) => http.put('/admin/settings', data),
 }
 
+export const vendorAdminApi = {
+  list: (params = {}) => http.get('/admin/vendors', { params }),
+  update: (id, data) => http.patch(`/admin/vendors/${id}`, data),
+  setPoolKeyVendor: (poolKeyId, data) => http.patch(`/admin/pool-keys/${poolKeyId}/vendor`, data),
+  setUserRebateRatio: (userId, data) => http.put(`/admin/users/${userId}/rebate-ratio`, data),
+}
+
 export const ocpcApi = {
   upload: () => http.post('/admin/ocpc/upload'),
   getSchedule: () => http.get('/admin/ocpc/schedule'),

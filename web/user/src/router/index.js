@@ -37,6 +37,7 @@ const routes = [
       { path: 'video-gen', name: 'VideoGen', component: () => import('@/views/video-gen/Index.vue'), meta: { requiresAuth: true } },
       { path: 'exchange', name: 'Exchange', component: () => import('@/views/exchange/Index.vue'), meta: { requiresAuth: true } },
       { path: 'profile', name: 'Profile', component: () => import('@/views/profile/Index.vue'), meta: { requiresAuth: true } },
+      { path: 'invite', name: 'Invite', component: () => import('@/views/invite/Index.vue'), meta: { requiresAuth: true } },
     ]
   },
   // 管理端路由
@@ -61,6 +62,7 @@ const routes = [
       { path: 'ocpc', component: () => import('@/views/admin/ocpc/Index.vue') },
       { path: 'llm-logs', component: () => import('@/views/admin/llm-logs/Index.vue') },
       { path: 'settings', component: () => import('@/views/admin/settings/Index.vue') },
+      { path: 'vendors', component: () => import('@/views/admin/vendors/Index.vue') },
     ]
   },
   // 客服端路由
@@ -78,6 +80,22 @@ const routes = [
       { path: 'dashboard', component: () => import('@/views/agent/Dashboard.vue') },
     ]
   },
+  // 号商端路由
+  {
+    path: '/vendor/login',
+    component: () => import('@/views/vendor/Login.vue'),
+    meta: { vendorGuest: true }
+  },
+  {
+    path: '/vendor',
+    component: () => import('@/views/vendor/Layout.vue'),
+    meta: { requiresVendor: true },
+    children: [
+      { path: '', redirect: '/vendor/dashboard' },
+      { path: 'dashboard', component: () => import('@/views/vendor/Dashboard.vue') },
+      { path: 'keys', component: () => import('@/views/vendor/Keys.vue') },
+    ]
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
@@ -91,12 +109,15 @@ router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const adminToken = localStorage.getItem('admin_token')
   const agentToken = localStorage.getItem('agent_token')
+  const vendorToken = localStorage.getItem('vendor_token')
   if (to.meta.requiresAuth && !token) return '/login'
   if (to.meta.guest && token) return '/dashboard'
   if (to.meta.requiresAdmin && !adminToken) return '/admin/login'
   if (to.meta.adminGuest && adminToken) return '/admin/dashboard'
   if (to.meta.requiresAgent && !agentToken) return '/agent/login'
   if (to.meta.agentGuest && agentToken) return '/agent/dashboard'
+  if (to.meta.requiresVendor && !vendorToken) return '/vendor/login'
+  if (to.meta.vendorGuest && vendorToken) return '/vendor/dashboard'
 })
 
 export default router

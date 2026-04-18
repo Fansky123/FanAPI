@@ -134,7 +134,7 @@ func RedeemCard(c *gin.Context) {
 
 	// 写充值流水并加余额
 	corrID := fmt.Sprintf("card-%d-%d", card.ID, userID)
-	if err := service.WriteTx(c.Request.Context(), userID, 0, 0, corrID, "recharge", card.Credits, 0, nil); err != nil {
+	if err := service.WriteTx(c.Request.Context(), userID, 0, 0, 0, corrID, "recharge", card.Credits, 0, nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新余额失败: " + err.Error()})
 		return
 	}

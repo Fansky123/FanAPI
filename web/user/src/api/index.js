@@ -13,12 +13,6 @@ export const authApi = {
   login: (data) => http.post('/auth/login', data),
   forgotPassword: (email) => http.post('/auth/forgot-password', { email }),
   resetPassword: (data) => http.post('/auth/reset-password', data),
-  // 微信 H5 OAuth 扫码登录（网页授权）
-  wechatInit: () => http.post('/auth/wechat/init'),
-  wechatPoll: (state) => http.get('/auth/wechat/poll', { params: { state } }),
-  // 微信公众号扫码登录（事件推送）
-  wechatMPQRCode: (params = {}) => http.get('/auth/wechat-mp/qrcode', { params }),
-  wechatMPPoll: (uuid) => http.get('/auth/wechat-mp/poll', { params: { uuid } }),
 }
 
 // 任务相关（需 API Key）
@@ -42,6 +36,8 @@ export const userApi = {
   getRedeemHistory: (page = 1, size = 20) => http.get('/user/cards/redeem-history', { params: { page, size } }),
   bindEmail: (data) => http.post('/user/bind-email', data),
   changePassword: (data) => http.put('/user/password', data),
+  getInviteInfo: () => http.get('/user/invite'),
+  convertFrozen: (amount = 0) => http.post('/user/invite/convert', { amount }),
 }
 
 // 支付相关（需 JWT）

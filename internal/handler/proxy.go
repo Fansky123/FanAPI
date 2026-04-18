@@ -174,6 +174,22 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		}
 	}
 
+	// 解析号池 Key（在任务写入前获取，以便后续所有流水记录携带 pool_key_id）
+	var poolKeyID int64
+	var poolKeyValue string
+	if ch.KeyPoolID > 0 {
+		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, userID)
+		if pkErr != nil {
+			if cost > 0 {
+				_ = billing.Refund(c.Request.Context(), userID, cost)
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "号池分配失败: " + pkErr.Error()})
+			return
+		}
+		poolKeyID = pk.ID
+		poolKeyValue = pk.Value
+	}
+
 	// 将平台标准格式原样存入 DB，方便排障；vendor 格式只在 worker 内转换
 	reqJSON := model.JSON{}
 	for k, v := range reqData {
@@ -197,31 +213,10 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 	}
 
 	// 写计费流水
-	_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "charge", cost, upstreamCost, model.JSON{
+	_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, poolKeyID, corrID, "charge", cost, upstreamCost, model.JSON{
 		"task_id": task.ID,
 		"type":    taskType,
 	})
-
-	// 解析号池 Key（原来在 worker 内做，现在移到这里，worker 无需访问 Redis）
-	var poolKeyID int64
-	var poolKeyValue string
-	if ch.KeyPoolID > 0 {
-		pk, pkErr := service.GetOrAssignPoolKey(c.Request.Context(), ch.KeyPoolID, userID)
-		if pkErr != nil {
-			db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "key pool error"})
-			if cost > 0 {
-				_ = billing.Refund(c.Request.Context(), userID, cost)
-				_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, upstreamCost, model.JSON{
-					"task_id": task.ID,
-					"reason":  "key pool error",
-				})
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "号池分配失败: " + pkErr.Error()})
-			return
-		}
-		poolKeyID = pk.ID
-		poolKeyValue = pk.Value
-	}
 
 	// 发布到 NATS；消息携带渠道完整配置，worker 只需 NATS 连接
 	// 稳定密钥：将剩余待试渠道 ID（跳过当前渠道）存入 RetryChannelIDs，
@@ -263,7 +258,7 @@ func createTask(c *gin.Context, taskType string, reqData map[string]interface{})
 		db.Engine.Where("id = ?", task.ID).Cols("status", "error_msg").Update(&model.Task{Status: "failed", ErrorMsg: "publish error"})
 		if cost > 0 {
 			_ = billing.Refund(c.Request.Context(), userID, cost)
-			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, corrID, "refund", cost, upstreamCost, model.JSON{
+			_ = service.WriteTx(c.Request.Context(), userID, channelID, apiKeyIDVal, poolKeyID, corrID, "refund", cost, upstreamCost, model.JSON{
 				"task_id": task.ID,
 				"reason":  "publish error",
 			})

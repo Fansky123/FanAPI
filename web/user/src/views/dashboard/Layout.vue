@@ -56,6 +56,9 @@
           <router-link to="/profile" class="ow-nav-item" :class="{ active: route.path === '/profile' }">
             <div class="menu-item"><span class="menu-item-title">个人中心</span></div>
           </router-link>
+          <router-link to="/invite" class="ow-nav-item" :class="{ active: route.path === '/invite' }">
+            <div class="menu-item"><span class="menu-item-title">邀请中心</span></div>
+          </router-link>
         </template>
       </nav>
 

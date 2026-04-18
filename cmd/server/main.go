@@ -78,8 +78,7 @@ func main() {
 
 	m := mailer.New(&cfg.SMTP)
 	authH := handler.NewAuthHandler(&cfg.Server, m)
-	wechatH := handler.NewWechatHandler(&cfg.Server)
-	wechatMPH := handler.NewWechatMPHandler(&cfg.Server)
+	vendorH := handler.NewVendorHandler(&cfg.Server)
 
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -115,15 +114,21 @@ func main() {
 		auth.POST("/login", authH.Login)
 		auth.POST("/forgot-password", authH.ForgotPassword)
 		auth.POST("/reset-password", authH.ResetPassword)
-		// 微信公众号 OAuth 扫码登录（snsapi_userinfo 网页授权）
-		auth.POST("/wechat/init", wechatH.Init)
-		auth.GET("/wechat/callback", wechatH.Callback)
-		auth.GET("/wechat/poll", wechatH.Poll)
-		// 微信公众号场景二维码扫码登录（关注即登录）
-		auth.GET("/wechat-mp/qrcode", wechatMPH.GetQRCode)
-		auth.GET("/wechat-mp/event", wechatMPH.Event)
-		auth.POST("/wechat-mp/event", wechatMPH.Event)
-		auth.GET("/wechat-mp/poll", wechatMPH.Poll)
+	}
+
+	// 号商认证路由（公开）
+	vendorAuth := r.Group("/vendor/auth")
+	{
+		vendorAuth.POST("/register", vendorH.Register)
+		vendorAuth.POST("/login", vendorH.Login)
+	}
+
+	// 号商门户（需要 vendor JWT）
+	vendorPortal := r.Group("/vendor")
+	vendorPortal.Use(middleware.VendorAuth(&cfg.Server))
+	{
+		vendorPortal.GET("/profile", vendorH.GetProfile)
+		vendorPortal.GET("/keys", vendorH.GetPoolKeys)
 	}
 
 	// 需认证的用户路由（JWT 或 API Key）
@@ -145,6 +150,8 @@ func main() {
 			user.POST("/cards/redeem", handler.RedeemCard)
 			user.GET("/cards/redeem-history", handler.GetRedeemHistory)
 			user.GET("/payment-orders", handler.GetUserPaymentOrders)
+			user.GET("/invite", handler.GetInviteInfo)
+			user.POST("/invite/convert", handler.ConvertFrozenBalance)
 		}
 
 		// 管理员路由（JWT 或 API Key + admin 角色）
@@ -163,11 +170,13 @@ func main() {
 			admin.GET("/key-pools/:id/keys", handler.ListPoolKeys)
 			admin.POST("/key-pools/:id/keys", handler.AddPoolKey)
 			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)
+			admin.PATCH("/pool-keys/:id/vendor", handler.AdminSetPoolKeyVendor)
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)
 			admin.PUT("/users/:id/password", handler.ResetUserPassword)
 			admin.PUT("/users/:id/group", handler.SetUserGroup)
 			admin.PUT("/users/:id/role", handler.SetUserRole)
+			admin.PUT("/users/:id/rebate-ratio", handler.SetUserRebateRatio)
 			admin.GET("/transactions", handler.ListAllTransactions)
 			admin.GET("/tasks", handler.ListTasks)
 			admin.GET("/tasks/:id", handler.GetAdminTask)
@@ -191,6 +200,9 @@ func main() {
 			admin.PUT("/ocpc/platforms/:id", handler.UpdateOcpcPlatform)
 			admin.DELETE("/ocpc/platforms/:id", handler.DeleteOcpcPlatform)
 			admin.PATCH("/ocpc/platforms/:id/toggle", handler.ToggleOcpcPlatform)
+			// 号商管理
+			admin.GET("/vendors", handler.AdminListVendors)
+			admin.PATCH("/vendors/:id", handler.AdminUpdateVendor)
 		}
 
 		// Epay 充值（需要 JWT 认证）

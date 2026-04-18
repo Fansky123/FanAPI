@@ -246,60 +246,39 @@
         </el-form>
       </el-tab-pane>
 
-      <!-- 微信登录 -->
-      <el-tab-pane label="微信登录" name="wechat">
+      <!-- 邀请返佣 -->
+      <el-tab-pane label="邀请返佣" name="rebate">
         <el-form :model="form" label-width="160px" class="settings-form">
-          <el-form-item label="启用微信扫码登录">
-            <el-switch v-model="wechatLoginBool" @change="onWechatLoginSwitch" />
-            <div class="form-tip">开启后用户登录/注册页面将显示微信扫码登录按钮</div>
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
+            <template #title>用户邀请新用户注册后，被邀请人每次消费将按比例给邀请人增加冻结积分，冻结积分可手动解冻为可用积分。</template>
+          </el-alert>
+          <el-form-item label="全局返佣比例">
+            <el-input-number
+              v-model="rebateRatioPercent"
+              :min="0" :max="100" :precision="2" :step="1"
+              @change="v => form.default_rebate_ratio = (v / 100).toFixed(4)"
+            />
+            <span style="margin-left:8px;color:#606266">%</span>
+            <div class="form-tip">被邀请人消费金额的该比例将冻结给邀请人（例：5 表示消费 100 积分返 5 冻结积分）。管理员可为单个用户单独设置比例以覆盖此全局值。</div>
           </el-form-item>
-          <template v-if="wechatLoginBool">
-            <el-form-item label="公众号 AppID">
-              <el-input v-model="form.wechat_appid" placeholder="wx开头的 AppID" />
-              <div class="form-tip">微信公众平台 → 设置 → 公众号设置 → 基本配置</div>
-            </el-form-item>
-            <el-form-item label="公众号 AppSecret">
-              <el-input v-model="form.wechat_secret" type="password" show-password placeholder="AppSecret（机密，请勿外泄）" />
-            </el-form-item>
-            <el-form-item label="回调域名（Base URL）">
-              <el-input v-model="form.wechat_redirect_base_url" placeholder="https://yourdomain.com" />
-              <div class="form-tip">系统将在此域名下接收微信 OAuth 回调，格式：https://域名（无末尾斜杠）</div>
-            </el-form-item>
-            <el-form-item label="登录成功跳转地址">
-              <el-input v-model="form.wechat_frontend_url" placeholder="https://yourdomain.com（留空则跳转首页）" />
-              <div class="form-tip">微信授权成功后跳转到的前端地址（通常不需要配置）</div>
-            </el-form-item>
-          </template>
         </el-form>
       </el-tab-pane>
 
-      <!-- 公众号扫码登录 -->
-      <el-tab-pane label="公众号扫码" name="wechat_mp">
+      <!-- 号商设置 -->
+      <el-tab-pane label="号商设置" name="vendor">
         <el-form :model="form" label-width="160px" class="settings-form">
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
-            <template #title>此功能使用微信公众号事件推送实现扫码登录，与"微信登录"（H5 OAuth）相互独立，可同时开启。</template>
+            <template #title>号商向号池提供 API Key，每次 Key 被使用时，平台按比例抽成，剩余部分计入号商余额。</template>
           </el-alert>
-          <el-form-item label="启用公众号扫码登录">
-            <el-switch v-model="wechatMPLoginBool" @change="onWechatMPLoginSwitch" />
-            <div class="form-tip">开启后用户登录页面将显示公众号二维码，扫码关注即可登录</div>
+          <el-form-item label="全局平台抽成比例">
+            <el-input-number
+              v-model="vendorCommissionPercent"
+              :min="0" :max="100" :precision="2" :step="1"
+              @change="v => form.default_vendor_commission = (v / 100).toFixed(4)"
+            />
+            <span style="margin-left:8px;color:#606266">%</span>
+            <div class="form-tip">平台从号商收益中抽取的比例（例：2 表示号商实得 98%）。可为单个号商单独设置以覆盖此全局值。</div>
           </el-form-item>
-          <template v-if="wechatMPLoginBool">
-            <el-form-item label="公众号 AppID">
-              <el-input v-model="form.wechat_mp_appid" placeholder="wx开头的 AppID" />
-              <div class="form-tip">微信公众平台 → 设置 → 基本配置 → AppID</div>
-            </el-form-item>
-            <el-form-item label="公众号 AppSecret">
-              <el-input v-model="form.wechat_mp_secret" type="password" show-password placeholder="AppSecret（机密，请勿外泄）" />
-            </el-form-item>
-            <el-form-item label="Webhook Token">
-              <el-input v-model="form.wechat_mp_token" placeholder="自定义字符串，需与公众号后台一致" />
-              <div class="form-tip">
-                用于验证微信推送请求的合法性。<br>
-                微信公众平台 → 设置 → 公众号设置 → 功能设置 → 服务器配置<br>
-                Webhook URL：<code>{{ mpWebhookUrl }}</code>
-              </div>
-            </el-form-item>
-          </template>
         </el-form>
       </el-tab-pane>
 
@@ -401,17 +380,8 @@ const form = reactive({
   wechat_cs_url: '',
   recharge_allow_custom: 'true',
   recharge_plans: '[]',
-  // 微信登录
-  wechat_login_enabled: 'false',
-  wechat_appid: '',
-  wechat_secret: '',
-  wechat_redirect_base_url: '',
-  wechat_frontend_url: '',
-  // 公众号扫码登录
-  wechat_mp_login_enabled: 'false',
-  wechat_mp_appid: '',
-  wechat_mp_secret: '',
-  wechat_mp_token: '',
+  default_rebate_ratio: '0',
+  default_vendor_commission: '0',
   // 百度 OCPC
   ocpc_baidu_enabled: 'false',
   ocpc_baidu_token: '',
@@ -427,6 +397,8 @@ const form = reactive({
 // 套餐行（临时可编辑数组）
 const planRows = ref([])
 const allowCustomBool = ref(true)
+const rebateRatioPercent = ref(0)
+const vendorCommissionPercent = ref(0)
 
 function addPlan() {
   planRows.value.push({ credits: 100, bonus: 0, amount: 10, origin_amount: 0, desc: '' })
@@ -437,8 +409,6 @@ function removePlan(index) {
 
 const epayEnabledBool = ref(false)
 const payApplyEnabledBool = ref(false)
-const wechatLoginBool = ref(false)
-const wechatMPLoginBool = ref(false)
 const baiduOcpcBool = ref(false)
 const e360OcpcBool = ref(false)
 
@@ -456,12 +426,6 @@ function onPayApplySwitch(v) {
     form.epay_enabled = 'false'
   }
 }
-function onWechatLoginSwitch(v) {
-  form.wechat_login_enabled = v ? 'true' : 'false'
-}
-function onWechatMPLoginSwitch(v) {
-  form.wechat_mp_login_enabled = v ? 'true' : 'false'
-}
 function onBaiduOcpcSwitch(v) {
   form.ocpc_baidu_enabled = v ? 'true' : 'false'
 }
@@ -475,17 +439,9 @@ const payApplyNotifyUrl = computed(() => {
   return `${origin}/pay/apply/notify`
 })
 
-// 公众号扫码 Webhook 地址提示（只读）
-const mpWebhookUrl = computed(() => {
-  const origin = window.location.origin.replace(':3001', '')
-  return `${origin}/auth/wechat-mp/event`
-})
-
 watch(() => form.logo_url, () => { logoErr.value = false })
 watch(() => form.epay_enabled, (v) => { epayEnabledBool.value = v === 'true' })
 watch(() => form.pay_apply_enabled, (v) => { payApplyEnabledBool.value = v === 'true' })
-watch(() => form.wechat_login_enabled, (v) => { wechatLoginBool.value = v === 'true' })
-watch(() => form.wechat_mp_login_enabled, (v) => { wechatMPLoginBool.value = v === 'true' })
 watch(() => form.ocpc_baidu_enabled, (v) => { baiduOcpcBool.value = v === 'true' })
 watch(() => form.ocpc_360_enabled, (v) => { e360OcpcBool.value = v === 'true' })
 
@@ -496,11 +452,11 @@ onMounted(async () => {
     Object.keys(form).forEach(k => { if (s[k] !== undefined) form[k] = s[k] })
     epayEnabledBool.value = form.epay_enabled === 'true'
     payApplyEnabledBool.value = form.pay_apply_enabled === 'true'
-    wechatLoginBool.value = form.wechat_login_enabled === 'true'
-    wechatMPLoginBool.value = form.wechat_mp_login_enabled === 'true'
     baiduOcpcBool.value = form.ocpc_baidu_enabled === 'true'
     e360OcpcBool.value = form.ocpc_360_enabled === 'true'
     allowCustomBool.value = form.recharge_allow_custom !== 'false'
+    rebateRatioPercent.value = parseFloat(((parseFloat(form.default_rebate_ratio) || 0) * 100).toFixed(2))
+    vendorCommissionPercent.value = parseFloat(((parseFloat(form.default_vendor_commission) || 0) * 100).toFixed(2))
     try { planRows.value = JSON.parse(form.recharge_plans || '[]') } catch { planRows.value = [] }
   } catch {
     ElMessage.error('加载设置失败')
