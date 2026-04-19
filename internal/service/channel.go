@@ -55,7 +55,7 @@ func InvalidateChannelCache(ctx context.Context, channelID int64) {
 // ListChannels 返回所有渠道（管理员接口）。
 func ListChannels(ctx context.Context) ([]model.Channel, error) {
 	var channels []model.Channel
-	err := db.Engine.Find(&channels)
+	err := db.Engine.OrderBy("priority ASC, id ASC").Find(&channels)
 	return channels, err
 }
 

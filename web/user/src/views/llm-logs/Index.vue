@@ -90,7 +90,6 @@
             <el-tag :type="statusType(detail.status)" size="small">{{ statusLabel(detail.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="流式">{{ detail.is_stream ? '是' : '否' }}</el-descriptions-item>
-          <el-descriptions-item label="上游状态码">{{ detail.upstream_status || '—' }}</el-descriptions-item>
           <el-descriptions-item label="输入 Tokens">{{ detail.usage?.prompt_tokens ?? '—' }}</el-descriptions-item>
           <el-descriptions-item label="输出 Tokens">
             {{ detail.usage?.completion_tokens ?? '—' }}
@@ -109,14 +108,9 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <template v-if="detail.upstream_request">
-          <div class="detail-section-title">上游请求体</div>
-          <pre class="detail-pre">{{ JSON.stringify(detail.upstream_request, null, 2) }}</pre>
-        </template>
-
-        <template v-if="detail.upstream_response && Object.keys(detail.upstream_response).length > 0">
-          <div class="detail-section-title">上游响应</div>
-          <pre class="detail-pre">{{ JSON.stringify(detail.upstream_response, null, 2) }}</pre>
+        <template v-if="detail.client_request">
+          <div class="detail-section-title">您发送的请求</div>
+          <pre class="detail-pre">{{ JSON.stringify(detail.client_request, null, 2) }}</pre>
         </template>
       </div>
     </el-drawer>

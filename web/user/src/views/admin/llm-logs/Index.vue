@@ -116,8 +116,16 @@
           <div class="json-title">Token 用量</div>
           <pre>{{ pretty(currentLog.usage) }}</pre>
         </div>
+        <div v-if="currentLog.client_request" class="json-block">
+          <div class="json-title">用户原始请求体（协议转换前）</div>
+          <pre>{{ pretty(currentLog.client_request) }}</pre>
+        </div>
+        <div v-if="currentLog.upstream_headers" class="json-block">
+          <div class="json-title">发往上游的请求头（脱敏）</div>
+          <pre>{{ pretty(currentLog.upstream_headers) }}</pre>
+        </div>
         <div class="json-block">
-          <div class="json-title">发往上游的请求体</div>
+          <div class="json-title">发往上游的请求体（协议转换后）</div>
           <pre>{{ pretty(currentLog.upstream_request) }}</pre>
         </div>
         <div v-if="currentLog.upstream_response" class="json-block">

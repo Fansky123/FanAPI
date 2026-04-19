@@ -273,7 +273,7 @@ func UserListLLMLogs(c *gin.Context) {
 	})
 }
 
-// GET /v1/llm-logs/:id  （用户查自己某条日志的完整详情，含 upstream_request）
+// GET /v1/llm-logs/:id  （用户查自己某条日志的完整详情，只含用户可见字段）
 func UserGetLLMLog(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -291,5 +291,29 @@ func UserGetLLMLog(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, log)
+	// 只返回用户可见字段，不暴露上游路由、Key、请求头等内部信息
+	type userLogDetail struct {
+		ID            int64      `json:"id"`
+		CorrID        string     `json:"corr_id"`
+		Model         string     `json:"model"`
+		IsStream      bool       `json:"is_stream"`
+		ClientRequest model.JSON `json:"client_request,omitempty"` // 用户原始请求
+		Usage         model.JSON `json:"usage,omitempty"`
+		Status        string     `json:"status"`
+		ErrorMsg      string     `json:"error_msg,omitempty"`
+		CreatedAt     string     `json:"created_at"`
+		UpdatedAt     string     `json:"updated_at"`
+	}
+	c.JSON(http.StatusOK, userLogDetail{
+		ID:            log.ID,
+		CorrID:        log.CorrID,
+		Model:         log.Model,
+		IsStream:      log.IsStream,
+		ClientRequest: log.ClientRequest,
+		Usage:         log.Usage,
+		Status:        log.Status,
+		ErrorMsg:      log.ErrorMsg,
+		CreatedAt:     log.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:     log.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
 }

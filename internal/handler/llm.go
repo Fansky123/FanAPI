@@ -518,13 +518,28 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		UpstreamURL:     upstreamURL,
 		UpstreamMethod:  upstreamMethod,
 		UpstreamRequest: model.JSON(mappedReq),
+		ClientRequest:   model.JSON(origReqData), // 用户原始请求（协议转换前）
 		Status:          "pending",
 	}
 	_, _ = db.Engine.Insert(llmLog)
 
 	// 6. 号池 Key 已在步骤1分配，直接发送上游请求
 	// 7. 发送上游请求
-	resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
+	sentHeaders, resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
+	if sentHeaders != nil {
+		// 异步写入请求头（不阻塞主流程）
+		logID := llmLog.ID
+		go func() {
+			db.Engine.Where("id = ?", logID).Cols("upstream_headers").
+				Update(&model.LLMLog{UpstreamHeaders: model.JSON(func() map[string]interface{} {
+					m := make(map[string]interface{}, len(sentHeaders))
+					for k, v := range sentHeaders {
+						m[k] = v
+					}
+					return m
+				}())})
+		}()
+	}
 	if err != nil {
 		service.RecordChannelError(c.Request.Context(), channelID)
 		// 尝试换渠道重试
@@ -552,7 +567,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		if rotErr == nil {
 			poolKey = newKey
 			poolKeyIDVal = newKey.ID // 更新 poolKeyIDVal，确保后续结算流水关联正确的号商
-			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
+			_, resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
 			if err != nil {
 				service.RecordChannelError(c.Request.Context(), channelID)
 				llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, poolKeyIDVal, 0, "上游请求失败(重试): "+err.Error())
@@ -831,7 +846,7 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 //   - "query_param" 将 KEY 作为查询参数附加到 URL
 //   - "basic"      HTTP Basic Auth，KEY 格式为 "user:pass"
 //   - "sigv4"      AWS Signature V4，KEY 格式为 "ACCESS_KEY:SECRET_KEY"
-func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string) (*http.Response, error) {
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string) (map[string]string, *http.Response, error) {
 	body, _ := json.Marshal(reqData)
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
@@ -845,7 +860,7 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 
 	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
@@ -929,12 +944,29 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 				service = "execute-api"
 			}
 			if signErr := signSigV4(upReq, apiKey, region, service, body); signErr != nil {
-				return nil, fmt.Errorf("sigv4 签名失败: %w", signErr)
+				return nil, nil, fmt.Errorf("sigv4 签名失败: %w", signErr)
 			}
 		}
 	}
 
-	return httpClient.Do(upReq)
+	// 采集脱敏后的请求头（用于日志排查）
+	sanitizedHeaders := make(map[string]string, len(upReq.Header))
+	for k, vals := range upReq.Header {
+		v := strings.Join(vals, ", ")
+		lower := strings.ToLower(k)
+		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" {
+			// 仅保留前缀部分，如 "Bearer sk-***"
+			if idx := strings.Index(v, " "); idx > 0 {
+				v = v[:idx+1] + "***"
+			} else {
+				v = "***"
+			}
+		}
+		sanitizedHeaders[k] = v
+	}
+
+	resp, err := httpClient.Do(upReq)
+	return sanitizedHeaders, resp, err
 }
 
 // signSigV4 为请求添加 AWS Signature Version 4 认证头。

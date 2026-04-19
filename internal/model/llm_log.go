@@ -20,7 +20,9 @@ type LLMLog struct {
 	IsStream         bool      `xorm:"'is_stream'" json:"is_stream"`                                 // 是否流式请求
 	UpstreamURL      string    `xorm:"text default('') 'upstream_url'" json:"upstream_url"`          // 实际发往上游的完整 URL（含 {model} 替换后）
 	UpstreamMethod   string    `xorm:"default('POST') 'upstream_method'" json:"upstream_method"`     // 上游请求方式
-	UpstreamRequest  JSON      `xorm:"jsonb 'upstream_request'" json:"upstream_request"`             // 发往上游的完整 JSON body
+	UpstreamHeaders  JSON      `xorm:"jsonb 'upstream_headers'" json:"upstream_headers,omitempty"`   // 发往上游的 HTTP 请求头（脱敏后）
+	UpstreamRequest  JSON      `xorm:"jsonb 'upstream_request'" json:"upstream_request"`             // 发往上游的完整 JSON body（经协议转换后）
+	ClientRequest    JSON      `xorm:"jsonb 'client_request'" json:"client_request,omitempty"`       // 用户原始请求体（转换前）
 	UpstreamStatus   int       `xorm:"default(0) 'upstream_status'" json:"upstream_status"`          // 上游 HTTP 状态码
 	UpstreamResponse JSON      `xorm:"jsonb 'upstream_response'" json:"upstream_response,omitempty"` // 上游响应 JSON（同步模式存完整响应，流式模式存 usage chunk）
 	Usage            JSON      `xorm:"jsonb 'usage'" json:"usage,omitempty"`                         // 结算用量 {prompt_tokens, completion_tokens, estimated?}
