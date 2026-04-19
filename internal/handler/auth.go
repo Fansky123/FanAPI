@@ -383,7 +383,21 @@ func buildPriceDisplay(billingType string, cfg model.JSON) string {
 		in := toF("input_price_per_1m_tokens") / 1000000 // credits → ¥
 		out := toF("output_price_per_1m_tokens") / 1000000
 		if in > 0 && out > 0 {
-			return fmt.Sprintf("¥%.4f / 1M 输入 + ¥%.4f / 1M 输出", in, out)
+			base := fmt.Sprintf("¥%.4f / 1M 输入 + ¥%.4f / 1M 输出", in, out)
+			cacheCreate := toF("cache_creation_price_per_1m_tokens") / 1000000
+			cacheRead := toF("cache_read_price_per_1m_tokens") / 1000000
+			if cacheCreate > 0 || cacheRead > 0 {
+				cacheStr := ""
+				if cacheCreate > 0 && cacheRead > 0 {
+					cacheStr = fmt.Sprintf("缓存写入 ¥%.4f + 缓存读取 ¥%.4f / 1M", cacheCreate, cacheRead)
+				} else if cacheCreate > 0 {
+					cacheStr = fmt.Sprintf("缓存写入 ¥%.4f / 1M", cacheCreate)
+				} else {
+					cacheStr = fmt.Sprintf("缓存读取 ¥%.4f / 1M", cacheRead)
+				}
+				return base + "\n" + cacheStr
+			}
+			return base
 		}
 	case "image":
 		base := toF("base_price") / 1000000

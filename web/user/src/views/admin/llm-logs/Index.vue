@@ -110,6 +110,9 @@
           <el-descriptions-item label="Corr ID" :span="2">{{ currentLog.corr_id }}</el-descriptions-item>
           <el-descriptions-item v-if="currentLog.error_msg" label="错误信息" :span="2">{{ currentLog.error_msg }}</el-descriptions-item>
           <el-descriptions-item label="创建时间" :span="2">{{ fmtTimeStr(currentLog.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间" :span="2">
+            {{ currentLog.status !== 'pending' ? fmtTimeStr(currentLog.updated_at) : '—' }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <div v-if="currentLog.usage" class="json-block">

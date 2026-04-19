@@ -112,6 +112,16 @@
           <div class="detail-section-title">您发送的请求</div>
           <pre class="detail-pre">{{ JSON.stringify(detail.client_request, null, 2) }}</pre>
         </template>
+
+        <template v-if="detail.client_response">
+          <div class="detail-section-title">平台返回内容</div>
+          <template v-if="detail.client_response.stream">
+            <pre class="detail-pre">{{ detail.client_response.content }}</pre>
+          </template>
+          <template v-else>
+            <pre class="detail-pre">{{ JSON.stringify(detail.client_response, null, 2) }}</pre>
+          </template>
+        </template>
       </div>
     </el-drawer>
   </div>

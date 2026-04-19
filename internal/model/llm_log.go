@@ -24,7 +24,8 @@ type LLMLog struct {
 	UpstreamRequest  JSON      `xorm:"jsonb 'upstream_request'" json:"upstream_request"`             // 发往上游的完整 JSON body（经协议转换后）
 	ClientRequest    JSON      `xorm:"jsonb 'client_request'" json:"client_request,omitempty"`       // 用户原始请求体（转换前）
 	UpstreamStatus   int       `xorm:"default(0) 'upstream_status'" json:"upstream_status"`          // 上游 HTTP 状态码
-	UpstreamResponse JSON      `xorm:"jsonb 'upstream_response'" json:"upstream_response,omitempty"` // 上游响应 JSON（同步模式存完整响应，流式模式存 usage chunk）
+	UpstreamResponse JSON      `xorm:"jsonb 'upstream_response'" json:"upstream_response,omitempty"` // 上游响应 JSON（同步模式存完整响应，流式模式存原始 SSE 行）
+	ClientResponse   JSON      `xorm:"jsonb 'client_response'" json:"client_response,omitempty"`     // 实际返回给用户的响应（同步存转换后 JSON，流式存组装文本）
 	Usage            JSON      `xorm:"jsonb 'usage'" json:"usage,omitempty"`                         // 结算用量 {prompt_tokens, completion_tokens, estimated?}
 	Status           string    `xorm:"notnull default('pending') 'status'" json:"status"`
 	ErrorMsg         string    `xorm:"text 'error_msg'" json:"error_msg,omitempty"`

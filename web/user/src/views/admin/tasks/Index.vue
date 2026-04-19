@@ -88,6 +88,11 @@
           <el-descriptions-item label="扣费">{{ currentTask.credits_charged }} cr</el-descriptions-item>
           <el-descriptions-item label="第三方任务 ID" :span="2">{{ currentTask.upstream_task_id || '-' }}</el-descriptions-item>
           <el-descriptions-item label="错误信息" :span="2">{{ currentTask.error_msg || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">{{ fmtTime(null, null, currentTask.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间" :span="2">
+            <span v-if="currentTask.status === 'done' || currentTask.status === 'failed'">{{ fmtTime(null, null, currentTask.updated_at) }}</span>
+            <span v-else>-</span>
+          </el-descriptions-item>
         </el-descriptions>
 
         <div class="json-block">

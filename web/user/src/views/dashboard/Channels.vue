@@ -81,7 +81,10 @@
               <el-icon class="copy-icon" @click.stop="copyModel(ch.name)" title="复制模型名"><CopyDocument /></el-icon>
             </div>
             <div class="card-cost" v-if="ch.price_display">
-              积分消耗：{{ ch.price_display }}
+              <div v-for="(line, i) in ch.price_display.split('\n')" :key="i">
+                <span v-if="i === 0">积分消耗：{{ line }}</span>
+                <span v-else style="color:#909399;font-size:11px">{{ line }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -211,7 +214,11 @@
             </div>
             <div class="doc-info-item">
               <span class="doc-label">计费</span>
-              <span style="color:#165dff;font-weight:600">{{ docChannel.price_display || '—' }}</span>
+              <span style="color:#165dff;font-weight:600">
+                <span v-for="(line, i) in (docChannel.price_display || '—').split('\n')" :key="i">
+                  <br v-if="i > 0" />{{ line }}
+                </span>
+              </span>
               <span v-if="docChannel.group_price" style="color:#00b42a;font-size:12px;margin-left:6px">（专属：{{ docChannel.group_price }}）</span>
             </div>
             <div class="doc-info-item">

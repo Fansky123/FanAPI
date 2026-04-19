@@ -293,27 +293,29 @@ func UserGetLLMLog(c *gin.Context) {
 	}
 	// 只返回用户可见字段，不暴露上游路由、Key、请求头等内部信息
 	type userLogDetail struct {
-		ID            int64      `json:"id"`
-		CorrID        string     `json:"corr_id"`
-		Model         string     `json:"model"`
-		IsStream      bool       `json:"is_stream"`
-		ClientRequest model.JSON `json:"client_request,omitempty"` // 用户原始请求
-		Usage         model.JSON `json:"usage,omitempty"`
-		Status        string     `json:"status"`
-		ErrorMsg      string     `json:"error_msg,omitempty"`
-		CreatedAt     string     `json:"created_at"`
-		UpdatedAt     string     `json:"updated_at"`
+		ID             int64      `json:"id"`
+		CorrID         string     `json:"corr_id"`
+		Model          string     `json:"model"`
+		IsStream       bool       `json:"is_stream"`
+		ClientRequest  model.JSON `json:"client_request,omitempty"`  // 用户原始请求
+		ClientResponse model.JSON `json:"client_response,omitempty"` // 平台返回给用户的响应
+		Usage          model.JSON `json:"usage,omitempty"`
+		Status         string     `json:"status"`
+		ErrorMsg       string     `json:"error_msg,omitempty"`
+		CreatedAt      string     `json:"created_at"`
+		UpdatedAt      string     `json:"updated_at"`
 	}
 	c.JSON(http.StatusOK, userLogDetail{
-		ID:            log.ID,
-		CorrID:        log.CorrID,
-		Model:         log.Model,
-		IsStream:      log.IsStream,
-		ClientRequest: log.ClientRequest,
-		Usage:         log.Usage,
-		Status:        log.Status,
-		ErrorMsg:      log.ErrorMsg,
-		CreatedAt:     log.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:     log.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:             log.ID,
+		CorrID:         log.CorrID,
+		Model:          log.Model,
+		IsStream:       log.IsStream,
+		ClientRequest:  log.ClientRequest,
+		ClientResponse: log.ClientResponse,
+		Usage:          log.Usage,
+		Status:         log.Status,
+		ErrorMsg:       log.ErrorMsg,
+		CreatedAt:      log.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:      log.UpdatedAt.Format("2006-01-02 15:04:05"),
 	})
 }

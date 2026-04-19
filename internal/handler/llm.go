@@ -654,8 +654,14 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 
 		c.Data(http.StatusOK, "application/json", respBytes)
 
-		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
-			Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON(origRespJSON)})
+		var clientRespJSON map[string]interface{}
+		_ = json.Unmarshal(respBytes, &clientRespJSON)
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response", "client_response").
+			Update(&model.LLMLog{
+				UpstreamStatus:   http.StatusOK,
+				UpstreamResponse: model.JSON(origRespJSON),
+				ClientResponse:   model.JSON(clientRespJSON),
+			})
 
 		llmSettle(c, ch, origReqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
 		return
@@ -739,8 +745,12 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		return true
 	})
 
-	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
-		Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON{"lines": rawSSELines}})
+	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response", "client_response").
+		Update(&model.LLMLog{
+			UpstreamStatus:   http.StatusOK,
+			UpstreamResponse: model.JSON{"lines": rawSSELines},
+			ClientResponse:   buildStreamClientResponse(rawSSELines, proto),
+		})
 
 	llmSettle(c, ch, origReqData, usage.normalized(origReqData), totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
 }
@@ -847,6 +857,77 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	}
 	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "usage").
 		Update(&model.LLMLog{Status: "ok", Usage: model.JSON(usageData)})
+}
+
+// buildStreamClientResponse 从上游 SSE 原始行中提取并组装文本内容，
+// 存入 client_response 供用户端日志展示平台返回了什么。
+func buildStreamClientResponse(lines []string, proto string) model.JSON {
+	var buf strings.Builder
+	var lastEvent string
+	for _, line := range lines {
+		switch proto {
+		case protocolClaude:
+			if strings.HasPrefix(line, "event: ") {
+				lastEvent = strings.TrimPrefix(line, "event: ")
+				continue
+			}
+			if lastEvent == "content_block_delta" && strings.HasPrefix(line, "data: ") {
+				var chunk map[string]interface{}
+				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk) == nil {
+					if delta, ok := chunk["delta"].(map[string]interface{}); ok {
+						if text, _ := delta["text"].(string); text != "" {
+							buf.WriteString(text)
+						}
+					}
+				}
+			}
+		case protocolGemini:
+			if strings.HasPrefix(line, "data: ") {
+				var chunk map[string]interface{}
+				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk) == nil {
+					if candidates, ok := chunk["candidates"].([]interface{}); ok && len(candidates) > 0 {
+						if cand, ok := candidates[0].(map[string]interface{}); ok {
+							if content, ok := cand["content"].(map[string]interface{}); ok {
+								if parts, ok := content["parts"].([]interface{}); ok {
+									for _, p := range parts {
+										if pm, ok := p.(map[string]interface{}); ok {
+											if t, _ := pm["text"].(string); t != "" {
+												buf.WriteString(t)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		default: // openai
+			if strings.HasPrefix(line, "data: ") {
+				payload := strings.TrimPrefix(line, "data: ")
+				if payload == "[DONE]" {
+					continue
+				}
+				var chunk map[string]interface{}
+				if json.Unmarshal([]byte(payload), &chunk) == nil {
+					if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+						if choice, ok := choices[0].(map[string]interface{}); ok {
+							if delta, ok := choice["delta"].(map[string]interface{}); ok {
+								if text, _ := delta["content"].(string); text != "" {
+									buf.WriteString(text)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	text := buf.String()
+	if text == "" {
+		return nil
+	}
+	return model.JSON{"content": text, "stream": true}
 }
 
 // sendLLMRequest 构建并发送对上游 LLM 的 HTTP 请求。
