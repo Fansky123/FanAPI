@@ -222,6 +222,9 @@ func convertToolChoiceToClaude(tc interface{}) interface{} {
 		case "auto":
 			return map[string]interface{}{"type": "auto"}
 		case "none":
+			// Claude 没有 none 等价项，用 auto 并不强制调用工具
+			return map[string]interface{}{"type": "auto"}
+		case "required":
 			return map[string]interface{}{"type": "any"}
 		}
 		return map[string]interface{}{"type": "auto"}
@@ -1013,13 +1016,14 @@ func openAIToClaudeResponse(body []byte) ([]byte, error) {
 	}
 
 	out := map[string]interface{}{
-		"id":          id,
-		"type":        "message",
-		"role":        "assistant",
-		"model":       model,
-		"content":     content,
-		"stop_reason": stopReason,
-		"usage":       usage,
+		"id":            id,
+		"type":          "message",
+		"role":          "assistant",
+		"model":         model,
+		"content":       content,
+		"stop_reason":   stopReason,
+		"stop_sequence": nil,
+		"usage":         usage,
 	}
 	return json.Marshal(out)
 }

@@ -251,6 +251,10 @@ func (g *geminiToOpenAISSE) Convert(line string) []string {
 		result = append(result, "data: [DONE]", "")
 	}
 
+	if text == "" && !isFinish {
+		return nil // 跳过没有内容且非结束的中间块（如纯 usageMetadata chunk）
+	}
+
 	return result
 }
 
@@ -267,11 +271,12 @@ func (g *geminiToOpenAISSE) Flush() []string {
 // ─────────────────────────────────────────────
 
 type openAIToClaudeSSE struct {
-	msgID       string
-	model       string
-	inputTokens int64
-	sentStart   bool
-	doneSent    bool
+	msgID        string
+	model        string
+	inputTokens  int64
+	outputTokens int64
+	sentStart    bool
+	doneSent     bool
 }
 
 func (o *openAIToClaudeSSE) Convert(line string) []string {
@@ -299,6 +304,9 @@ func (o *openAIToClaudeSSE) Convert(line string) []string {
 	if usg, ok := chunk["usage"].(map[string]interface{}); ok {
 		if pt, _ := usg["prompt_tokens"].(float64); pt > 0 {
 			o.inputTokens = int64(pt)
+		}
+		if ct, _ := usg["completion_tokens"].(float64); ct > 0 {
+			o.outputTokens = int64(ct)
 		}
 	}
 
@@ -371,12 +379,19 @@ func (o *openAIToClaudeSSE) contentDeltaLines(text string) []string {
 }
 
 func (o *openAIToClaudeSSE) stopEvents() []string {
+	outTok := o.outputTokens
+	msgDelta := map[string]interface{}{
+		"type":  "message_delta",
+		"delta": map[string]interface{}{"stop_reason": "end_turn", "stop_sequence": nil},
+		"usage": map[string]interface{}{"output_tokens": outTok},
+	}
+	b, _ := json.Marshal(msgDelta)
 	return []string{
 		"event: content_block_stop",
 		`data: {"type":"content_block_stop","index":0}`,
 		"",
 		"event: message_delta",
-		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":0}}`,
+		"data: " + string(b),
 		"",
 		"event: message_stop",
 		`data: {"type":"message_stop"}`,

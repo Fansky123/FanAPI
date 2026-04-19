@@ -280,17 +280,23 @@ func resolutionMultiplier(cfg map[string]interface{}, pixels int64) float64 {
 	return 1.0
 }
 
-// estimateTokensFromMessages 通过遍历请求 messages 字段的字符总长度估算 token 数（约 4 字符 = 1 token）。
+// estimateTokensFromMessages 通过遍历请求 messages（OpenAI/Claude 格式）或 contents（Gemini 格式）
+// 字段的字符总长度估算 token 数（约 4 字符 = 1 token）。
 // 当无法从请求直接获取 input_tokens 时作为备用估算。
 func estimateTokensFromMessages(req map[string]interface{}) int64 {
 	if req == nil {
 		return 0
 	}
-	messages, ok := req["messages"]
-	if !ok {
+	// 优先读 messages（OpenAI / Claude 格式），没有时尝试 contents（Gemini 原生格式）
+	var payload interface{}
+	if msgs, ok := req["messages"]; ok {
+		payload = msgs
+	} else if contents, ok := req["contents"]; ok {
+		payload = contents
+	} else {
 		return 0
 	}
-	totalChars := countStringLen(messages)
+	totalChars := countStringLen(payload)
 	if totalChars == 0 {
 		return 0
 	}

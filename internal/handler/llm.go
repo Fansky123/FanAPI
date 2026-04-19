@@ -361,6 +361,14 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	// isStream 必须在协议转换前读取（Gemini 转换后 body 不含 stream 字段）
 	isStream, _ := reqData["stream"].(bool)
 
+	// 保存原始客户端格式请求，用于：
+	// 1. 计费估算（billing 读取 messages 字段，此字段在 Gemini 转换后不存在）
+	// 2. 换渠道重试（下一渠道需要原始格式重新转换，而不是已转换格式）
+	origReqData := make(map[string]interface{}, len(reqData))
+	for k, v := range reqData {
+		origReqData[k] = v
+	}
+
 	// 客户端格式 ≠ 渠道格式时，需要请求格式转换链：
 	//   客户端格式 → OpenAI（若客户端本身就是 OpenAI 则跳过） → 渠道格式（若渠道本身是 OpenAI 则跳过）
 	// 客户端格式 == 渠道格式时直接透传，不做任何转换。
@@ -418,7 +426,14 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		mappedReq = mapped
 	}
 
-	// 3. 流式注入 include_usage（OpenAI 协议专用）
+	// 3a. Claude 渠道：补全必填字段（max_tokens 为 Claude API 强制要求，无论客户端格式如何）
+	if proto == protocolClaude {
+		if _, ok := mappedReq["max_tokens"]; !ok {
+			mappedReq["max_tokens"] = 4096
+		}
+	}
+
+	// 3b. 流式注入 include_usage（OpenAI 协议专用）
 	if isStream && proto == protocolOpenAI {
 		mappedReq["stream"] = true
 		if _, hasOpts := mappedReq["stream_options"]; !hasOpts {
@@ -429,13 +444,14 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// 4. 计算预扣金额（含用户分组定价）
-	inputHold, outputHold, calcErr := billing.CalcForUser(ch, reqData, userGroup)
+	// 使用原始客户端格式请求（origReqData）：Gemini 转换后不含 messages 字段，会导致 token 估算为 0
+	inputHold, outputHold, calcErr := billing.CalcForUser(ch, origReqData, userGroup)
 	if calcErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "计费计算错误: " + calcErr.Error()})
 		return
 	}
 	totalHold := inputHold + outputHold
-	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
+	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, origReqData)
 
 	if totalHold > 0 {
 		if chargeErr := billing.Charge(c.Request.Context(), userID, totalHold); chargeErr != nil {
@@ -496,7 +512,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
 				}
-				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+				llmProxyWithChannel(c, nextCh, origReqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 				return
 			}
 		}
@@ -533,7 +549,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 					_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 						Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry"})
 				}
-				llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+				llmProxyWithChannel(c, nextCh, origReqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 				return
 			}
 		}
@@ -566,7 +582,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 								_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 									Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry: " + bizErr})
 							}
-							llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+							llmProxyWithChannel(c, nextCh, origReqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 							return
 						}
 					}
@@ -601,7 +617,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
 			Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON(origRespJSON)})
 
-		llmSettle(c, ch, reqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
+		llmSettle(c, ch, origReqData, syncUsage, totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
 		return
 	}
 
@@ -627,7 +643,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 									_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "error_msg").
 										Update(&model.LLMLog{Status: "error", ErrorMsg: "channel retry: " + bizErr})
 								}
-								llmProxyWithChannel(c, nextCh, reqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
+								llmProxyWithChannel(c, nextCh, origReqData, userID, apiKeyIDVal, userGroup, triedIDs, stableChannels)
 								return
 							}
 						}
@@ -676,7 +692,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status").
 		Update(&model.LLMLog{UpstreamStatus: http.StatusOK})
 
-	llmSettle(c, ch, reqData, usage.normalized(reqData), totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
+	llmSettle(c, ch, origReqData, usage.normalized(origReqData), totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
 }
 
 // selectNextChannel 为重试选择下一个渠道，排除已尝试过的渠道 ID。
