@@ -1,8 +1,14 @@
 package handler
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"fanapi/internal/config"
 	"fanapi/internal/db"
@@ -97,31 +103,235 @@ func (h *VendorHandler) GetProfile(c *gin.Context) {
 func (h *VendorHandler) GetPoolKeys(c *gin.Context) {
 	vendorID := c.MustGet("vendor_id").(int64)
 
+	// 查询当前号商的 commission_ratio（用于计算净收益）
+	var vendor model.Vendor
+	if found, _ := db.Engine.ID(vendorID).Get(&vendor); !found {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取失败"})
+		return
+	}
+	commissionRatio := 0.0
+	if vendor.CommissionRatio != nil {
+		commissionRatio = *vendor.CommissionRatio
+	} else {
+		// 使用系统全局手续费比例
+		var setting model.SystemSetting
+		if found, _ := db.Engine.Where("key = ?", "default_vendor_commission").Get(&setting); found && setting.Value != "" {
+			fmt.Sscanf(setting.Value, "%f", &commissionRatio)
+		}
+	}
+
 	var keys []model.PoolKey
 	if err := db.Engine.Where("vendor_id = ?", vendorID).Find(&keys); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取失败"})
 		return
 	}
 
-	// 对每个 Key 查询累计消耗（按 pool_key_id 汇总 billing_transactions）
 	type KeyStat struct {
-		model.PoolKey
-		TotalCredits int64 `json:"total_credits"`
-		TotalCost    int64 `json:"total_cost"`
+		ID          int64     `json:"id"`
+		PoolID      int64     `json:"pool_id"`
+		ChannelName string    `json:"channel_name"`
+		MaskedValue string    `json:"masked_value"`
+		TotalCost   int64     `json:"total_cost"` // 累计平台进价（credits）
+		MyEarn      float64   `json:"my_earn"`    // 号商净收益（credits，已扣手续费）
+		IsActive    bool      `json:"is_active"`
+		CreatedAt   time.Time `json:"created_at"`
 	}
 
 	result := make([]KeyStat, 0, len(keys))
 	for _, k := range keys {
-		k.Value = "" // 不暴露 Key 原值
-		var totalCredits, totalCost int64
+		// 查询关联渠道名称
+		channelName := ""
+		var pool model.KeyPool
+		if found, _ := db.Engine.ID(k.PoolID).Get(&pool); found {
+			var ch model.Channel
+			if found2, _ := db.Engine.ID(pool.ChannelID).Get(&ch); found2 {
+				channelName = ch.Name
+			}
+		}
+
+		// 查询累计进价成本
+		var totalCost int64
 		db.Engine.SQL(
-			`SELECT COALESCE(SUM(credits),0), COALESCE(SUM(cost),0) FROM billing_transactions WHERE pool_key_id = ? AND type IN ('settle','charge')`,
+			`SELECT COALESCE(SUM(cost),0) FROM billing_transactions WHERE pool_key_id = ? AND type IN ('settle','charge')`,
 			k.ID,
-		).Get(&totalCredits, &totalCost) //nolint:errcheck
-		result = append(result, KeyStat{PoolKey: k, TotalCredits: totalCredits, TotalCost: totalCost})
+		).Get(&totalCost) //nolint:errcheck
+
+		myEarn := float64(totalCost) * (1 - commissionRatio)
+
+		result = append(result, KeyStat{
+			ID:          k.ID,
+			PoolID:      k.PoolID,
+			ChannelName: channelName,
+			MaskedValue: maskKeyValue(k.Value),
+			TotalCost:   totalCost,
+			MyEarn:      myEarn,
+			IsActive:    k.IsActive,
+			CreatedAt:   k.CreatedAt,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"keys": result})
+}
+
+// maskKeyValue 将 Key 原文打码，保留首 6 位和末 4 位。
+func maskKeyValue(v string) string {
+	if len(v) <= 10 {
+		return "****"
+	}
+	return v[:6] + "..." + v[len(v)-4:]
+}
+
+// GetSubmittablePools 列出允许号商自助上传 Key 的号池。
+//
+// @Summary      号商获取可提交号池列表
+// @Tags         号商
+// @Security     BearerAuth
+// @Success      200  {object}  object{pools=[]object}
+// @Router       /vendor/pools [get]
+func (h *VendorHandler) GetSubmittablePools(c *gin.Context) {
+	type PoolInfo struct {
+		ID          int64  `json:"id"`
+		Name        string `json:"name"`
+		ChannelName string `json:"channel_name"`
+		ChannelType string `json:"channel_type"`
+	}
+
+	var pools []model.KeyPool
+	if err := db.Engine.Where("vendor_submittable = true AND is_active = true").Find(&pools); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取失败"})
+		return
+	}
+
+	result := make([]PoolInfo, 0, len(pools))
+	for _, pool := range pools {
+		var ch model.Channel
+		if found, _ := db.Engine.ID(pool.ChannelID).Get(&ch); !found {
+			continue
+		}
+		result = append(result, PoolInfo{
+			ID:          pool.ID,
+			Name:        pool.Name,
+			ChannelName: ch.Name,
+			ChannelType: ch.Type,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"pools": result})
+}
+
+// SubmitKey 号商自助上传 Key：先测试 Key 有效性，通过后加入号池。
+//
+// @Summary      号商提交 Key
+// @Tags         号商
+// @Security     BearerAuth
+// @Param        body  body  object{pool_id=int,value=string}  true  "Key 信息"
+// @Success      201   {object}  object{message=string}
+// @Router       /vendor/keys [post]
+func (h *VendorHandler) SubmitKey(c *gin.Context) {
+	vendorID := c.MustGet("vendor_id").(int64)
+
+	var req struct {
+		PoolID int64  `json:"pool_id" binding:"required"`
+		Value  string `json:"value" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 1. 验证号池存在且开放自助上传
+	var pool model.KeyPool
+	found, err := db.Engine.Where("id = ? AND vendor_submittable = true AND is_active = true", req.PoolID).Get(&pool)
+	if err != nil || !found {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "号池不存在或不支持自助上传"})
+		return
+	}
+
+	// 2. 获取关联渠道
+	var ch model.Channel
+	if found2, _ := db.Engine.ID(pool.ChannelID).Get(&ch); !found2 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联渠道不存在"})
+		return
+	}
+
+	// 3. 检查是否已存在（防重复）
+	exists, _ := db.Engine.Where("pool_id = ? AND value = ?", req.PoolID, req.Value).Exist(&model.PoolKey{})
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "该 Key 已存在于号池中，请勿重复提交"})
+		return
+	}
+
+	// 4. 验证 Key 有效性
+	if err := testKeyAgainstChannel(c.Request.Context(), &ch, req.Value); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 5. 写入号池
+	key := model.PoolKey{
+		PoolID:   req.PoolID,
+		VendorID: &vendorID,
+		Value:    req.Value,
+		Priority: 0,
+		IsActive: true,
+	}
+	if err := service.AddPoolKey(c.Request.Context(), &key); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Key 验证通过，已成功加入号池"})
+}
+
+// testKeyAgainstChannel 向渠道上游发送最小测试请求验证 Key 是否有效。
+// 仅当上游明确返回 401 Unauthorized 或 403 Forbidden 时认定 Key 无效；
+// 其他状态码（400 参数错误、5xx 服务错误、200 正常）均视为 Key 本身可用。
+func testKeyAgainstChannel(ctx context.Context, ch *model.Channel, keyValue string) error {
+	var reqBody io.Reader
+	method := "POST"
+
+	if ch.Type == "llm" {
+		payload := map[string]interface{}{
+			"model":      ch.Model,
+			"messages":   []map[string]string{{"role": "user", "content": "hi"}},
+			"max_tokens": 1,
+		}
+		b, _ := json.Marshal(payload)
+		reqBody = bytes.NewReader(b)
+	} else {
+		// 非 LLM 渠道：GET 探测连通性
+		method = "GET"
+		reqBody = http.NoBody
+	}
+
+	testCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(testCtx, method, ch.BaseURL, reqBody)
+	if err != nil {
+		// 构建请求失败，忽略测试
+		return nil
+	}
+	if ch.Type == "llm" {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+keyValue)
+
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		// 网络错误无法判断 Key 有效性，允许通过（可能是短暂网络问题）
+		return nil
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return fmt.Errorf("Key 无效或已过期（上游返回 401 Unauthorized）")
+	case http.StatusForbidden:
+		return fmt.Errorf("Key 权限不足（上游返回 403 Forbidden）")
+	}
+	return nil
 }
 
 // ---- 管理员接口 ----

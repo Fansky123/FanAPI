@@ -34,4 +34,6 @@ export const vendorAuthApi = {
 export const vendorApi = {
   getProfile: () => vendorHttp.get('/vendor/profile'),
   getKeys: () => vendorHttp.get('/vendor/keys'),
+  getPools: () => vendorHttp.get('/vendor/pools'),
+  submitKey: (data) => vendorHttp.post('/vendor/keys', data),
 }

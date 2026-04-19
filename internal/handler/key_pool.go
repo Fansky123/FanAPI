@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"fanapi/internal/db"
 	"fanapi/internal/model"
 	"fanapi/internal/service"
 
@@ -128,4 +129,25 @@ func RemovePoolKey(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// ToggleVendorSubmittable PATCH /admin/key-pools/:id/vendor-toggle
+// 切换号池的"允许号商自助上传 Key"开关。
+func ToggleVendorSubmittable(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
+		return
+	}
+	var pool model.KeyPool
+	if found, _ := db.Engine.ID(id).Get(&pool); !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "号池不存在"})
+		return
+	}
+	pool.VendorSubmittable = !pool.VendorSubmittable
+	if _, err := db.Engine.ID(id).Cols("vendor_submittable").Update(&pool); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"vendor_submittable": pool.VendorSubmittable})
 }

@@ -6,12 +6,13 @@ import "time"
 // 当渠道配置了 KeyPoolID（非 0），则请求时使用号池进行 Sticky 轮转，
 // 而不使用渠道 Headers 中的静态 Authorization Key。
 type KeyPool struct {
-	ID        int64     `xorm:"pk autoincr 'id'" json:"id"`
-	ChannelID int64     `xorm:"notnull index 'channel_id'" json:"channel_id"`
-	Name      string    `xorm:"notnull 'name'" json:"name"`
-	IsActive  bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
-	CreatedAt time.Time `xorm:"created 'created_at'" json:"created_at"`
-	UpdatedAt time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
+	ID                int64     `xorm:"pk autoincr 'id'" json:"id"`
+	ChannelID         int64     `xorm:"notnull index 'channel_id'" json:"channel_id"`
+	Name              string    `xorm:"notnull 'name'" json:"name"`
+	IsActive          bool      `xorm:"notnull default(true) 'is_active'" json:"is_active"`
+	VendorSubmittable bool      `xorm:"notnull default(false) 'vendor_submittable'" json:"vendor_submittable"` // 允许号商在门户自助上传 Key
+	CreatedAt         time.Time `xorm:"created 'created_at'" json:"created_at"`
+	UpdatedAt         time.Time `xorm:"updated 'updated_at'" json:"updated_at"`
 }
 
 func (*KeyPool) TableName() string { return "key_pools" }

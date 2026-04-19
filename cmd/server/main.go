@@ -129,6 +129,8 @@ func main() {
 	{
 		vendorPortal.GET("/profile", vendorH.GetProfile)
 		vendorPortal.GET("/keys", vendorH.GetPoolKeys)
+		vendorPortal.POST("/keys", vendorH.SubmitKey)
+		vendorPortal.GET("/pools", vendorH.GetSubmittablePools)
 	}
 
 	// 需认证的用户路由（JWT 或 API Key）
@@ -171,6 +173,7 @@ func main() {
 			admin.POST("/key-pools", handler.CreateKeyPool)
 			admin.DELETE("/key-pools/:id", handler.DeleteKeyPool)
 			admin.PATCH("/key-pools/:id/toggle", handler.ToggleKeyPool)
+			admin.PATCH("/key-pools/:id/vendor-toggle", handler.ToggleVendorSubmittable)
 			admin.GET("/key-pools/:id/keys", handler.ListPoolKeys)
 			admin.POST("/key-pools/:id/keys", handler.AddPoolKey)
 			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)
