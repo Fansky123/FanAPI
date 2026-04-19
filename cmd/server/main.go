@@ -178,6 +178,7 @@ func main() {
 			admin.GET("/key-pools/:id/keys", handler.ListPoolKeys)
 			admin.POST("/key-pools/:id/keys", handler.AddPoolKey)
 			admin.DELETE("/pool-keys/:id", handler.RemovePoolKey)
+			admin.PATCH("/pool-keys/:id", handler.UpdatePoolKey)
 			admin.PATCH("/pool-keys/:id/vendor", handler.AdminSetPoolKeyVendor)
 			admin.GET("/users", handler.ListUsers)
 			admin.POST("/users/:id/recharge", handler.Recharge)

@@ -119,8 +119,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
+        <el-table-column label="操作" width="130" align="center">
           <template #default="{ row }">
+            <el-button size="small" type="primary" plain @click="openEditKey(row)">
+              编辑
+            </el-button>
             <el-popconfirm title="移除此 Key？" @confirm="removeKey(row.id)">
               <template #reference>
                 <el-button size="small" type="danger" circle>
@@ -136,6 +139,27 @@
         <el-empty description="还没有 Key，点击右上角添加" :image-size="80" />
       </div>
     </el-drawer>
+
+    <!-- 编辑 Key 弹窗 -->
+    <el-dialog v-model="editKeyVisible" title="编辑 Key" width="400px">
+      <el-form :model="editKeyForm" label-width="80px">
+        <el-form-item label="优先级">
+          <el-input-number v-model="editKeyForm.priority" :min="0" :max="999" />
+          <span style="margin-left:8px;color:#aaa;font-size:12px">数字越小越优先</span>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch
+            v-model="editKeyForm.is_active"
+            active-text="启用"
+            inactive-text="停用"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editKeyVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEditKey">保存</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 添加 Key 弹窗 -->
     <el-dialog v-model="addKeyVisible" title="添加 Key" width="480px">
@@ -265,6 +289,27 @@ async function submitAddKey() {
 async function removeKey(keyId) {
   await keyPoolApi.removeKey(keyId)
   ElMessage.success('已移除')
+  fetchKeys(activePool.value.id)
+}
+
+// ── 编辑 Key ──
+const editKeyVisible = ref(false)
+const editKeyForm = reactive({ id: 0, priority: 0, is_active: true })
+
+function openEditKey(row) {
+  editKeyForm.id = row.id
+  editKeyForm.priority = row.priority
+  editKeyForm.is_active = row.is_active
+  editKeyVisible.value = true
+}
+
+async function submitEditKey() {
+  await keyPoolApi.updateKey(editKeyForm.id, {
+    priority: editKeyForm.priority,
+    is_active: editKeyForm.is_active,
+  })
+  ElMessage.success('已更新')
+  editKeyVisible.value = false
   fetchKeys(activePool.value.id)
 }
 

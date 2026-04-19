@@ -131,6 +131,47 @@ func RemovePoolKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// UpdatePoolKey PATCH /admin/pool-keys/:id
+// 更新号池 Key 的优先级和启用状态。
+func UpdatePoolKey(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID 格式错误"})
+		return
+	}
+	var body struct {
+		Priority *int  `json:"priority"`
+		IsActive *bool `json:"is_active"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var key model.PoolKey
+	if found, _ := db.Engine.ID(id).Get(&key); !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Key 不存在"})
+		return
+	}
+	cols := []string{}
+	if body.Priority != nil {
+		key.Priority = *body.Priority
+		cols = append(cols, "priority")
+	}
+	if body.IsActive != nil {
+		key.IsActive = *body.IsActive
+		cols = append(cols, "is_active")
+	}
+	if len(cols) == 0 {
+		c.JSON(http.StatusOK, key)
+		return
+	}
+	if _, err := db.Engine.ID(id).Cols(cols...).Update(&key); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	c.JSON(http.StatusOK, key)
+}
+
 // ToggleVendorSubmittable PATCH /admin/key-pools/:id/vendor-toggle
 // 切换号池的"允许号商自助上传 Key"开关。
 func ToggleVendorSubmittable(c *gin.Context) {

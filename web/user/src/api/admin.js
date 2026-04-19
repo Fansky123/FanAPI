@@ -22,6 +22,7 @@ export const keyPoolApi = {
   listKeys: (poolId) => http.get(`/admin/key-pools/${poolId}/keys`),
   addKey: (poolId, data) => http.post(`/admin/key-pools/${poolId}/keys`, data),
   removeKey: (id) => http.delete(`/admin/pool-keys/${id}`),
+  updateKey: (id, data) => http.patch(`/admin/pool-keys/${id}`, data),
 }
 
 export const userApi = {
