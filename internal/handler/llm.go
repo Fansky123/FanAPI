@@ -350,7 +350,43 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 
 	proto := effectiveProtocol(ch)
 
+	// 获取客户端协议（由 LLMProxy/ClaudeProxy/GeminiProxy 写入 context）
+	clientProto := protocolOpenAI
+	if cp, ok := c.Get("client_proto"); ok {
+		if s, ok := cp.(string); ok && s != "" {
+			clientProto = s
+		}
+	}
+
+	// isStream 必须在协议转换前读取（Gemini 转换后 body 不含 stream 字段）
 	isStream, _ := reqData["stream"].(bool)
+
+	// 客户端格式 ≠ 渠道格式时，需要请求格式转换链：
+	//   客户端格式 → OpenAI（若客户端本身就是 OpenAI 则跳过） → 渠道格式（若渠道本身是 OpenAI 则跳过）
+	// 客户端格式 == 渠道格式时直接透传，不做任何转换。
+	if clientProto != proto && ch.RequestScript == "" {
+		working := reqData
+		// Step 1: 客户端格式 → OpenAI
+		if clientProto != protocolOpenAI {
+			norm, normErr := protocol.NormalizeClientRequest(working, clientProto)
+			if normErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式转换错误: " + normErr.Error()})
+				return
+			}
+			norm["model"] = resolvedModel
+			working = norm
+		}
+		// Step 2: OpenAI → 渠道格式
+		if proto != protocolOpenAI {
+			conv, convErr := protocol.ConvertRequest(working, proto)
+			if convErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "请求格式转换错误: " + convErr.Error()})
+				return
+			}
+			working = conv
+		}
+		reqData = working
+	}
 
 	// 1. 号池 Sticky Key 分配（在 request_script 之前，以便脚本可用 poolKey 变量）
 	entityID := apiKeyIDVal
@@ -371,7 +407,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		poolKeyValue = poolKey.Value
 	}
 
-	// 2. request_script（JS）映射
+	// 2. request_script（JS）映射（有脚本时跳过自动协议转换，由脚本自行处理）
 	mappedReq := reqData
 	if ch.RequestScript != "" {
 		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData, poolKeyValue)
@@ -543,6 +579,23 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		// 从原始上游响应提取 usage（使用渠道原始格式，在任何协议转换之前）
 		syncUsage := protocol.NormalizeUsage(origRespJSON, proto)
 
+		// 响应格式转换链：渠道格式 → OpenAI → 客户端格式
+		// 客户端格式 == 渠道格式时直接透传；有 response_script 时跳过自动转换。
+		if clientProto != proto && ch.ResponseScript == "" {
+			// Step 1: 渠道格式 → OpenAI
+			if proto != protocolOpenAI {
+				if converted, convErr := protocol.ConvertSyncResponse(respBytes, proto); convErr == nil {
+					respBytes = converted
+				}
+			}
+			// Step 2: OpenAI → 客户端格式
+			if clientProto != protocolOpenAI {
+				if converted, convErr := protocol.ConvertResponseToClient(respBytes, clientProto); convErr == nil {
+					respBytes = converted
+				}
+			}
+		}
+
 		c.Data(http.StatusOK, "application/json", respBytes)
 
 		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
@@ -593,14 +646,30 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	c.Header("X-Accel-Buffering", "no")
 
 	usage := &usageState{protocol: proto}
+	// SSE 格式转换器：客户端格式 != 渠道格式时需要转换 SSE 流
+	var sseConv protocol.SSEConverter
+	if clientProto != proto {
+		sseConv = protocol.NewSSEConverter(proto, clientProto)
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	c.Stream(func(w io.Writer) bool {
 		if !scanner.Scan() {
+			if sseConv != nil {
+				for _, l := range sseConv.Flush() {
+					fmt.Fprintf(w, "%s\n", l)
+				}
+			}
 			return false
 		}
 		line := scanner.Text()
-		usage.processLine(line)
-		fmt.Fprintf(w, "%s\n", line)
+		usage.processLine(line) // 始终用上游格式解析，保证计费准确
+		if sseConv != nil {
+			for _, l := range sseConv.Convert(line) {
+				fmt.Fprintf(w, "%s\n", l)
+			}
+		} else {
+			fmt.Fprintf(w, "%s\n", line)
+		}
 		return true
 	})
 
