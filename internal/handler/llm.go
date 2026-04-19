@@ -707,6 +707,12 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	if clientProto != proto {
 		sseConv = protocol.NewSSEConverter(proto, clientProto)
 	}
+
+	// 收集上游原始 SSE 行用于日志，超过 200KB 后停止收集但继续推流。
+	const maxSSELogBytes = 200 * 1024
+	var rawSSELines []string
+	var rawSSEBytes int
+
 	scanner := bufio.NewScanner(resp.Body)
 	c.Stream(func(w io.Writer) bool {
 		if !scanner.Scan() {
@@ -719,6 +725,10 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		}
 		line := scanner.Text()
 		usage.processLine(line) // 始终用上游格式解析，保证计费准确
+		if rawSSEBytes < maxSSELogBytes {
+			rawSSELines = append(rawSSELines, line)
+			rawSSEBytes += len(line) + 1
+		}
 		if sseConv != nil {
 			for _, l := range sseConv.Convert(line) {
 				fmt.Fprintf(w, "%s\n", l)
@@ -729,8 +739,8 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		return true
 	})
 
-	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status").
-		Update(&model.LLMLog{UpstreamStatus: http.StatusOK})
+	_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("upstream_status", "upstream_response").
+		Update(&model.LLMLog{UpstreamStatus: http.StatusOK, UpstreamResponse: model.JSON{"lines": rawSSELines}})
 
 	llmSettle(c, ch, origReqData, usage.normalized(origReqData), totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
 }
