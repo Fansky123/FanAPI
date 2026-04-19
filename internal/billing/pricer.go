@@ -111,15 +111,35 @@ func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, 
 	outputTokens, _ := getInt64FromData(data, outputPath)
 	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputPricePer1m) / 1000000))
 
+	// Claude prompt caching：写入缓存（1.25x 输入价）和读取缓存的 token 单独计费。
+	// OpenAI prompt caching：命中缓存的 token 按 cached_read_price 计费（默认 0.5x 输入价）。
+	// Gemini Context Caching：命中缓存按 cache_read_price 计费（默认 0.25x 输入价）。
+	// 可在 billing_config 中通过以下字段覆盖默认倍率：
+	//   cache_creation_price_per_1m_tokens — Claude 写入缓存始价（默认 1.25x 输入价）
+	//   cache_read_price_per_1m_tokens     — 命中缓存读取始价（Claude 默认 0.1x，OpenAI 默认 0.5x，Gemini 默认 0.25x）
+	cacheCreatePricePer1m := getInt64Val(cfg, "cache_creation_price_per_1m_tokens")
+	if cacheCreatePricePer1m == 0 && inputPricePer1m > 0 {
+		cacheCreatePricePer1m = int64(math.Ceil(float64(inputPricePer1m) * 1.25))
+	}
+	cacheReadPricePer1m := getInt64Val(cfg, "cache_read_price_per_1m_tokens")
+	if cacheReadPricePer1m == 0 && inputPricePer1m > 0 {
+		// 默认倒 0.5x（兼容 OpenAI 主流价格），Claude/Gemini 用户可通过配置覆盖
+		cacheReadPricePer1m = int64(math.Ceil(float64(inputPricePer1m) * 0.5))
+	}
+	cacheCreateTokens, _ := getInt64FromData(data, "response.usage.cache_creation_tokens")
+	cacheReadTokens, _ := getInt64FromData(data, "response.usage.cache_read_tokens")
+	cacheCost := int64(math.Ceil(float64(cacheCreateTokens)*float64(cacheCreatePricePer1m)/1000000)) +
+		int64(math.Ceil(float64(cacheReadTokens)*float64(cacheReadPricePer1m)/1000000))
+
 	if !getBool(cfg, "input_from_response") {
-		// 输入 token 数从请求中计算（与 hold 阶段保持一致），结算 = 输入 + 实际输出
+		// 输入 token 数从请求中计算（与 hold 阶段保持一致），结算 = 输入 + 实际输出 + 缓存
 		inputPath := getStr(cfg, "metric_paths.input_tokens", "request.input_tokens")
 		inputTokens, err := getInt64FromData(data, inputPath)
 		if err != nil {
 			inputTokens = estimateTokensFromMessages(req)
 		}
 		inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
-		return inputCost + outputCost, nil
+		return inputCost + outputCost + cacheCost, nil
 	}
 
 	// input_from_response=true：从响应 usage 中获取实际输入 token 数
@@ -127,7 +147,7 @@ func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, 
 	inputTokens, _ := getInt64FromData(data, inputPath)
 	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
 
-	return inputCost + outputCost, nil
+	return inputCost + outputCost + cacheCost, nil
 }
 
 // ---- 各计费类型内部计算函数 ----
@@ -455,15 +475,29 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 	outputTokens, _ := getInt64FromData(data, outputPath)
 	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputCostPer1m) / 1000000))
 
+	// 缓存 token 进价（与售价逻辑相同，字段名用 _cost_ 替代 _price_）
+	cacheCreateCostPer1m := getInt64Val(cfg, "cache_creation_cost_per_1m_tokens")
+	if cacheCreateCostPer1m == 0 && inputCostPer1m > 0 {
+		cacheCreateCostPer1m = int64(math.Ceil(float64(inputCostPer1m) * 1.25))
+	}
+	cacheReadCostPer1m := getInt64Val(cfg, "cache_read_cost_per_1m_tokens")
+	if cacheReadCostPer1m == 0 && inputCostPer1m > 0 {
+		cacheReadCostPer1m = int64(math.Ceil(float64(inputCostPer1m) * 0.5))
+	}
+	cacheCreateTokens, _ := getInt64FromData(data, "response.usage.cache_creation_tokens")
+	cacheReadTokens, _ := getInt64FromData(data, "response.usage.cache_read_tokens")
+	cacheCost := int64(math.Ceil(float64(cacheCreateTokens)*float64(cacheCreateCostPer1m)/1000000)) +
+		int64(math.Ceil(float64(cacheReadTokens)*float64(cacheReadCostPer1m)/1000000))
+
 	if !getBool(cfg, "input_from_response") {
-		return outputCost, nil
+		return outputCost + cacheCost, nil
 	}
 
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
 	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputCostPer1m) / 1000000))
 
-	return inputCost + outputCost, nil
+	return inputCost + outputCost + cacheCost, nil
 }
 
 func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, int64, error) {

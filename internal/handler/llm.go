@@ -44,11 +44,13 @@ func effectiveProtocol(ch *model.Channel) string {
 // outputChars 在流式传输过程中实时累计输出文本字节数，作为用户中断时的兜底估算依据
 // （约 4 字节 ≈ 1 token）。
 type usageState struct {
-	protocol      string
-	promptTokens  int64
-	completTokens int64
-	outputChars   int64  // 实时累计输出字符数（兜底估算）
-	lastEvent     string // Claude 专用：记录上一个 "event:" 行的值
+	protocol            string
+	promptTokens        int64
+	completTokens       int64
+	cacheCreationTokens int64  // Claude 写入缓存 token（1.25x）
+	cacheReadTokens     int64  // Claude/OpenAI/Gemini 命中缓存 token（折才价）
+	outputChars         int64  // 实时累计输出字符数（兜底估算）
+	lastEvent           string // Claude 专用：记录上一个 "event:" 行的值
 }
 
 func (u *usageState) processLine(line string) {
@@ -70,6 +72,12 @@ func (u *usageState) processLine(line string) {
 					if usg, ok := msg["usage"].(map[string]interface{}); ok {
 						if n, _ := usg["input_tokens"].(float64); n > 0 {
 							u.promptTokens = int64(n)
+						}
+						if n, _ := usg["cache_creation_input_tokens"].(float64); n > 0 {
+							u.cacheCreationTokens = int64(n)
+						}
+						if n, _ := usg["cache_read_input_tokens"].(float64); n > 0 {
+							u.cacheReadTokens = int64(n)
 						}
 					}
 				}
@@ -102,6 +110,10 @@ func (u *usageState) processLine(line string) {
 				}
 				if n, _ := meta["candidatesTokenCount"].(float64); n > 0 {
 					u.completTokens = int64(n)
+				}
+				// Gemini Context Caching: cachedContentTokenCount
+				if n, _ := meta["cachedContentTokenCount"].(float64); n > 0 {
+					u.cacheReadTokens = int64(n)
 				}
 			}
 			// 实时累计输出字符（兜底）
@@ -139,6 +151,12 @@ func (u *usageState) processLine(line string) {
 				if n, _ := usg["completion_tokens"].(float64); n > 0 {
 					u.completTokens = int64(n)
 				}
+				// OpenAI prompt caching: prompt_tokens_details.cached_tokens
+				if details, ok := usg["prompt_tokens_details"].(map[string]interface{}); ok {
+					if n, _ := details["cached_tokens"].(float64); n > 0 {
+						u.cacheReadTokens = int64(n)
+					}
+				}
 			}
 			// 实时累计输出字符（用户中断时兜底）
 			if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
@@ -161,10 +179,17 @@ func (u *usageState) processLine(line string) {
 func (u *usageState) normalized(req map[string]interface{}) map[string]interface{} {
 	if u.promptTokens > 0 || u.completTokens > 0 {
 		// 精确值：来自响应尾部 usage 字段
-		return map[string]interface{}{
+		result := map[string]interface{}{
 			"prompt_tokens":     u.promptTokens,
 			"completion_tokens": u.completTokens,
 		}
+		if u.cacheCreationTokens > 0 {
+			result["cache_creation_tokens"] = u.cacheCreationTokens
+		}
+		if u.cacheReadTokens > 0 {
+			result["cache_read_tokens"] = u.cacheReadTokens
+		}
+		return result
 	}
 	if u.outputChars == 0 {
 		// 完全没有数据（连接失败等），不作结算

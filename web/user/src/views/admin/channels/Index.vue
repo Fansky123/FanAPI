@@ -161,6 +161,29 @@
             <el-switch v-model="form.bp.input_from_response" />
             <span style="margin-left:8px;color:#999;font-size:12px">开启后输入 token 数从响应 usage 字段读取</span>
           </el-form-item>
+          <el-divider content-position="left" style="margin:4px 0 12px">
+            <span style="font-size:12px;color:#aaa">Prompt Cache 价格（Claude / OpenAI / Gemini，留空按默认倍率）</span>
+          </el-divider>
+          <el-form-item label="缓存写入售价">
+            <el-input-number v-model="form.bp.cache_creation_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" placeholder="留空=1.25×输入价" />
+            <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_creation_price_per_1m_tokens=null">清空</el-button>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">用户被扣费（留空 = 输入价 × 1.25，仅 Claude）</span>
+          </el-form-item>
+          <el-form-item label="缓存读取售价">
+            <el-input-number v-model="form.bp.cache_read_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" placeholder="留空=0.5×输入价" />
+            <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_read_price_per_1m_tokens=null">清空</el-button>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">用户被扣费（留空 = 输入价 × 0.5）</span>
+          </el-form-item>
+          <el-form-item label="缓存写入进价">
+            <el-input-number v-model="form.bp.cache_creation_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" />
+            <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_creation_cost_per_1m_tokens=null">清空</el-button>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">支付给上游（留空 = 进价 × 1.25）</span>
+          </el-form-item>
+          <el-form-item label="缓存读取进价">
+            <el-input-number v-model="form.bp.cache_read_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" />
+            <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_read_cost_per_1m_tokens=null">清空</el-button>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">支付给上游（留空 = 进价 × 0.5）</span>
+          </el-form-item>
         </template>
 
         <!-- ===== 图片计费价格 ===== -->
@@ -386,6 +409,11 @@ function emptyBp() {
     input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0,
     input_cost_per_1m_tokens: 0, output_cost_per_1m_tokens: 0,
     input_from_response: false,
+    // token 缓存价格（null = 不设置，按默认倍率计费）
+    cache_creation_price_per_1m_tokens: null,
+    cache_read_price_per_1m_tokens: null,
+    cache_creation_cost_per_1m_tokens: null,
+    cache_read_cost_per_1m_tokens: null,
     // image - 基础价格（像素分档模式）
     base_price: 0, base_cost: 0,
     // image - 按模档直接定价（size_prices 模式，优先级更高）
@@ -420,7 +448,15 @@ function extractBp(cfg) {
 function mergeBpToConfig(bp, baseConfigStr) {
   let cfg = {}
   try { cfg = JSON.parse(baseConfigStr || '{}') } catch { cfg = {} }
+  // 缓存价格字段：null 表示不设置（按默认倍率），从 JSON 中删除；非 null 才写入
+  const cacheKeys = ['cache_creation_price_per_1m_tokens', 'cache_read_price_per_1m_tokens',
+                     'cache_creation_cost_per_1m_tokens', 'cache_read_cost_per_1m_tokens']
   for (const [k, v] of Object.entries(bp)) {
+    if (cacheKeys.includes(k)) {
+      if (v !== null && v !== undefined && v > 0) cfg[k] = v
+      else delete cfg[k]
+      continue
+    }
     // size_prices / size_costs：只有任意档位非零时才写入
     if (k === 'size_prices' || k === 'size_costs') {
       const anyNonZero = typeof v === 'object' && v !== null && Object.values(v).some(x => x > 0)
