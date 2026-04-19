@@ -551,6 +551,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		newKey, rotErr := service.MarkExhaustedAndRotate(c.Request.Context(), ch.KeyPoolID, poolKey.ID, entityID)
 		if rotErr == nil {
 			poolKey = newKey
+			poolKeyIDVal = newKey.ID // 更新 poolKeyIDVal，确保后续结算流水关联正确的号商
 			resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
 			if err != nil {
 				service.RecordChannelError(c.Request.Context(), channelID)

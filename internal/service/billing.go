@@ -67,9 +67,16 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID, poolKeyID int64, 
 		return err
 	}
 
-	// 消费类交易（charge/settle）异步触发邀请返佣和号商收益
-	if txType == "charge" || txType == "settle" {
+	// 消费类交易触发邀请返佣和号商收益：
+	//   hold    — 输入费预扣（input_from_response=false 时精确，=true 时为估算）
+	//   settle  — 输出费或差额补扣
+	//   charge  — 图片/视频/音频一次性扣费
+	//   refund  — 退款时反向扣回已发放的返佣/收益（传负值）
+	switch txType {
+	case "charge", "settle", "hold":
 		go applyPostBillingHooks(userID, poolKeyID, credits, cost)
+	case "refund":
+		go applyPostBillingHooks(userID, poolKeyID, -credits, -cost)
 	}
 	return nil
 }
@@ -77,11 +84,13 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID, poolKeyID int64, 
 // applyPostBillingHooks 在消费发生后异步处理：
 //  1. 邀请返佣：若用户有邀请人，按比例将 credits 加入邀请人的冻结余额
 //  2. 号商收益：若本次请求使用了号商的 Key，按比例计入号商可提现余额
+//
+// credits/cost 可为负值（refund 场景），表示回扣已发放的返佣/收益，不会使余额低于 0。
 func applyPostBillingHooks(userID, poolKeyID, credits, cost int64) {
 	ctx := context.Background()
 
 	// ── 邀请返佣 ─────────────────────────────────────────────────────────
-	if credits > 0 {
+	if credits != 0 {
 		var inviterID int64
 		var rebateRatio *float64
 		rows, err := db.Engine.QueryString(
@@ -103,11 +112,15 @@ func applyPostBillingHooks(userID, poolKeyID, credits, cost int64) {
 			ratio := getRebateRatio(ctx, rebateRatio)
 			if ratio > 0 {
 				rebateCredits := int64(float64(credits) * ratio)
-				if rebateCredits > 0 {
-					if _, err := db.Engine.Exec(
-						"UPDATE users SET frozen_balance = frozen_balance + $1 WHERE id = $2",
-						rebateCredits, inviterID,
-					); err != nil {
+				if rebateCredits != 0 {
+					var sql string
+					if rebateCredits > 0 {
+						sql = "UPDATE users SET frozen_balance = frozen_balance + $1 WHERE id = $2"
+					} else {
+						// 回扣：floor 0，不允许透支冻结余额
+						sql = "UPDATE users SET frozen_balance = GREATEST(0, frozen_balance + $1) WHERE id = $2"
+					}
+					if _, err := db.Engine.Exec(sql, rebateCredits, inviterID); err != nil {
 						log.Printf("[billing] apply inviter rebate failed user=%d inviter=%d err=%v", userID, inviterID, err)
 					}
 				}
@@ -116,7 +129,7 @@ func applyPostBillingHooks(userID, poolKeyID, credits, cost int64) {
 	}
 
 	// ── 号商收益 ──────────────────────────────────────────────────────────
-	if poolKeyID > 0 && cost > 0 {
+	if poolKeyID > 0 && cost != 0 {
 		rows, err := db.Engine.QueryString(
 			"SELECT vendor_id FROM pool_keys WHERE id = $1", poolKeyID,
 		)
@@ -126,13 +139,17 @@ func applyPostBillingHooks(userID, poolKeyID, credits, cost int64) {
 				vendorID, _ := strconv.ParseInt(vendorIDStr, 10, 64)
 				if vendorID > 0 {
 					commission := getVendorCommission(ctx, vendorID)
-					// 号商到手 = cost * (1 - commission)
+					// 号商到手 = cost * (1 - commission)；负值时回扣
 					vendorEarns := int64(float64(cost) * (1 - commission))
-					if vendorEarns > 0 {
-						if _, err2 := db.Engine.Exec(
-							"UPDATE vendors SET balance = balance + $1 WHERE id = $2",
-							vendorEarns, vendorID,
-						); err2 != nil {
+					if vendorEarns != 0 {
+						var sql string
+						if vendorEarns > 0 {
+							sql = "UPDATE vendors SET balance = balance + $1 WHERE id = $2"
+						} else {
+							// 回扣：floor 0
+							sql = "UPDATE vendors SET balance = GREATEST(0, balance + $1) WHERE id = $2"
+						}
+						if _, err2 := db.Engine.Exec(sql, vendorEarns, vendorID); err2 != nil {
 							log.Printf("[billing] apply vendor earning failed vendor=%d err=%v", vendorID, err2)
 						}
 					}

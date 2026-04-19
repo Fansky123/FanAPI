@@ -31,6 +31,16 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="号商上传" width="95" align="center">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.vendor_submittable ? 'success' : 'info'"
+              size="small"
+              style="cursor:pointer"
+              @click="toggleVendorSubmittable(row)"
+            >{{ row.vendor_submittable ? '已开放' : '关闭' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="260" align="center">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="openKeyDrawer(row)">
@@ -197,6 +207,12 @@ async function submitCreatePool() {
 async function togglePool(row) {
   await keyPoolApi.togglePool(row.id)
   ElMessage.success(row.is_active ? '已停用' : '已启用')
+  fetchPools()
+}
+
+async function toggleVendorSubmittable(row) {
+  await keyPoolApi.toggleVendorSubmittable(row.id)
+  ElMessage.success(row.vendor_submittable ? '已关闭号商上传' : '已开放号商上传')
   fetchPools()
 }
 
