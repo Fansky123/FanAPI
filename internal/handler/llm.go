@@ -619,34 +619,25 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 }
 
 // selectNextChannel 为重试选择下一个渠道，排除已尝试过的渠道 ID。
-// stableChannels 非空时按列表顺序选取下一个未尝试的渠道（稳定密钥模式）。
+// 仅稳定密钥（stableChannels 非空）支持兜底重试，按价格升序列表顺序选取下一个未尝试的渠道。
+// 低价密钥不做跨渠道重试，直接返回 nil。
 func selectNextChannel(c *gin.Context, reqData map[string]interface{}, excludeIDs []int64, stableChannels []model.Channel) *model.Channel {
+	if len(stableChannels) == 0 {
+		return nil
+	}
+
 	excluded := make(map[int64]bool, len(excludeIDs))
 	for _, id := range excludeIDs {
 		excluded[id] = true
 	}
 
-	// 稳定密钥：按价格升序列表顺序选取下一个未尝试的渠道
-	if len(stableChannels) > 0 {
-		for i := range stableChannels {
-			if !excluded[stableChannels[i].ID] {
-				ch := stableChannels[i]
-				return &ch
-			}
+	for i := range stableChannels {
+		if !excluded[stableChannels[i].ID] {
+			ch := stableChannels[i]
+			return &ch
 		}
-		return nil
 	}
-
-	// 普通密钥：使用负载均衡选取
-	routingModel, _ := reqData["model"].(string)
-	if routingModel == "" {
-		return nil
-	}
-	nextCh, err := service.SelectChannel(c.Request.Context(), routingModel, excludeIDs...)
-	if err != nil {
-		return nil
-	}
-	return nextCh
+	return nil
 }
 
 // llmSettle 执行结算：与预扣金额对比，退还多扣或补扣差额，并写计费流水。

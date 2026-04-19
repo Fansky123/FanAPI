@@ -3,23 +3,38 @@
     <div class="login-shell">
       <div class="hero-panel">
         <div class="brand">号商工作台</div>
-        <h2>号商登录</h2>
+        <h2>{{ isRegister ? '号商注册' : '号商登录' }}</h2>
         <p>登录后可查看您提供的 API Key 消耗情况与收益统计。</p>
       </div>
       <div class="login-box">
-        <h3>号商登录</h3>
-        <el-form :model="form" @submit.prevent="handleLogin" label-position="top">
+        <h3>{{ isRegister ? '注册账号' : '号商登录' }}</h3>
+        <el-form :model="form" label-position="top">
           <el-form-item label="用户名">
-            <el-input v-model="form.username" placeholder="请输入用户名" />
+            <el-input v-model="form.username" placeholder="请输入用户名（3-32位）" />
           </el-form-item>
           <el-form-item label="密码">
-            <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" />
+            <el-input v-model="form.password" type="password" show-password placeholder="请输入密码（至少6位）" />
           </el-form-item>
-          <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;height:42px;margin-top:4px">
-            进入工作台
+          <el-form-item v-if="isRegister" label="确认密码">
+            <el-input v-model="form.confirmPassword" type="password" show-password placeholder="请再次输入密码" />
+          </el-form-item>
+          <el-button
+            type="primary"
+            :loading="loading"
+            style="width:100%;height:42px;margin-top:4px"
+            @click="isRegister ? handleRegister() : handleLogin()"
+          >
+            {{ isRegister ? '立即注册' : '进入工作台' }}
           </el-button>
         </el-form>
-        <div class="reg-tip">还没有账号？请联系管理员开通</div>
+        <div class="reg-tip">
+          <template v-if="isRegister">
+            已有账号？<el-link type="primary" @click="switchMode(false)">立即登录</el-link>
+          </template>
+          <template v-else>
+            还没有账号？<el-link type="primary" @click="switchMode(true)">立即注册</el-link>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -28,19 +43,51 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { vendorAuthApi } from '@/api/vendor'
 
 const router = useRouter()
 const loading = ref(false)
-const form = reactive({ username: '', password: '' })
+const isRegister = ref(false)
+const form = reactive({ username: '', password: '', confirmPassword: '' })
+
+function switchMode(toRegister) {
+  isRegister.value = toRegister
+  form.username = ''
+  form.password = ''
+  form.confirmPassword = ''
+}
 
 async function handleLogin() {
+  if (!form.username || !form.password) {
+    ElMessage.warning('请输入用户名和密码')
+    return
+  }
   loading.value = true
   try {
-    const res = await vendorAuthApi.login(form)
+    const res = await vendorAuthApi.login({ username: form.username, password: form.password })
     localStorage.setItem('vendor_token', res.token)
-    localStorage.setItem('vendor_username', res.vendor?.username || '')
+    localStorage.setItem('vendor_username', res.username || '')
     router.push('/vendor/dashboard')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleRegister() {
+  if (!form.username || !form.password) {
+    ElMessage.warning('请输入用户名和密码')
+    return
+  }
+  if (form.password !== form.confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
+    return
+  }
+  loading.value = true
+  try {
+    await vendorAuthApi.register({ username: form.username, password: form.password })
+    ElMessage.success('注册成功，请登录')
+    switchMode(false)
   } finally {
     loading.value = false
   }

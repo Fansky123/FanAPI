@@ -291,6 +291,48 @@ func SelectChannel(ctx context.Context, modelName string, excludeIDs ...int64) (
 	return selected, nil
 }
 
+// SelectChannelByWeight 用于重试场景：跳过优先级分组，直接对所有未排除的健康渠道
+// 做加权随机选取。当健康渠道全部排除后回退到全部未排除渠道，保证重试不会空手而归。
+func SelectChannelByWeight(ctx context.Context, modelName string, excludeIDs ...int64) (*model.Channel, error) {
+	channels, err := listChannelsByModel(ctx, modelName)
+	if err != nil {
+		return nil, err
+	}
+	if len(channels) == 0 {
+		return nil, fmt.Errorf("无可用渠道: %s", modelName)
+	}
+
+	excluded := make(map[int64]bool, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = true
+	}
+
+	var candidates []model.Channel
+	for _, ch := range channels {
+		if excluded[ch.ID] {
+			continue
+		}
+		if isChannelUnhealthy(ctx, ch.ID) {
+			continue
+		}
+		candidates = append(candidates, ch)
+	}
+
+	// 健康渠道全部排除时，回退到所有未排除渠道（保证重试有渠道可用）
+	if len(candidates) == 0 {
+		for _, ch := range channels {
+			if !excluded[ch.ID] {
+				candidates = append(candidates, ch)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("所有渠道均不可用，请稍后重试")
+	}
+
+	return weightedRandom(candidates), nil
+}
+
 // RecordChannelSuccess 记录一次成功请求用于错误率统计。
 func RecordChannelSuccess(ctx context.Context, channelID int64) {
 	recordChannelEvent(ctx, channelID, "ok")

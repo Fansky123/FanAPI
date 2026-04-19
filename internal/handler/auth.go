@@ -293,7 +293,6 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		ID           int64  `json:"id"`
 		Name         string `json:"name"`
 		RoutingModel string `json:"routing_model"`
-		Model        string `json:"model"`
 		Type         string `json:"type"`
 		Protocol     string `json:"protocol"`
 		BillingType  string `json:"billing_type"`
@@ -303,8 +302,15 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		Description  string `json:"description"`
 	}
 
+	// 按路由键（ch.Model）去重，同一路由键的多个渠道只展示第一个作为代表
+	seen := make(map[string]bool)
 	result := make([]channelInfo, 0, len(channels))
 	for _, ch := range channels {
+		if seen[ch.Model] {
+			continue
+		}
+		seen[ch.Model] = true
+
 		defaultPrice := buildPriceDisplay(ch.BillingType, ch.BillingConfig)
 		groupPrice := ""
 		if userGroup != "" {
@@ -317,8 +323,7 @@ func (h *AuthHandler) ListModels(c *gin.Context) {
 		result = append(result, channelInfo{
 			ID:           ch.ID,
 			Name:         ch.Name,
-			RoutingModel: ch.Name,
-			Model:        ch.Model,
+			RoutingModel: ch.Model,
 			Type:         ch.Type,
 			Protocol:     ch.Protocol,
 			BillingType:  ch.BillingType,
