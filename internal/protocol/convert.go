@@ -606,3 +606,470 @@ func extractBase64Data(dataURI string) string {
 	}
 	return ""
 }
+
+// ─────────────────────────────────────────────
+// Client Request Normalization (Native → OpenAI)
+// ─────────────────────────────────────────────
+
+// NormalizeClientRequest converts a client's native-format request to OpenAI format.
+// Used when clients send Claude or Gemini native format so the conversion pipeline
+// always operates on a canonical OpenAI intermediate representation.
+// Returns the same map unchanged when clientProto == "openai".
+func NormalizeClientRequest(req map[string]interface{}, clientProto string) (map[string]interface{}, error) {
+	switch clientProto {
+	case ProtocolClaude:
+		return claudeRequestToOpenAI(req)
+	case ProtocolGemini:
+		return geminiRequestToOpenAI(req)
+	default:
+		return req, nil
+	}
+}
+
+// ConvertResponseToClient converts an OpenAI-format sync response to the client's native format.
+// Used after the upstream response has been normalised to OpenAI via ConvertSyncResponse.
+// Returns the same bytes unchanged when clientProto == "openai".
+func ConvertResponseToClient(respBytes []byte, clientProto string) ([]byte, error) {
+	switch clientProto {
+	case ProtocolClaude:
+		return openAIToClaudeResponse(respBytes)
+	case ProtocolGemini:
+		return openAIToGeminiResponse(respBytes)
+	default:
+		return respBytes, nil
+	}
+}
+
+// claudeRequestToOpenAI converts a Claude Messages API request body to OpenAI format.
+func claudeRequestToOpenAI(req map[string]interface{}) (map[string]interface{}, error) {
+	out := make(map[string]interface{})
+
+	if m, ok := req["model"].(string); ok {
+		out["model"] = m
+	}
+	if mt, ok := req["max_tokens"]; ok {
+		out["max_tokens"] = mt
+	}
+	if t, ok := req["temperature"]; ok {
+		out["temperature"] = t
+	}
+	if tp, ok := req["top_p"]; ok {
+		out["top_p"] = tp
+	}
+	if s, ok := req["stream"]; ok {
+		out["stream"] = s
+	}
+
+	var messages []interface{}
+
+	// Claude top-level system field → OpenAI system message
+	if sys, ok := req["system"].(string); ok && sys != "" {
+		messages = append(messages, map[string]interface{}{
+			"role":    "system",
+			"content": sys,
+		})
+	}
+
+	if msgs, ok := req["messages"].([]interface{}); ok {
+		for _, m := range msgs {
+			msg, ok := m.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			role, _ := msg["role"].(string)
+
+			switch c := msg["content"].(type) {
+			case string:
+				messages = append(messages, map[string]interface{}{
+					"role":    role,
+					"content": c,
+				})
+			case []interface{}:
+				// Claude content blocks → OpenAI content
+				var textParts []string
+				var richParts []map[string]interface{}
+				hasRich := false
+				toolResultHandled := false
+
+				for _, block := range c {
+					bm, ok := block.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					switch bm["type"] {
+					case "text":
+						text, _ := bm["text"].(string)
+						textParts = append(textParts, text)
+						richParts = append(richParts, map[string]interface{}{"type": "text", "text": text})
+
+					case "image":
+						hasRich = true
+						if source, ok := bm["source"].(map[string]interface{}); ok {
+							switch source["type"] {
+							case "base64":
+								mime, _ := source["media_type"].(string)
+								data, _ := source["data"].(string)
+								richParts = append(richParts, map[string]interface{}{
+									"type": "image_url",
+									"image_url": map[string]interface{}{
+										"url": "data:" + mime + ";base64," + data,
+									},
+								})
+							case "url":
+								url, _ := source["url"].(string)
+								richParts = append(richParts, map[string]interface{}{
+									"type":      "image_url",
+									"image_url": map[string]interface{}{"url": url},
+								})
+							}
+						}
+
+					case "tool_result":
+						// Each tool_result block becomes a separate tool message in OpenAI
+						toolResultHandled = true
+						toolUseID, _ := bm["tool_use_id"].(string)
+						var content string
+						switch rc := bm["content"].(type) {
+						case string:
+							content = rc
+						case []interface{}:
+							for _, rb := range rc {
+								if rbm, ok := rb.(map[string]interface{}); ok {
+									if t, _ := rbm["text"].(string); t != "" {
+										content += t
+									}
+								}
+							}
+						}
+						messages = append(messages, map[string]interface{}{
+							"role":         "tool",
+							"tool_call_id": toolUseID,
+							"content":      content,
+						})
+
+					case "tool_use":
+						// tool_use blocks in assistant messages → tool_calls array
+						hasRich = true
+						tcID, _ := bm["id"].(string)
+						tcName, _ := bm["name"].(string)
+						argsBytes, _ := json.Marshal(bm["input"])
+						richParts = append(richParts, map[string]interface{}{
+							"_tool_use": map[string]interface{}{
+								"id":        tcID,
+								"name":      tcName,
+								"arguments": string(argsBytes),
+							},
+						})
+					}
+				}
+
+				if toolResultHandled {
+					continue // already appended tool messages
+				}
+
+				// Extract tool_use entries from richParts
+				var toolCalls []map[string]interface{}
+				var cleanParts []map[string]interface{}
+				for _, rp := range richParts {
+					if tu, ok := rp["_tool_use"].(map[string]interface{}); ok {
+						toolCalls = append(toolCalls, map[string]interface{}{
+							"id":   tu["id"],
+							"type": "function",
+							"function": map[string]interface{}{
+								"name":      tu["name"],
+								"arguments": tu["arguments"],
+							},
+						})
+					} else {
+						cleanParts = append(cleanParts, rp)
+					}
+				}
+
+				outMsg := map[string]interface{}{"role": role}
+				if len(toolCalls) > 0 {
+					outMsg["content"] = nil
+					outMsg["tool_calls"] = toolCalls
+				} else if hasRich {
+					outMsg["content"] = cleanParts
+				} else {
+					outMsg["content"] = strings.Join(textParts, "")
+				}
+				messages = append(messages, outMsg)
+
+			default:
+				messages = append(messages, map[string]interface{}{
+					"role":    role,
+					"content": c,
+				})
+			}
+		}
+	}
+
+	out["messages"] = messages
+
+	// tools: Claude format → OpenAI format
+	if tools, ok := req["tools"].([]interface{}); ok && len(tools) > 0 {
+		out["tools"] = convertClaudeToolsToOpenAI(tools)
+	}
+
+	return out, nil
+}
+
+func convertClaudeToolsToOpenAI(tools []interface{}) []map[string]interface{} {
+	var out []map[string]interface{}
+	for _, t := range tools {
+		tm, ok := t.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		fn := map[string]interface{}{"name": tm["name"]}
+		if desc, ok := tm["description"].(string); ok {
+			fn["description"] = desc
+		}
+		if schema, ok := tm["input_schema"]; ok {
+			fn["parameters"] = schema
+		}
+		out = append(out, map[string]interface{}{
+			"type":     "function",
+			"function": fn,
+		})
+	}
+	return out
+}
+
+// geminiRequestToOpenAI converts a Gemini generateContent request body to OpenAI format.
+func geminiRequestToOpenAI(req map[string]interface{}) (map[string]interface{}, error) {
+	out := make(map[string]interface{})
+
+	if m, ok := req["model"].(string); ok {
+		out["model"] = m
+	}
+	if s, ok := req["stream"]; ok {
+		out["stream"] = s
+	}
+
+	var messages []interface{}
+
+	// systemInstruction
+	if si, ok := req["systemInstruction"].(map[string]interface{}); ok {
+		if parts, ok := si["parts"].([]interface{}); ok {
+			var sysText string
+			for _, p := range parts {
+				if pm, ok := p.(map[string]interface{}); ok {
+					if t, ok := pm["text"].(string); ok {
+						sysText += t
+					}
+				}
+			}
+			if sysText != "" {
+				messages = append(messages, map[string]interface{}{
+					"role":    "system",
+					"content": sysText,
+				})
+			}
+		}
+	}
+
+	// contents
+	if contents, ok := req["contents"].([]interface{}); ok {
+		for _, c := range contents {
+			cm, ok := c.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			role, _ := cm["role"].(string)
+			if role == "model" {
+				role = "assistant"
+			}
+
+			parts, _ := cm["parts"].([]interface{})
+			var text string
+			var richParts []map[string]interface{}
+			hasRich := false
+
+			for _, p := range parts {
+				pm, ok := p.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if t, ok := pm["text"].(string); ok {
+					text += t
+					richParts = append(richParts, map[string]interface{}{"type": "text", "text": t})
+				} else if id, ok := pm["inlineData"].(map[string]interface{}); ok {
+					hasRich = true
+					mime, _ := id["mimeType"].(string)
+					data, _ := id["data"].(string)
+					richParts = append(richParts, map[string]interface{}{
+						"type":      "image_url",
+						"image_url": map[string]interface{}{"url": "data:" + mime + ";base64," + data},
+					})
+				} else if fd, ok := pm["fileData"].(map[string]interface{}); ok {
+					hasRich = true
+					uri, _ := fd["fileUri"].(string)
+					richParts = append(richParts, map[string]interface{}{
+						"type":      "image_url",
+						"image_url": map[string]interface{}{"url": uri},
+					})
+				}
+			}
+
+			if hasRich {
+				messages = append(messages, map[string]interface{}{"role": role, "content": richParts})
+			} else {
+				messages = append(messages, map[string]interface{}{"role": role, "content": text})
+			}
+		}
+	}
+
+	out["messages"] = messages
+
+	// generationConfig
+	if gc, ok := req["generationConfig"].(map[string]interface{}); ok {
+		if mt, ok := gc["maxOutputTokens"]; ok {
+			out["max_tokens"] = mt
+		}
+		if t, ok := gc["temperature"]; ok {
+			out["temperature"] = t
+		}
+		if tp, ok := gc["topP"]; ok {
+			out["top_p"] = tp
+		}
+	}
+
+	return out, nil
+}
+
+// ─────────────────────────────────────────────
+// Response Denormalization (OpenAI → Client Native)
+// ─────────────────────────────────────────────
+
+// openAIToClaudeResponse converts an OpenAI sync response to Claude Messages API format.
+func openAIToClaudeResponse(body []byte) ([]byte, error) {
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return body, nil
+	}
+
+	id, _ := resp["id"].(string)
+	model, _ := resp["model"].(string)
+
+	var content []map[string]interface{}
+	stopReason := "end_turn"
+
+	if choices, ok := resp["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if msg, ok := choice["message"].(map[string]interface{}); ok {
+				switch c := msg["content"].(type) {
+				case string:
+					if c != "" {
+						content = append(content, map[string]interface{}{"type": "text", "text": c})
+					}
+				case []interface{}:
+					for _, block := range c {
+						if bm, ok := block.(map[string]interface{}); ok {
+							content = append(content, bm)
+						}
+					}
+				}
+				if toolCalls, ok := msg["tool_calls"].([]interface{}); ok {
+					for _, tc := range toolCalls {
+						if tcm, ok := tc.(map[string]interface{}); ok {
+							tcID, _ := tcm["id"].(string)
+							fn, _ := tcm["function"].(map[string]interface{})
+							name, _ := fn["name"].(string)
+							argsStr, _ := fn["arguments"].(string)
+							var input interface{}
+							_ = json.Unmarshal([]byte(argsStr), &input)
+							content = append(content, map[string]interface{}{
+								"type":  "tool_use",
+								"id":    tcID,
+								"name":  name,
+								"input": input,
+							})
+							stopReason = "tool_use"
+						}
+					}
+				}
+			}
+			if fr, ok := choice["finish_reason"].(string); ok {
+				switch fr {
+				case "length":
+					stopReason = "max_tokens"
+				case "tool_calls":
+					stopReason = "tool_use"
+				}
+			}
+		}
+	}
+
+	usage := map[string]interface{}{"input_tokens": int64(0), "output_tokens": int64(0)}
+	if usg, ok := resp["usage"].(map[string]interface{}); ok {
+		if pt, ok := usg["prompt_tokens"].(float64); ok {
+			usage["input_tokens"] = int64(pt)
+		}
+		if ct, ok := usg["completion_tokens"].(float64); ok {
+			usage["output_tokens"] = int64(ct)
+		}
+	}
+
+	out := map[string]interface{}{
+		"id":          id,
+		"type":        "message",
+		"role":        "assistant",
+		"model":       model,
+		"content":     content,
+		"stop_reason": stopReason,
+		"usage":       usage,
+	}
+	return json.Marshal(out)
+}
+
+// openAIToGeminiResponse converts an OpenAI sync response to Gemini generateContent format.
+func openAIToGeminiResponse(body []byte) ([]byte, error) {
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return body, nil
+	}
+
+	var content string
+	finishReason := "STOP"
+
+	if choices, ok := resp["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if msg, ok := choice["message"].(map[string]interface{}); ok {
+				content, _ = msg["content"].(string)
+			}
+			if fr, ok := choice["finish_reason"].(string); ok && fr == "length" {
+				finishReason = "MAX_TOKENS"
+			}
+		}
+	}
+
+	usageMeta := map[string]interface{}{
+		"promptTokenCount":     int64(0),
+		"candidatesTokenCount": int64(0),
+		"totalTokenCount":      int64(0),
+	}
+	if usg, ok := resp["usage"].(map[string]interface{}); ok {
+		pt, _ := usg["prompt_tokens"].(float64)
+		ct, _ := usg["completion_tokens"].(float64)
+		usageMeta["promptTokenCount"] = int64(pt)
+		usageMeta["candidatesTokenCount"] = int64(ct)
+		usageMeta["totalTokenCount"] = int64(pt + ct)
+	}
+
+	out := map[string]interface{}{
+		"candidates": []interface{}{
+			map[string]interface{}{
+				"content": map[string]interface{}{
+					"parts": []interface{}{map[string]interface{}{"text": content}},
+					"role":  "model",
+				},
+				"finishReason": finishReason,
+				"index":        0,
+			},
+		},
+		"usageMetadata": usageMeta,
+	}
+	return json.Marshal(out)
+}
