@@ -9,6 +9,7 @@ export const channelApi = {
   list: () => http.get('/admin/channels'),
   create: (data) => http.post('/admin/channels', data),
   update: (id, data) => http.put(`/admin/channels/${id}`, data),
+  patchActive: (id, isActive) => http.patch(`/admin/channels/${id}/active`, { is_active: isActive }),
   delete: (id) => http.delete(`/admin/channels/${id}`),
 }
 

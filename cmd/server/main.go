@@ -167,6 +167,7 @@ func main() {
 			admin.POST("/channels", handler.CreateChannel)
 			admin.GET("/channels", handler.ListChannels)
 			admin.PUT("/channels/:id", handler.UpdateChannel)
+			admin.PATCH("/channels/:id/active", handler.PatchChannelActive)
 			admin.DELETE("/channels/:id", handler.DeleteChannel)
 			// 号池管理
 			admin.GET("/key-pools", handler.ListKeyPools)

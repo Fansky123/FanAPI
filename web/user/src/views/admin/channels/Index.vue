@@ -519,7 +519,7 @@ async function deleteRow(id) {
 }
 
 async function toggleActive(row) {
-  await channelApi.update(row.id, { is_active: row.is_active })
+  await channelApi.patchActive(row.id, row.is_active)
 }
 
 function formatPrice(row) {

@@ -94,6 +94,15 @@ func GetChannelByName(ctx context.Context, name string) (*model.Channel, error) 
 	return ch, nil
 }
 
+// PatchChannelActive 仅更新渠道的 is_active 字段，避免覆盖其他字段。
+func PatchChannelActive(ctx context.Context, id int64, isActive bool) error {
+	_, err := db.Engine.ID(id).Cols("is_active").Update(&model.Channel{IsActive: isActive})
+	if err == nil {
+		InvalidateChannelCache(ctx, id)
+	}
+	return err
+}
+
 // UpdateChannel 更新渠道并删除缓存。
 func UpdateChannel(ctx context.Context, ch *model.Channel) error {
 	_, err := db.Engine.Where("id = ?", ch.ID).AllCols().Update(ch)
