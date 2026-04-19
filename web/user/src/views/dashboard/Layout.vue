@@ -24,10 +24,16 @@
             <span class="menu-item-title">模型列表</span>
           </div>
         </router-link>
-        <router-link to="/tasks" class="ow-nav-item" :class="{ active: route.path === '/tasks' || route.path === '/llm-logs' }">
+        <router-link to="/llm-logs" class="ow-nav-item" :class="{ active: route.path === '/llm-logs' }">
           <div class="menu-item">
             <el-icon class="nav-icon"><Document /></el-icon>
             <span class="menu-item-title">调用日志</span>
+          </div>
+        </router-link>
+        <router-link to="/tasks" class="ow-nav-item" :class="{ active: route.path === '/tasks' }">
+          <div class="menu-item">
+            <el-icon class="nav-icon"><List /></el-icon>
+            <span class="menu-item-title">任务中心</span>
           </div>
         </router-link>
         <router-link to="/stats" class="ow-nav-item" :class="{ active: route.path === '/stats' }">
@@ -204,7 +210,7 @@ import { useUserStore } from '@/stores/user'
 import { useSiteStore } from '@/stores/site'
 import {
   Wallet, SwitchButton, ArrowDown,
-  DataAnalysis, Grid, Document, TrendCharts, Reading,
+  DataAnalysis, Grid, Document, List, TrendCharts, Reading,
   ChatDotRound, Picture, VideoCamera,
   Key, ShoppingCart, Ticket, Tickets, User, Share
 } from '@element-plus/icons-vue'
@@ -225,7 +231,7 @@ const titles = {
   '/recharge':   '积分充值',
   '/billing':    '我的订单',
   '/docs':       '接口文档',
-  '/tasks':      '调用日志',
+  '/tasks':      '任务中心',
   '/llm-logs':   '调用日志',
   '/stats':      '使用统计',
   '/image-gen':  '图片生成',
