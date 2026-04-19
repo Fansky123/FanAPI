@@ -129,6 +129,7 @@ func (h *VendorHandler) GetPoolKeys(c *gin.Context) {
 	type KeyStat struct {
 		ID          int64     `json:"id"`
 		PoolID      int64     `json:"pool_id"`
+		ChannelID   int64     `json:"channel_id"`
 		ChannelName string    `json:"channel_name"`
 		MaskedValue string    `json:"masked_value"`
 		TotalCost   int64     `json:"total_cost"` // 累计平台进价（credits）
@@ -140,9 +141,11 @@ func (h *VendorHandler) GetPoolKeys(c *gin.Context) {
 	result := make([]KeyStat, 0, len(keys))
 	for _, k := range keys {
 		// 查询关联渠道名称
+		channelID := int64(0)
 		channelName := ""
 		var pool model.KeyPool
 		if found, _ := db.Engine.ID(k.PoolID).Get(&pool); found {
+			channelID = pool.ChannelID
 			var ch model.Channel
 			if found2, _ := db.Engine.ID(pool.ChannelID).Get(&ch); found2 {
 				channelName = ch.Name
@@ -161,6 +164,7 @@ func (h *VendorHandler) GetPoolKeys(c *gin.Context) {
 		result = append(result, KeyStat{
 			ID:          k.ID,
 			PoolID:      k.PoolID,
+			ChannelID:   channelID,
 			ChannelName: channelName,
 			MaskedValue: maskKeyValue(k.Value),
 			TotalCost:   totalCost,
@@ -192,6 +196,7 @@ func (h *VendorHandler) GetSubmittablePools(c *gin.Context) {
 	type PoolInfo struct {
 		ID          int64  `json:"id"`
 		Name        string `json:"name"`
+		ChannelID   int64  `json:"channel_id"`
 		ChannelName string `json:"channel_name"`
 		ChannelType string `json:"channel_type"`
 	}
@@ -211,6 +216,7 @@ func (h *VendorHandler) GetSubmittablePools(c *gin.Context) {
 		result = append(result, PoolInfo{
 			ID:          pool.ID,
 			Name:        pool.Name,
+			ChannelID:   ch.ID,
 			ChannelName: ch.Name,
 			ChannelType: ch.Type,
 		})
@@ -231,19 +237,35 @@ func (h *VendorHandler) SubmitKey(c *gin.Context) {
 	vendorID := c.MustGet("vendor_id").(int64)
 
 	var req struct {
-		PoolID int64  `json:"pool_id" binding:"required"`
-		Value  string `json:"value" binding:"required"`
+		PoolID    int64  `json:"pool_id"`
+		ChannelID int64  `json:"channel_id"`
+		Value     string `json:"value" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.PoolID <= 0 && req.ChannelID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 pool_id 或 channel_id"})
+		return
+	}
 
-	// 1. 验证号池存在且开放自助上传
+	// 1. 解析并验证目标号池（支持直接传 pool_id，或仅传 channel_id）
 	var pool model.KeyPool
-	found, err := db.Engine.Where("id = ? AND vendor_submittable = true AND is_active = true", req.PoolID).Get(&pool)
+	var found bool
+	var err error
+	if req.PoolID > 0 {
+		found, err = db.Engine.Where("id = ? AND vendor_submittable = true AND is_active = true", req.PoolID).Get(&pool)
+	} else {
+		found, err = db.Engine.Where("channel_id = ? AND vendor_submittable = true AND is_active = true", req.ChannelID).
+			OrderBy("id ASC").Get(&pool)
+	}
 	if err != nil || !found {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "号池不存在或不支持自助上传"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "目标渠道未找到可上传号池"})
+		return
+	}
+	if req.ChannelID > 0 && pool.ChannelID != req.ChannelID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "pool_id 与 channel_id 不匹配"})
 		return
 	}
 

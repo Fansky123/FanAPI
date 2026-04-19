@@ -10,6 +10,7 @@
     </div>
 
     <el-table v-else :data="keys" border style="width:100%">
+      <el-table-column label="渠道 ID" prop="channel_id" width="90" />
       <el-table-column label="渠道名称" prop="channel_name" min-width="140" />
       <el-table-column label="Key（隐藏）" min-width="200">
         <template #default="{ row }">
@@ -60,7 +61,7 @@
             <el-option
               v-for="pool in pools"
               :key="pool.id"
-              :label="`${pool.channel_name}（${pool.name}）`"
+              :label="`渠道ID:${pool.channel_id}｜${pool.channel_name}（${pool.name}）`"
               :value="pool.id"
             />
           </el-select>
@@ -115,6 +116,10 @@ const submitting = ref(false)
 const submitResult = ref(null)
 const form = ref({ pool_id: null, value: '' })
 
+function selectedPool() {
+  return pools.value.find((p) => p.id === form.value.pool_id) || null
+}
+
 function formatCredits(v) {
   if (!v) return '0.0000'
   return (v / 1e6).toFixed(4)
@@ -159,8 +164,10 @@ async function handleSubmit() {
   submitResult.value = null
   submitting.value = true
   try {
+    const selected = selectedPool()
     const res = await vendorApi.submitKey({
       pool_id: form.value.pool_id,
+      channel_id: selected?.channel_id,
       value: form.value.value.trim(),
     })
     submitResult.value = { ok: true, message: res.message || 'Key 已成功加入号池' }
