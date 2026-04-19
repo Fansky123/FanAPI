@@ -949,20 +949,10 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 		}
 	}
 
-	// 采集脱敏后的请求头（用于日志排查）
+	// 采集完整请求头（用于管理端日志排查，含完整 API Key）
 	sanitizedHeaders := make(map[string]string, len(upReq.Header))
 	for k, vals := range upReq.Header {
-		v := strings.Join(vals, ", ")
-		lower := strings.ToLower(k)
-		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" {
-			// 仅保留前缀部分，如 "Bearer sk-***"
-			if idx := strings.Index(v, " "); idx > 0 {
-				v = v[:idx+1] + "***"
-			} else {
-				v = "***"
-			}
-		}
-		sanitizedHeaders[k] = v
+		sanitizedHeaders[k] = strings.Join(vals, ", ")
 	}
 
 	resp, err := httpClient.Do(upReq)

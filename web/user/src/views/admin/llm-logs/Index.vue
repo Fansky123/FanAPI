@@ -121,7 +121,7 @@
           <pre>{{ pretty(currentLog.client_request) }}</pre>
         </div>
         <div v-if="currentLog.upstream_headers" class="json-block">
-          <div class="json-title">发往上游的请求头（脱敏）</div>
+          <div class="json-title">发往上游的请求头</div>
           <pre>{{ pretty(currentLog.upstream_headers) }}</pre>
         </div>
         <div class="json-block">
