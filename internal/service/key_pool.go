@@ -29,6 +29,19 @@ const (
 //  1. 若 entityID 已有分配且该 Key 未耗尽 → 直接复用（保证上下文延续 / 缓存命中）
 //  2. 若已分配但 Key 已耗尽，或尚未分配 → 按 priority ASC, id ASC 选择第一个可用 Key 并绑定
 func GetOrAssignPoolKey(ctx context.Context, poolID, entityID int64) (*model.PoolKey, error) {
+	// 检查号池本身是否启用
+	pool := &model.KeyPool{}
+	found, err := db.Engine.ID(poolID).Get(pool)
+	if err != nil {
+		return nil, fmt.Errorf("号池 %d: 读取失败: %w", poolID, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("号池 %d 不存在", poolID)
+	}
+	if !pool.IsActive {
+		return nil, fmt.Errorf("号池 %d 已停用", poolID)
+	}
+
 	assignKey := fmt.Sprintf(assignKeyFmt, poolID, entityID)
 
 	// 1. 查询当前分配
@@ -125,9 +138,12 @@ func ToggleKeyPool(ctx context.Context, poolID int64) error {
 	return err
 }
 
-// DeleteKeyPool 软删除号池。
+// DeleteKeyPool 删除号池及其所有 Key。
 func DeleteKeyPool(ctx context.Context, poolID int64) error {
-	_, err := db.Engine.Where("id = ?", poolID).Update(&model.KeyPool{IsActive: false})
+	if _, err := db.Engine.Where("pool_id = ?", poolID).Delete(&model.PoolKey{}); err != nil {
+		return err
+	}
+	_, err := db.Engine.ID(poolID).Delete(&model.KeyPool{})
 	return err
 }
 
@@ -144,8 +160,8 @@ func AddPoolKey(ctx context.Context, key *model.PoolKey) error {
 	return err
 }
 
-// RemovePoolKey 软删除号池中的一个 Key。
+// RemovePoolKey 删除号池中的一个 Key。
 func RemovePoolKey(ctx context.Context, keyID int64) error {
-	_, err := db.Engine.Where("id = ?", keyID).Update(&model.PoolKey{IsActive: false})
+	_, err := db.Engine.ID(keyID).Delete(&model.PoolKey{})
 	return err
 }
