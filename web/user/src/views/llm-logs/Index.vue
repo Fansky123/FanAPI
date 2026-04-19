@@ -29,9 +29,13 @@
       <el-table :data="logs" stripe border>
         <el-table-column prop="model" label="模型" min-width="180" show-overflow-tooltip />
         <el-table-column prop="created_at" label="请求时间" width="180" :formatter="fmtTime" />
-        <el-table-column label="输入 Tokens" width="120" align="right">
+        <el-table-column label="输入 Tokens" width="150" align="right">
           <template #default="{ row }">
-            <span v-if="row.usage?.prompt_tokens != null">{{ row.usage.prompt_tokens.toLocaleString() }}</span>
+            <span v-if="row.usage?.prompt_tokens != null">
+              <div>{{ row.usage.prompt_tokens.toLocaleString() }}</div>
+              <div v-if="row.usage.cache_read_tokens" style="font-size:11px;color:#909399">命中缓存 {{ row.usage.cache_read_tokens.toLocaleString() }}</div>
+              <div v-if="row.usage.cache_creation_tokens" style="font-size:11px;color:#909399">写入缓存 {{ row.usage.cache_creation_tokens.toLocaleString() }}</div>
+            </span>
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </el-table-column>
@@ -95,6 +99,8 @@
             {{ detail.usage?.completion_tokens ?? '—' }}
             <el-tag v-if="detail.usage?.estimated" type="warning" size="small" style="margin-left:6px">估算</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item v-if="detail.usage?.cache_read_tokens" label="命中缓存 Tokens">{{ detail.usage.cache_read_tokens }}</el-descriptions-item>
+          <el-descriptions-item v-if="detail.usage?.cache_creation_tokens" label="写入缓存 Tokens">{{ detail.usage.cache_creation_tokens }}</el-descriptions-item>
           <el-descriptions-item label="消耗积分">
             <span v-if="detail.credits_charged" style="color:#f56c6c;font-weight:600">
               -{{ (detail.credits_charged / 1e6).toFixed(6) }}

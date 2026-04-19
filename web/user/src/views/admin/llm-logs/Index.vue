@@ -56,11 +56,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="upstream_status" label="上游状态" width="90" />
-        <el-table-column label="Token 用量" min-width="160">
+        <el-table-column label="Token 用量" min-width="180">
           <template #default="{ row }">
             <span v-if="row.usage">
-              ↑{{ row.usage.prompt_tokens ?? '-' }} / ↓{{ row.usage.completion_tokens ?? '-' }}
-              <el-tag v-if="row.usage.estimated" type="warning" size="small">估算</el-tag>
+              <div>↑{{ row.usage.prompt_tokens ?? '-' }} / ↓{{ row.usage.completion_tokens ?? '-' }}
+                <el-tag v-if="row.usage.estimated" type="warning" size="small">估算</el-tag>
+              </div>
+              <div v-if="row.usage.cache_creation_tokens || row.usage.cache_read_tokens" style="font-size:11px;color:#909399;margin-top:2px">
+                <span v-if="row.usage.cache_creation_tokens">写入缓存 {{ row.usage.cache_creation_tokens }}</span>
+                <span v-if="row.usage.cache_creation_tokens && row.usage.cache_read_tokens"> / </span>
+                <span v-if="row.usage.cache_read_tokens">命中缓存 {{ row.usage.cache_read_tokens }}</span>
+              </div>
             </span>
             <span v-else>-</span>
           </template>
