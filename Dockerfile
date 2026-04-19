@@ -17,7 +17,7 @@
 # ─────────────────────────────────────────────────────────────
 # Stage 1: 构建前端静态资源
 # ─────────────────────────────────────────────────────────────
-FROM node:20-alpine AS node-builder
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:20.19.6-alpine3.23 AS node-builder
 
 WORKDIR /web
 
@@ -31,7 +31,7 @@ RUN npm run build
 # ─────────────────────────────────────────────────────────────
 # Stage 2: 编译 Go 二进制（静态链接，无 CGO）
 # ─────────────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS go-builder
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26.2-alpine AS go-builder
 
 ENV CGO_ENABLED=0 \
     GOOS=linux \
@@ -51,7 +51,7 @@ RUN go build -ldflags="-s -w" -trimpath -o /out/fanapi-server ./cmd/server && \
 # ─────────────────────────────────────────────────────────────
 # Stage 3a: api — nginx + 前端 + fanapi-server
 # ─────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS api
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim AS api
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -80,7 +80,7 @@ CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
 # ─────────────────────────────────────────────────────────────
 # Stage 3b: script — 仅 fanapi-script worker
 # ─────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS script
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim AS script
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
