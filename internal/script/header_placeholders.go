@@ -28,7 +28,8 @@ func ResolveHeaderValue(val, poolKeyValue string) string {
 	return placeholderRe.ReplaceAllStringFunc(val, func(m string) string {
 		inner := m[2 : len(m)-2] // 去掉 {{ 和 }}
 		switch {
-		case inner == "pool_key":
+		case inner == "pool_key" || inner == "":
+			// {{}} 是 {{pool_key}} 的简写
 			return poolKeyValue
 
 		case inner == "uuid":

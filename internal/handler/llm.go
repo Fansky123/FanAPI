@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -865,87 +864,23 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
 
-	// 复制渠道静态 Headers，同时记录静态 API Key
+	// 将渠道 Headers 里的占位符替换后写入请求
+	// 支持 {{pool_key}} / {{}} 注入号池 Key，以及其他动态占位符
 	poolKeyVal := ""
 	if poolKey != nil {
 		poolKeyVal = poolKey.Value
 	}
-	poolKeyUsedInHeaders := false
-	apiKey := ""
 	for k, v := range ch.Headers {
 		if sv, ok := v.(string); ok {
-			if strings.Contains(sv, "{{pool_key}}") {
-				poolKeyUsedInHeaders = true
-			}
-			resolved := script.ResolveHeaderValue(sv, poolKeyVal)
-			if strings.EqualFold(k, "authorization") && strings.HasPrefix(resolved, "Bearer ") {
-				apiKey = strings.TrimPrefix(resolved, "Bearer ")
-			}
-			upReq.Header.Set(k, resolved)
+			upReq.Header.Set(k, script.ResolveHeaderValue(sv, poolKeyVal))
 		}
 	}
 
-	// 号池 Key 覆盖（fallback：Header 里没用 {{pool_key}} 占位符时走 Authorization: Bearer）
-	if poolKey != nil {
-		if !poolKeyUsedInHeaders {
-			upReq.Header.Set("Authorization", "Bearer "+poolKey.Value)
-		}
-		apiKey = poolKey.Value
-	}
-
-	// ---------- 认证方式 ----------
-	authType := ch.AuthType
-	if authType == "" {
-		authType = "bearer" // 默认
-	}
-	// Claude 协议默认使用 x-api-key，可被 auth_type 覆盖
-	if proto == protocolClaude && authType == "bearer" {
-		authType = "claude"
-	}
-
-	switch authType {
-	case "bearer":
-		if apiKey != "" {
-			upReq.Header.Set("Authorization", "Bearer "+apiKey)
-		}
-	case "claude":
-		upReq.Header.Del("Authorization")
-		if apiKey != "" {
-			upReq.Header.Set("x-api-key", apiKey)
-		}
-		upReq.Header.Set("anthropic-version", "2023-06-01")
-	case "query_param":
-		upReq.Header.Del("Authorization")
-		if apiKey != "" {
-			paramName := ch.AuthParamName
-			if paramName == "" {
-				paramName = "key"
-			}
-			q := upReq.URL.Query()
-			q.Set(paramName, apiKey)
-			upReq.URL.RawQuery = q.Encode()
-		}
-	case "basic":
-		upReq.Header.Del("Authorization")
-		if apiKey != "" {
-			// KEY 格式："user:pass"（或仅密码，此时 user 为空）
-			encoded := base64.StdEncoding.EncodeToString([]byte(apiKey))
-			upReq.Header.Set("Authorization", "Basic "+encoded)
-		}
-	case "sigv4":
-		upReq.Header.Del("Authorization")
-		if apiKey != "" {
-			region := ch.AuthRegion
-			if region == "" {
-				region = "us-east-1"
-			}
-			service := ch.AuthService
-			if service == "" {
-				service = "execute-api"
-			}
-			if signErr := signSigV4(upReq, apiKey, region, service, body); signErr != nil {
-				return nil, nil, fmt.Errorf("sigv4 签名失败: %w", signErr)
-			}
+	// URL 里也支持 {{pool_key}} / {{}} 占位符（如 Gemini ?key={{}} 写法）
+	if strings.Contains(upReq.URL.RawQuery, "%7B%7B") || strings.Contains(targetURL, "{{") {
+		newURL := script.ResolveHeaderValue(upReq.URL.String(), poolKeyVal)
+		if u, err2 := url.Parse(newURL); err2 == nil {
+			upReq.URL = u
 		}
 	}
 

@@ -145,31 +145,16 @@ func execJob(ctx context.Context, job *model.TaskJob) *model.WorkerResult {
 	if modelVal, ok := job.Payload["model"].(string); ok && modelVal != "" {
 		targetURLForLog = strings.ReplaceAll(targetURLForLog, "{model}", modelVal)
 	}
-	// URL 里的 {{pool_key}} 记录时脚敏
-	if strings.Contains(targetURLForLog, "{{pool_key}}") {
-		targetURLForLog = strings.ReplaceAll(targetURLForLog, "{{pool_key}}", "****")
-	}
+	// URL 里也做 {{}} / {{pool_key}} 替换（实际请求 URL 记录）
+	targetURLForLog = ResolveHeaderValue(targetURLForLog, job.PoolKeyValue)
 	upstreamReq["_url"] = targetURLForLog
-	// 合并渠道配置的请求头（{{pool_key}} 脱敏后记录）
+	// 合并渠道配置的请求头（完整替换后记录，含完整 Key）
 	headersForLog := make(map[string]interface{})
 	for k, v := range job.Headers {
-		if sv, ok := v.(string); ok && strings.Contains(sv, "{{pool_key}}") {
-			headersForLog[k] = strings.ReplaceAll(sv, "{{pool_key}}", "****")
+		if sv, ok := v.(string); ok {
+			headersForLog[k] = ResolveHeaderValue(sv, job.PoolKeyValue)
 		} else {
 			headersForLog[k] = v
-		}
-	}
-	if job.PoolKeyValue != "" {
-		// 如果 fallback 模式（没有 {{pool_key}} 占位符），记录脱敏的 Authorization
-		hasPoolKeyPlaceholder := false
-		for _, v := range job.Headers {
-			if sv, ok := v.(string); ok && strings.Contains(sv, "{{pool_key}}") {
-				hasPoolKeyPlaceholder = true
-				break
-			}
-		}
-		if !hasPoolKeyPlaceholder {
-			headersForLog["Authorization"] = "Bearer ****"
 		}
 	}
 	headersForLog["Content-Type"] = "application/json"
@@ -261,34 +246,23 @@ func callUpstream(job *model.TaskJob, payload map[string]interface{}) (map[strin
 	}
 	client := &http.Client{Timeout: timeout}
 
-	// 支持 {model} 和 {{pool_key}} 占位符，将请求载荷中的模型名 / 号池 Key 注入 URL
+	// 支持 {model} 和 {{}} / {{pool_key}} 占位符，将请求载荷中的模型名 / 号池 Key 注入 URL
 	targetURL := job.BaseURL
 	if modelVal, ok := job.Payload["model"].(string); ok && modelVal != "" {
 		targetURL = strings.ReplaceAll(targetURL, "{model}", modelVal)
 	}
-	if job.PoolKeyValue != "" {
-		targetURL = strings.ReplaceAll(targetURL, "{{pool_key}}", job.PoolKeyValue)
-	}
+	targetURL = ResolveHeaderValue(targetURL, job.PoolKeyValue)
 
 	req, err := http.NewRequest(job.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// 先应用渠道静态 Header（含 {{pool_key}} 占位符替换）
-	poolKeyUsedInHeaders := false
+	// 应用渠道 Header，支持 {{}} / {{pool_key}} 占位符替换
 	for k, v := range job.Headers {
 		if sv, ok := v.(string); ok {
-			if strings.Contains(sv, "{{pool_key}}") {
-				poolKeyUsedInHeaders = true
-			}
 			req.Header.Set(k, ResolveHeaderValue(sv, job.PoolKeyValue))
 		}
-	}
-	// Fallback：如果号池 Key 存在且 Header 里没有任何地方用到 {{pool_key}}，
-	// 就默认注入为 Authorization: Bearer {key}（兼容旧行为）
-	if job.PoolKeyValue != "" && !poolKeyUsedInHeaders {
-		req.Header.Set("Authorization", "Bearer "+job.PoolKeyValue)
 	}
 
 	resp, err := client.Do(req)
