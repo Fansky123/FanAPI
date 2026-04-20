@@ -25,6 +25,8 @@ ENV TZ=Asia/Shanghai \
 RUN go install github.com/air-verse/air@latest && \
     go install github.com/swaggo/swag/cmd/swag@latest
 
+RUN corepack enable
+
 WORKDIR /app
 
 EXPOSE 8080

@@ -55,17 +55,25 @@ go run ./cmd/script &>/tmp/script.log &
 echo $! > /tmp/script.pid
 
 # ---------- 前端（需要 Node.js） ----------
-if command -v npm &>/dev/null; then
+if command -v pnpm &>/dev/null || command -v corepack &>/dev/null || command -v npm &>/dev/null; then
     echo ">>> 启动前端 (port 3000)..."
-    cd "$ROOT/web/user"
-    [ ! -d node_modules ] && npm install --silent
-    npm run dev -- --host 0.0.0.0 &>/tmp/user-web.log &
+    cd "$ROOT/web/app"
+    if ! command -v pnpm &>/dev/null && command -v corepack &>/dev/null; then
+        corepack enable >/dev/null 2>&1 || true
+    fi
+    if command -v pnpm &>/dev/null; then
+        [ ! -d node_modules ] && pnpm install --silent
+        pnpm run dev &>/tmp/user-web.log &
+    else
+        [ ! -d node_modules ] && npm install --silent
+        npm run dev -- --host 0.0.0.0 &>/tmp/user-web.log &
+    fi
     echo $! > /tmp/user-web.pid
 
     cd "$ROOT"
 else
     echo "    [跳过前端] 未找到 npm，请手动运行:"
-    echo "      cd web/user  && npm install && npm run dev"
+    echo "      cd web/app && pnpm install && pnpm run dev"
     echo "      cd web/admin && npm install && npm run dev"
 fi
 
