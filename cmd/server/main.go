@@ -249,6 +249,7 @@ func main() {
 		{
 			v1.POST("/chat/completions", handler.LLMProxy) // OpenAI 兼容格式
 			v1.POST("/messages", handler.ClaudeProxy)      // Claude 原生格式
+			v1.POST("/responses", handler.ResponsesProxy)  // OpenAI Responses API（Codex CLI）
 			v1.POST("/gemini", handler.GeminiProxy)        // Gemini 原生格式
 			v1.POST("/image", handler.CreateImageTask)
 			v1.POST("/video", handler.CreateVideoTask)

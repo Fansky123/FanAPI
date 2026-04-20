@@ -26,9 +26,10 @@ import (
 )
 
 const (
-	protocolOpenAI = "openai"
-	protocolClaude = "claude"
-	protocolGemini = "gemini"
+	protocolOpenAI    = "openai"
+	protocolClaude    = "claude"
+	protocolGemini    = "gemini"
+	protocolResponses = "responses"
 )
 
 func effectiveProtocol(ch *model.Channel) string {
@@ -326,6 +327,36 @@ func GeminiNativeProxy(c *gin.Context) {
 	c.Request.ContentLength = int64(len(newBody))
 
 	c.Set("client_proto", protocolGemini)
+	llmProxy(c)
+}
+
+// ResponsesProxy 处理 POST /v1/responses（OpenAI Responses API，Codex CLI 使用）。
+// 客户端发送 Responses API 格式请求，收到 Responses API 格式响应（同步或 SSE）。
+//
+// 请求格式：
+//
+//	{
+//	  "model": "codex-mini-latest",
+//	  "input": "hello" / [{"role":"user","content":"hello"}],
+//	  "instructions": "You are helpful.",  // 等价于 system 消息
+//	  "stream": true,
+//	  "max_output_tokens": 4096
+//	}
+//
+// @Summary      OpenAI Responses API（Codex CLI 兼容）
+// @Description  兼容 OpenAI Responses API（POST /v1/responses），Codex CLI 默认使用此接口。将 Responses API 格式请求转换为 Chat Completions 格式转发上游，并将响应转换回 Responses API 格式。
+// @Tags         LLM
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        body  body      object  true  "Responses API 请求体；model 填渠道名称（routing_model）"
+// @Success      200   {object}  object  "Responses API 格式响应；stream=true 时为 SSE 流"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Failure      503   {object}  object  "无可用渠道"
+// @Router       /v1/responses [post]
+func ResponsesProxy(c *gin.Context) {
+	c.Set("client_proto", protocolResponses)
 	llmProxy(c)
 }
 

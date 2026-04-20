@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // SSEConverter converts SSE lines from one protocol format to another.
@@ -27,6 +29,8 @@ func NewSSEConverter(sourceProto, clientProto string) SSEConverter {
 		return &geminiToOpenAISSE{}
 	case sourceProto == ProtocolOpenAI && clientProto == ProtocolClaude:
 		return &openAIToClaudeSSE{}
+	case sourceProto == ProtocolOpenAI && clientProto == ProtocolResponses:
+		return &openAIToResponsesSSE{}
 	default:
 		// Unsupported pair: pass lines through unchanged so the client at least gets something.
 		return nil
@@ -397,4 +401,255 @@ func (o *openAIToClaudeSSE) stopEvents() []string {
 		`data: {"type":"message_stop"}`,
 		"",
 	}
+}
+
+// ─────────────────────────────────────────────
+// OpenAI SSE → Responses API SSE
+//
+// Codex CLI 使用 OpenAI Responses API（POST /v1/responses），
+// 其 SSE 事件格式与 Chat Completions 完全不同。
+// 此转换器将上游 OpenAI Chat Completions SSE 流转换为 Responses API SSE 事件。
+//
+// 事件顺序：
+//   response.created → response.output_item.added → response.content_part.added
+//   → (N×) response.output_text.delta
+//   → response.output_text.done → response.content_part.done
+//   → response.output_item.done → response.completed
+// ─────────────────────────────────────────────
+
+type openAIToResponsesSSE struct {
+	respID   string
+	itemID   string
+	model    string
+	fullText string
+	// 状态标记
+	headerSent bool
+	doneSent   bool
+	// token 统计
+	inputTokens  int64
+	outputTokens int64
+}
+
+func (r *openAIToResponsesSSE) Convert(line string) []string {
+	if line == "" {
+		return nil
+	}
+	if !strings.HasPrefix(line, "data: ") {
+		return nil
+	}
+	payload := strings.TrimPrefix(line, "data: ")
+	if payload == "[DONE]" {
+		return nil // 在 Flush 中处理收尾事件
+	}
+
+	var chunk map[string]interface{}
+	if json.Unmarshal([]byte(payload), &chunk) != nil {
+		return nil
+	}
+
+	// 首个 chunk：提取 id 和 model，发送 header 事件
+	var out []string
+	if !r.headerSent {
+		r.headerSent = true
+		if id, ok := chunk["id"].(string); ok {
+			r.respID = id
+		} else {
+			r.respID = "resp_" + newShortID()
+		}
+		r.itemID = "msg_" + newShortID()
+		if m, ok := chunk["model"].(string); ok {
+			r.model = m
+		}
+		out = append(out, r.emitCreated()...)
+		out = append(out, r.emitOutputItemAdded()...)
+		out = append(out, r.emitContentPartAdded()...)
+	}
+
+	// 收集 usage（最后一个 chunk 会携带）
+	if usg, ok := chunk["usage"].(map[string]interface{}); ok {
+		if n, _ := usg["prompt_tokens"].(float64); n > 0 {
+			r.inputTokens = int64(n)
+		}
+		if n, _ := usg["completion_tokens"].(float64); n > 0 {
+			r.outputTokens = int64(n)
+		}
+	}
+
+	// 提取 delta 文本
+	choices, _ := chunk["choices"].([]interface{})
+	if len(choices) == 0 {
+		return out
+	}
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return out
+	}
+
+	// delta 文本增量
+	if delta, ok := choice["delta"].(map[string]interface{}); ok {
+		if text, ok := delta["content"].(string); ok && text != "" {
+			r.fullText += text
+			out = append(out, r.emitTextDelta(text)...)
+		}
+	}
+
+	return out
+}
+
+func (r *openAIToResponsesSSE) Flush() []string {
+	if r.doneSent {
+		return nil
+	}
+	r.doneSent = true
+	var out []string
+	out = append(out, r.emitTextDone()...)
+	out = append(out, r.emitContentPartDone()...)
+	out = append(out, r.emitOutputItemDone()...)
+	out = append(out, r.emitCompleted()...)
+	return out
+}
+
+func (r *openAIToResponsesSSE) emitCreated() []string {
+	resp := map[string]interface{}{
+		"type": "response.created",
+		"response": map[string]interface{}{
+			"id":     r.respID,
+			"object": "response",
+			"status": "in_progress",
+			"model":  r.model,
+			"output": []interface{}{},
+		},
+	}
+	b, _ := json.Marshal(resp)
+	return []string{"event: response.created", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitOutputItemAdded() []string {
+	item := map[string]interface{}{
+		"type":         "response.output_item.added",
+		"output_index": 0,
+		"item": map[string]interface{}{
+			"id":      r.itemID,
+			"type":    "message",
+			"role":    "assistant",
+			"content": []interface{}{},
+			"status":  "in_progress",
+		},
+	}
+	b, _ := json.Marshal(item)
+	return []string{"event: response.output_item.added", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitContentPartAdded() []string {
+	ev := map[string]interface{}{
+		"type":          "response.content_part.added",
+		"item_id":       r.itemID,
+		"output_index":  0,
+		"content_index": 0,
+		"part": map[string]interface{}{
+			"type": "output_text",
+			"text": "",
+		},
+	}
+	b, _ := json.Marshal(ev)
+	return []string{"event: response.content_part.added", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitTextDelta(delta string) []string {
+	ev := map[string]interface{}{
+		"type":          "response.output_text.delta",
+		"item_id":       r.itemID,
+		"output_index":  0,
+		"content_index": 0,
+		"delta":         delta,
+	}
+	b, _ := json.Marshal(ev)
+	return []string{"event: response.output_text.delta", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitTextDone() []string {
+	ev := map[string]interface{}{
+		"type":          "response.output_text.done",
+		"item_id":       r.itemID,
+		"output_index":  0,
+		"content_index": 0,
+		"text":          r.fullText,
+	}
+	b, _ := json.Marshal(ev)
+	return []string{"event: response.output_text.done", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitContentPartDone() []string {
+	ev := map[string]interface{}{
+		"type":          "response.content_part.done",
+		"item_id":       r.itemID,
+		"output_index":  0,
+		"content_index": 0,
+		"part": map[string]interface{}{
+			"type": "output_text",
+			"text": r.fullText,
+		},
+	}
+	b, _ := json.Marshal(ev)
+	return []string{"event: response.content_part.done", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitOutputItemDone() []string {
+	ev := map[string]interface{}{
+		"type":         "response.output_item.done",
+		"output_index": 0,
+		"item": map[string]interface{}{
+			"id":     r.itemID,
+			"type":   "message",
+			"role":   "assistant",
+			"status": "completed",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "output_text",
+					"text": r.fullText,
+				},
+			},
+		},
+	}
+	b, _ := json.Marshal(ev)
+	return []string{"event: response.output_item.done", "data: " + string(b), ""}
+}
+
+func (r *openAIToResponsesSSE) emitCompleted() []string {
+	usage := map[string]interface{}{
+		"input_tokens":  r.inputTokens,
+		"output_tokens": r.outputTokens,
+		"total_tokens":  r.inputTokens + r.outputTokens,
+	}
+	resp := map[string]interface{}{
+		"type": "response.completed",
+		"response": map[string]interface{}{
+			"id":     r.respID,
+			"object": "response",
+			"status": "completed",
+			"model":  r.model,
+			"output": []interface{}{
+				map[string]interface{}{
+					"id":     r.itemID,
+					"type":   "message",
+					"role":   "assistant",
+					"status": "completed",
+					"content": []interface{}{
+						map[string]interface{}{
+							"type": "output_text",
+							"text": r.fullText,
+						},
+					},
+				},
+			},
+			"usage": usage,
+		},
+	}
+	b, _ := json.Marshal(resp)
+	return []string{"event: response.completed", "data: " + string(b), ""}
+}
+
+// newShortID 生成短 ID（不含横线）供 Responses API 的 id 字段使用。
+func newShortID() string {
+	return strings.ReplaceAll(uuid.New().String(), "-", "")
 }

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	ProtocolOpenAI = "openai"
-	ProtocolClaude = "claude"
-	ProtocolGemini = "gemini"
+	ProtocolOpenAI    = "openai"
+	ProtocolClaude    = "claude"
+	ProtocolGemini    = "gemini"
+	ProtocolResponses = "responses" // OpenAI Responses API（Codex CLI 使用）
 )
 
 // ConvertRequest converts an OpenAI-format request map to the target protocol.
@@ -645,6 +646,8 @@ func NormalizeClientRequest(req map[string]interface{}, clientProto string) (map
 		return claudeRequestToOpenAI(req)
 	case ProtocolGemini:
 		return geminiRequestToOpenAI(req)
+	case ProtocolResponses:
+		return responsesToOpenAI(req)
 	default:
 		return req, nil
 	}
@@ -659,6 +662,8 @@ func ConvertResponseToClient(respBytes []byte, clientProto string) ([]byte, erro
 		return openAIToClaudeResponse(respBytes)
 	case ProtocolGemini:
 		return openAIToGeminiResponse(respBytes)
+	case ProtocolResponses:
+		return openAIToResponsesSync(respBytes)
 	default:
 		return respBytes, nil
 	}
@@ -1095,6 +1100,167 @@ func openAIToGeminiResponse(body []byte) ([]byte, error) {
 			},
 		},
 		"usageMetadata": usageMeta,
+	}
+	return json.Marshal(out)
+}
+
+// ─────────────────────────────────────────────
+// Responses API (OpenAI Responses API / Codex CLI)
+// ─────────────────────────────────────────────
+
+// responsesToOpenAI converts an OpenAI Responses API request to OpenAI chat/completions format.
+// Responses API fields: model, input (string | array), instructions, stream, max_output_tokens, tools
+func responsesToOpenAI(req map[string]interface{}) (map[string]interface{}, error) {
+	out := make(map[string]interface{})
+
+	if m, ok := req["model"].(string); ok {
+		out["model"] = m
+	}
+	if s, ok := req["stream"]; ok {
+		out["stream"] = s
+	}
+	if mt, ok := req["max_output_tokens"]; ok {
+		out["max_tokens"] = mt
+	}
+	if t, ok := req["temperature"]; ok {
+		out["temperature"] = t
+	}
+	if tp, ok := req["top_p"]; ok {
+		out["top_p"] = tp
+	}
+
+	var messages []interface{}
+
+	// instructions → system message
+	if inst, ok := req["instructions"].(string); ok && inst != "" {
+		messages = append(messages, map[string]interface{}{
+			"role":    "system",
+			"content": inst,
+		})
+	}
+
+	// input: string | array of content items
+	switch inp := req["input"].(type) {
+	case string:
+		messages = append(messages, map[string]interface{}{
+			"role":    "user",
+			"content": inp,
+		})
+	case []interface{}:
+		for _, item := range inp {
+			im, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			role, _ := im["role"].(string)
+			if role == "" {
+				role = "user"
+			}
+			switch c := im["content"].(type) {
+			case string:
+				messages = append(messages, map[string]interface{}{
+					"role":    role,
+					"content": c,
+				})
+			case []interface{}:
+				// content parts: {type: "input_text"|"output_text", text: "..."}
+				var parts []map[string]interface{}
+				var simpleText string
+				allText := true
+				for _, cp := range c {
+					cpm, ok := cp.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					text, _ := cpm["text"].(string)
+					t, _ := cpm["type"].(string)
+					if t == "input_text" || t == "output_text" || t == "text" {
+						simpleText += text
+						parts = append(parts, map[string]interface{}{"type": "text", "text": text})
+					} else {
+						allText = false
+						parts = append(parts, cpm)
+					}
+				}
+				if allText {
+					messages = append(messages, map[string]interface{}{
+						"role":    role,
+						"content": simpleText,
+					})
+				} else {
+					messages = append(messages, map[string]interface{}{
+						"role":    role,
+						"content": parts,
+					})
+				}
+			}
+		}
+	}
+
+	out["messages"] = messages
+
+	// tools passthrough (already OpenAI format in Responses API)
+	if tools, ok := req["tools"].([]interface{}); ok && len(tools) > 0 {
+		out["tools"] = tools
+	}
+
+	return out, nil
+}
+
+// openAIToResponsesSync converts an OpenAI chat.completion response to Responses API format.
+func openAIToResponsesSync(body []byte) ([]byte, error) {
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return body, nil
+	}
+
+	id, _ := resp["id"].(string)
+	model, _ := resp["model"].(string)
+
+	var text string
+	if choices, ok := resp["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if msg, ok := choice["message"].(map[string]interface{}); ok {
+				text, _ = msg["content"].(string)
+			}
+		}
+	}
+
+	inputTokens := int64(0)
+	outputTokens := int64(0)
+	if usg, ok := resp["usage"].(map[string]interface{}); ok {
+		if pt, ok := usg["prompt_tokens"].(float64); ok {
+			inputTokens = int64(pt)
+		}
+		if ct, ok := usg["completion_tokens"].(float64); ok {
+			outputTokens = int64(ct)
+		}
+	}
+
+	out := map[string]interface{}{
+		"id":         id,
+		"object":     "response",
+		"created_at": resp["created"],
+		"model":      model,
+		"status":     "completed",
+		"output": []interface{}{
+			map[string]interface{}{
+				"type":   "message",
+				"id":     id,
+				"status": "completed",
+				"role":   "assistant",
+				"content": []interface{}{
+					map[string]interface{}{
+						"type": "output_text",
+						"text": text,
+					},
+				},
+			},
+		},
+		"usage": map[string]interface{}{
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+		},
 	}
 	return json.Marshal(out)
 }
