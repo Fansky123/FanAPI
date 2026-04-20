@@ -39,9 +39,9 @@ test('renders user login page', async ({ page }) => {
 })
 
 test('renders admin login page', async ({ page }) => {
-  await page.goto('/admin/login')
+  await page.goto('/admin/login', { waitUntil: 'networkidle' })
 
-  await expect(page.getByText('登录管理后台')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '登录管理后台' })).toBeVisible()
   await expect(page.getByRole('button', { name: '进入后台' })).toBeVisible()
 })
 

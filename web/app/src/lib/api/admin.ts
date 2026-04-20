@@ -24,10 +24,27 @@ export type AdminChannel = {
   protocol?: string
   base_url?: string
   method?: string
+  query_url?: string
+  query_method?: string
   timeout_ms?: number
+  query_timeout_ms?: number
   billing_type?: string
   headers?: Record<string, unknown>
   billing_config?: Record<string, unknown>
+  billing_script?: string
+  request_script?: string
+  response_script?: string
+  query_script?: string
+  error_script?: string
+  key_pool_id?: number
+  auth_type?: string
+  auth_param_name?: string
+  auth_region?: string
+  auth_service?: string
+  weight?: number
+  priority?: number
+  icon_url?: string
+  description?: string
   is_active?: boolean
 }
 
