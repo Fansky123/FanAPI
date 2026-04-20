@@ -32,9 +32,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('renders user login page', async ({ page }) => {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'networkidle' })
 
-  await expect(page.getByText('登录用户端')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '登录用户端' })).toBeVisible()
   await expect(page.getByPlaceholder('请输入用户名或邮箱')).toBeVisible()
 })
 
