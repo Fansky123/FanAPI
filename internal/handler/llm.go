@@ -524,7 +524,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 
 	// 6. 号池 Key 已在步骤1分配，直接发送上游请求
 	// 7. 发送上游请求
-	sentHeaders, resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
+	sentHeaders, resp, err := sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel, isStream)
 	if sentHeaders != nil {
 		// 异步写入请求头（不阻塞主流程）
 		logID := llmLog.ID
@@ -566,7 +566,7 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		if rotErr == nil {
 			poolKey = newKey
 			poolKeyIDVal = newKey.ID // 更新 poolKeyIDVal，确保后续结算流水关联正确的号商
-			_, resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel)
+			_, resp, err = sendLLMRequest(c, ch, mappedReq, poolKey, proto, resolvedModel, isStream)
 			if err != nil {
 				service.RecordChannelError(c.Request.Context(), channelID)
 				llmRefundAndAbort(c, corrID, userID, totalHold, upstreamCostHold, poolKeyIDVal, 0, "上游请求失败(重试): "+err.Error())
@@ -954,16 +954,31 @@ func buildStreamClientResponse(lines []string, proto string) model.JSON {
 //   - "query_param" 将 KEY 作为查询参数附加到 URL
 //   - "basic"      HTTP Basic Auth，KEY 格式为 "user:pass"
 //   - "sigv4"      AWS Signature V4，KEY 格式为 "ACCESS_KEY:SECRET_KEY"
-func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string) (map[string]string, *http.Response, error) {
+func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string, isStream bool) (map[string]string, *http.Response, error) {
 	body, _ := json.Marshal(reqData)
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
 
 	// 支持 {model} 占位符，将渠道配置的模型名注入 URL
 	// 例如：https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+	// 支持 {stream_action} 占位符，根据请求是否流式选择 Gemini 端点：
+	//   流式  → streamGenerateContent?alt=sse
+	//   非流式 → generateContent
 	targetURL := ch.BaseURL
 	if resolvedModel != "" {
 		targetURL = strings.ReplaceAll(targetURL, "{model}", resolvedModel)
+	}
+	if strings.Contains(targetURL, "{stream_action}") {
+		if isStream {
+			targetURL = strings.ReplaceAll(targetURL, "{stream_action}", "streamGenerateContent")
+			if strings.Contains(targetURL, "?") {
+				targetURL += "&alt=sse"
+			} else {
+				targetURL += "?alt=sse"
+			}
+		} else {
+			targetURL = strings.ReplaceAll(targetURL, "{stream_action}", "generateContent")
+		}
 	}
 
 	upReq, err := http.NewRequestWithContext(c.Request.Context(), ch.Method, targetURL, bytes.NewReader(body))
