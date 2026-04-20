@@ -111,25 +111,66 @@ func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, 
 	outputTokens, _ := getInt64FromData(data, outputPath)
 	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputPricePer1m) / 1000000))
 
-	// Claude prompt caching：写入缓存（1.25x 输入价）和读取缓存的 token 单独计费。
-	// OpenAI prompt caching：命中缓存的 token 按 cached_read_price 计费（默认 0.5x 输入价）。
-	// Gemini Context Caching：命中缓存按 cache_read_price 计费（默认 0.25x 输入价）。
-	// 可在 billing_config 中通过以下字段覆盖默认倍率：
-	//   cache_creation_price_per_1m_tokens — Claude 写入缓存始价（默认 1.25x 输入价）
-	//   cache_read_price_per_1m_tokens     — 命中缓存读取始价（Claude 默认 0.1x，OpenAI 默认 0.5x，Gemini 默认 0.25x）
+	// 缓存计费说明：
+	//
+	// OpenAI / Gemini 协议：
+	//   - prompt_tokens（或 promptTokenCount）**包含**缓存命中的 token（cached 是其子集）。
+	//   - 正确做法：先从 inputTokens 中扣除 cacheReadTokens，再按常规价计算；
+	//     cacheReadTokens 单独按折扣价（默认 0.5x）计算。
+	//   - 若不扣除，缓存 token 会被按"1.0x + 0.5x = 1.5x"收费，严重超收。
+	//
+	// Claude 协议：
+	//   - input_tokens **不含**缓存 token（cache_creation / cache_read 是独立字段）。
+	//   - 正确做法：inputTokens 按常规价，cacheCreateTokens 按 1.25x，cacheReadTokens 按 0.1x，
+	//     三者互不重叠，无需扣除。
+	//
+	// 结论：只有 OpenAI / Gemini 协议需要先扣除 cacheReadTokens 再计算基础输入费用。
+	proto := ch.Protocol
+	if proto == "" {
+		proto = "openai"
+	}
+	// openaiStyleCache 表示 prompt_tokens 已将缓存 token 计入其中（OpenAI、Gemini 均如此）
+	openaiStyleCache := proto == "openai" || proto == "gemini"
+
 	cacheCreatePricePer1m := getInt64Val(cfg, "cache_creation_price_per_1m_tokens")
 	if cacheCreatePricePer1m == 0 && inputPricePer1m > 0 {
+		// Claude cache write = 1.25x input；OpenAI/Gemini 无写入缓存计费，此处默认也用 1.25x
 		cacheCreatePricePer1m = int64(math.Ceil(float64(inputPricePer1m) * 1.25))
 	}
 	cacheReadPricePer1m := getInt64Val(cfg, "cache_read_price_per_1m_tokens")
 	if cacheReadPricePer1m == 0 && inputPricePer1m > 0 {
-		// 默认倒 0.5x（兼容 OpenAI 主流价格），Claude/Gemini 用户可通过配置覆盖
-		cacheReadPricePer1m = int64(math.Ceil(float64(inputPricePer1m) * 0.5))
+		// 各协议缓存读取默认倍率不同，不设置时按协议取合理默认值：
+		//   Claude  : 0.10x（$0.30/$3，缓存读取大幅折扣）
+		//   Gemini  : 0.25x（Context Caching 官方折扣）
+		//   OpenAI  : 0.50x（Prompt Caching 官方折扣，如 gpt-4o）
+		var cacheReadRatio float64
+		switch proto {
+		case "claude":
+			cacheReadRatio = 0.10
+		case "gemini":
+			cacheReadRatio = 0.25
+		default: // openai
+			cacheReadRatio = 0.50
+		}
+		cacheReadPricePer1m = int64(math.Ceil(float64(inputPricePer1m) * cacheReadRatio))
 	}
 	cacheCreateTokens, _ := getInt64FromData(data, "response.usage.cache_creation_tokens")
 	cacheReadTokens, _ := getInt64FromData(data, "response.usage.cache_read_tokens")
 	cacheCost := int64(math.Ceil(float64(cacheCreateTokens)*float64(cacheCreatePricePer1m)/1000000)) +
 		int64(math.Ceil(float64(cacheReadTokens)*float64(cacheReadPricePer1m)/1000000))
+
+	// calcInputCost 计算基础输入费用：
+	// OpenAI/Gemini 协议下，inputTokens 已包含缓存 token，需先扣除再按正常价计费。
+	calcInputCost := func(inputTokens int64) int64 {
+		base := inputTokens
+		if openaiStyleCache && cacheReadTokens > 0 {
+			base -= cacheReadTokens
+			if base < 0 {
+				base = 0
+			}
+		}
+		return int64(math.Ceil(float64(base) * float64(inputPricePer1m) / 1000000))
+	}
 
 	if !getBool(cfg, "input_from_response") {
 		// 输入 token 数从请求中计算（与 hold 阶段保持一致），结算 = 输入 + 实际输出 + 缓存
@@ -138,16 +179,13 @@ func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, 
 		if err != nil {
 			inputTokens = estimateTokensFromMessages(req)
 		}
-		inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
-		return inputCost + outputCost + cacheCost, nil
+		return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 	}
 
 	// input_from_response=true：从响应 usage 中获取实际输入 token 数
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputPricePer1m) / 1000000))
-
-	return inputCost + outputCost + cacheCost, nil
+	return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 }
 
 // ---- 各计费类型内部计算函数 ----
@@ -475,6 +513,12 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 	outputTokens, _ := getInt64FromData(data, outputPath)
 	outputCost := int64(math.Ceil(float64(outputTokens) * float64(outputCostPer1m) / 1000000))
 
+	proto := ch.Protocol
+	if proto == "" {
+		proto = "openai"
+	}
+	openaiStyleCache := proto == "openai" || proto == "gemini"
+
 	// 缓存 token 进价（与售价逻辑相同，字段名用 _cost_ 替代 _price_）
 	cacheCreateCostPer1m := getInt64Val(cfg, "cache_creation_cost_per_1m_tokens")
 	if cacheCreateCostPer1m == 0 && inputCostPer1m > 0 {
@@ -482,22 +526,45 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 	}
 	cacheReadCostPer1m := getInt64Val(cfg, "cache_read_cost_per_1m_tokens")
 	if cacheReadCostPer1m == 0 && inputCostPer1m > 0 {
-		cacheReadCostPer1m = int64(math.Ceil(float64(inputCostPer1m) * 0.5))
+		var cacheReadRatio float64
+		switch proto {
+		case "claude":
+			cacheReadRatio = 0.10
+		case "gemini":
+			cacheReadRatio = 0.25
+		default:
+			cacheReadRatio = 0.50
+		}
+		cacheReadCostPer1m = int64(math.Ceil(float64(inputCostPer1m) * cacheReadRatio))
 	}
 	cacheCreateTokens, _ := getInt64FromData(data, "response.usage.cache_creation_tokens")
 	cacheReadTokens, _ := getInt64FromData(data, "response.usage.cache_read_tokens")
 	cacheCost := int64(math.Ceil(float64(cacheCreateTokens)*float64(cacheCreateCostPer1m)/1000000)) +
 		int64(math.Ceil(float64(cacheReadTokens)*float64(cacheReadCostPer1m)/1000000))
 
+	calcInputCost := func(inputTokens int64) int64 {
+		base := inputTokens
+		if openaiStyleCache && cacheReadTokens > 0 {
+			base -= cacheReadTokens
+			if base < 0 {
+				base = 0
+			}
+		}
+		return int64(math.Ceil(float64(base) * float64(inputCostPer1m) / 1000000))
+	}
+
 	if !getBool(cfg, "input_from_response") {
-		return outputCost + cacheCost, nil
+		inputPath := getStr(cfg, "metric_paths.input_tokens", "request.input_tokens")
+		inputTokens, err := getInt64FromData(data, inputPath)
+		if err != nil {
+			inputTokens = estimateTokensFromMessages(req)
+		}
+		return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 	}
 
 	inputPath := getStr(cfg, "metric_paths.input_tokens", "response.usage.prompt_tokens")
 	inputTokens, _ := getInt64FromData(data, inputPath)
-	inputCost := int64(math.Ceil(float64(inputTokens) * float64(inputCostPer1m) / 1000000))
-
-	return inputCost + outputCost + cacheCost, nil
+	return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 }
 
 func calcUpstreamToken(cfg map[string]interface{}, data map[string]map[string]interface{}) (int64, int64, error) {

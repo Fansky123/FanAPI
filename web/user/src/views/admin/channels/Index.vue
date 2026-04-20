@@ -139,23 +139,23 @@
         <!-- ===== Token 计费价格 ===== -->
         <template v-if="form.billing_type === 'token'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">Token 价格（单位：credits / 1M tokens）</span>
+            <span style="font-size:13px;color:#666">Token 价格（单位：元 / 1M tokens）</span>
           </el-divider>
           <el-form-item label="售价 · 输入">
-            <el-input-number v-model="form.bp.input_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
+            <el-input-number v-model="form.bp.input_price_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 1M tokens，用户被扣费</span>
           </el-form-item>
           <el-form-item label="售价 · 输出">
-            <el-input-number v-model="form.bp.output_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
+            <el-input-number v-model="form.bp.output_price_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 1M tokens，用户被扣费</span>
           </el-form-item>
           <el-form-item label="进价 · 输入">
-            <el-input-number v-model="form.bp.input_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
+            <el-input-number v-model="form.bp.input_cost_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 1M tokens，支付给上游（成本）</span>
           </el-form-item>
           <el-form-item label="进价 · 输出">
-            <el-input-number v-model="form.bp.output_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
+            <el-input-number v-model="form.bp.output_cost_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 1M tokens，支付给上游（成本）</span>
           </el-form-item>
           <el-form-item label="输入从响应取">
             <el-switch v-model="form.bp.input_from_response" />
@@ -165,95 +165,95 @@
             <span style="font-size:12px;color:#aaa">Prompt Cache 价格（Claude / OpenAI / Gemini，留空按默认倍率）</span>
           </el-divider>
           <el-form-item label="缓存写入售价">
-            <el-input-number v-model="form.bp.cache_creation_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" placeholder="留空=1.25×输入价" />
+            <el-input-number v-model="form.bp.cache_creation_price_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" :controls="true" placeholder="留空=1.25×输入价" />
             <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_creation_price_per_1m_tokens=null">清空</el-button>
-            <span style="margin-left:4px;color:#aaa;font-size:11px">用户被扣费（留空 = 输入价 × 1.25，仅 Claude）</span>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">元 / 1M tokens，用户被扣费（留空 = 输入价 × 1.25，仅 Claude）</span>
           </el-form-item>
           <el-form-item label="缓存读取售价">
-            <el-input-number v-model="form.bp.cache_read_price_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" placeholder="留空=0.5×输入价" />
+            <el-input-number v-model="form.bp.cache_read_price_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" :controls="true" placeholder="留空=0.5×输入价" />
             <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_read_price_per_1m_tokens=null">清空</el-button>
-            <span style="margin-left:4px;color:#aaa;font-size:11px">用户被扣费（留空 = 输入价 × 0.5）</span>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">元 / 1M tokens，用户被扣费（留空 = 输入价 × 0.5）</span>
           </el-form-item>
           <el-form-item label="缓存写入进价">
-            <el-input-number v-model="form.bp.cache_creation_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" />
+            <el-input-number v-model="form.bp.cache_creation_cost_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" :controls="true" />
             <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_creation_cost_per_1m_tokens=null">清空</el-button>
-            <span style="margin-left:4px;color:#aaa;font-size:11px">支付给上游（留空 = 进价 × 1.25）</span>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">元 / 1M tokens，支付给上游（留空 = 进价 × 1.25）</span>
           </el-form-item>
           <el-form-item label="缓存读取进价">
-            <el-input-number v-model="form.bp.cache_read_cost_per_1m_tokens" :min="0" :step="100000" style="width:200px" :controls="true" />
+            <el-input-number v-model="form.bp.cache_read_cost_per_1m_tokens" :min="0" :step="1" :precision="4" style="width:200px" :controls="true" />
             <el-button link style="margin-left:6px;font-size:12px;color:#c0c4cc" @click="form.bp.cache_read_cost_per_1m_tokens=null">清空</el-button>
-            <span style="margin-left:4px;color:#aaa;font-size:11px">支付给上游（留空 = 进价 × 0.5）</span>
+            <span style="margin-left:4px;color:#aaa;font-size:11px">元 / 1M tokens，支付给上游（留空 = 进价 × 0.5）</span>
           </el-form-item>
         </template>
 
         <!-- ===== 图片计费价格 ===== -->
         <template v-if="form.billing_type === 'image'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">图片价格（credits / 张）</span>
+            <span style="font-size:13px;color:#666">图片价格（元 / 张）</span>
           </el-divider>
           <!-- 按档位定价表格（size_prices / size_costs） -->
           <el-form-item label="按档位定价">
             <div style="font-size:12px;color:#999;margin-bottom:8px">填写后按 size 档位精确定价，覆盖下方基础价格；留空则使用基础价格 + 分辨率倍率模式。</div>
             <el-table :data="sizeTierRows" border size="small" style="width:480px">
               <el-table-column prop="label" label="档位" width="60" align="center" />
-              <el-table-column label="售价（credits）" align="center">
+              <el-table-column label="售价（元）" align="center">
                 <template #default="{ row }">
-                  <el-input-number v-model="form.bp.size_prices[row.key]" :min="0" :step="1000" size="small" style="width:140px" />
+                  <el-input-number v-model="form.bp.size_prices[row.key]" :min="0" :step="0.01" :precision="4" size="small" style="width:140px" />
                 </template>
               </el-table-column>
-              <el-table-column label="进价（credits）" align="center">
+              <el-table-column label="进价（元）" align="center">
                 <template #default="{ row }">
-                  <el-input-number v-model="form.bp.size_costs[row.key]" :min="0" :step="1000" size="small" style="width:140px" />
+                  <el-input-number v-model="form.bp.size_costs[row.key]" :min="0" :step="0.01" :precision="4" size="small" style="width:140px" />
                 </template>
               </el-table-column>
             </el-table>
             <div style="margin-top:8px;display:flex;gap:24px;align-items:center">
-              <span style="font-size:12px;color:#666">兜底售价（size 不在表中时）：</span>
-              <el-input-number v-model="form.bp.default_size_price" :min="0" :step="1000" size="small" style="width:150px" />
-              <span style="font-size:12px;color:#666">兜底进价：</span>
-              <el-input-number v-model="form.bp.default_size_cost" :min="0" :step="1000" size="small" style="width:150px" />
+              <span style="font-size:12px;color:#666">兜底售价（元，size 不在表中时）：</span>
+              <el-input-number v-model="form.bp.default_size_price" :min="0" :step="0.01" :precision="4" size="small" style="width:150px" />
+              <span style="font-size:12px;color:#666">兜底进价（元）：</span>
+              <el-input-number v-model="form.bp.default_size_cost" :min="0" :step="0.01" :precision="4" size="small" style="width:150px" />
             </div>
           </el-form-item>
           <el-divider content-position="left" style="margin:4px 0 12px">
             <span style="font-size:12px;color:#aaa">基础价格（像素分档模式，档位定价留空时生效）</span>
           </el-divider>
           <el-form-item label="售价 · 基础">
-            <el-input-number v-model="form.bp.base_price" :min="0" :step="1000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
+            <el-input-number v-model="form.bp.base_price" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 张，用户被扣费</span>
           </el-form-item>
           <el-form-item label="进价 · 基础">
-            <el-input-number v-model="form.bp.base_cost" :min="0" :step="1000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
+            <el-input-number v-model="form.bp.base_cost" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 张，支付给上游（成本）</span>
           </el-form-item>
         </template>
 
         <!-- ===== 视频 / 音频计费价格 ===== -->
         <template v-if="form.billing_type === 'video' || form.billing_type === 'audio'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">{{ form.billing_type === 'video' ? '视频' : '音频' }}价格（单位：credits / 秒）</span>
+            <span style="font-size:13px;color:#666">{{ form.billing_type === 'video' ? '视频' : '音频' }}价格（单位：元 / 秒）</span>
           </el-divider>
           <el-form-item label="售价 · 每秒">
-            <el-input-number v-model="form.bp.price_per_second" :min="0" :step="100" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
+            <el-input-number v-model="form.bp.price_per_second" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 秒，用户被扣费</span>
           </el-form-item>
           <el-form-item label="进价 · 每秒">
-            <el-input-number v-model="form.bp.cost_per_second" :min="0" :step="100" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
+            <el-input-number v-model="form.bp.cost_per_second" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 秒，支付给上游（成本）</span>
           </el-form-item>
         </template>
 
         <!-- ===== 按次计费价格 ===== -->
         <template v-if="form.billing_type === 'count'">
           <el-divider content-position="left" style="margin:8px 0 12px">
-            <span style="font-size:13px;color:#666">按次价格（单位：credits / 次）</span>
+            <span style="font-size:13px;color:#666">按次价格（单位：元 / 次）</span>
           </el-divider>
           <el-form-item label="售价 · 每次">
-            <el-input-number v-model="form.bp.price_per_call" :min="0" :step="1000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">用户被扣费</span>
+            <el-input-number v-model="form.bp.price_per_call" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 次，用户被扣费</span>
           </el-form-item>
           <el-form-item label="进价 · 每次">
-            <el-input-number v-model="form.bp.cost_per_call" :min="0" :step="1000" style="width:200px" />
-            <span style="margin-left:8px;color:#999;font-size:12px">支付给上游（成本）</span>
+            <el-input-number v-model="form.bp.cost_per_call" :min="0" :step="0.01" :precision="4" style="width:200px" />
+            <span style="margin-left:8px;color:#999;font-size:12px">元 / 次，支付给上游（成本）</span>
           </el-form-item>
         </template>
 
@@ -372,6 +372,34 @@ const dialogVisible = ref(false)
 const editRow = ref(null)
 const iconFileInput = ref(null)
 
+// 1 CNY = 1,000,000 credits（内部存储单位）
+// 前端所有价格字段均以 CNY 显示，保存时自动乘以此系数转换为 credits
+const CREDITS_PER_CNY = 1_000_000
+
+// 价格字段分类（用于批量转换）
+const TOKEN_PRICE_FIELDS = [
+  'input_price_per_1m_tokens', 'output_price_per_1m_tokens',
+  'input_cost_per_1m_tokens', 'output_cost_per_1m_tokens',
+  'cache_creation_price_per_1m_tokens', 'cache_read_price_per_1m_tokens',
+  'cache_creation_cost_per_1m_tokens', 'cache_read_cost_per_1m_tokens',
+]
+const SCALAR_PRICE_FIELDS = [
+  'base_price', 'base_cost',
+  'default_size_price', 'default_size_cost',
+  'price_per_second', 'cost_per_second',
+  'price_per_call', 'cost_per_call',
+]
+
+function creditsToCny(v) {
+  if (v == null) return null
+  return Math.round(v / CREDITS_PER_CNY * 10000) / 10000  // 保留4位小数
+}
+
+function cnyToCredits(v) {
+  if (v == null) return null
+  return Math.round(v * CREDITS_PER_CNY)
+}
+
 function onIconFile(e) {
   const file = e.target.files?.[0]
   if (!file) return
@@ -428,15 +456,22 @@ function emptyBp() {
   }
 }
 
-// 从 billing_config JSON 中提取结构化价格字段
+// 从 billing_config JSON 中提取结构化价格字段（credits → CNY 转换）
 function extractBp(cfg) {
   const bp = emptyBp()
   const keys = Object.keys(bp)
   for (const k of keys) {
     if (cfg[k] === undefined) continue
-    // 对象类型深拷贝（size_prices / size_costs），避免引用污染
-    if (typeof cfg[k] === 'object' && cfg[k] !== null && !Array.isArray(cfg[k])) {
-      bp[k] = { ...bp[k], ...cfg[k] }
+    if (k === 'size_prices' || k === 'size_costs') {
+      // 对象类型：每个档位值单独转换
+      const obj = typeof cfg[k] === 'object' && cfg[k] !== null ? cfg[k] : {}
+      bp[k] = {}
+      for (const tier of SIZE_TIERS) {
+        bp[k][tier] = obj[tier] != null ? creditsToCny(obj[tier]) : 0
+      }
+    } else if (TOKEN_PRICE_FIELDS.includes(k) || SCALAR_PRICE_FIELDS.includes(k)) {
+      // 数值价格字段：credits → CNY
+      bp[k] = cfg[k] != null ? creditsToCny(cfg[k]) : (k.startsWith('cache_') ? null : 0)
     } else {
       bp[k] = cfg[k]
     }
@@ -444,28 +479,39 @@ function extractBp(cfg) {
   return bp
 }
 
-// 将结构化价格字段合并回 billing_config（过滤零值的进价/售价避免污染 JSON）
+// 将结构化价格字段合并回 billing_config（CNY → credits 转换，过滤零值避免污染 JSON）
 function mergeBpToConfig(bp, baseConfigStr) {
   let cfg = {}
   try { cfg = JSON.parse(baseConfigStr || '{}') } catch { cfg = {} }
-  // 缓存价格字段：null 表示不设置（按默认倍率），从 JSON 中删除；非 null 才写入
   const cacheKeys = ['cache_creation_price_per_1m_tokens', 'cache_read_price_per_1m_tokens',
                      'cache_creation_cost_per_1m_tokens', 'cache_read_cost_per_1m_tokens']
   for (const [k, v] of Object.entries(bp)) {
     if (cacheKeys.includes(k)) {
-      if (v !== null && v !== undefined && v > 0) cfg[k] = v
+      // null 表示使用默认倍率，不写入 JSON
+      if (v !== null && v !== undefined && v > 0) cfg[k] = cnyToCredits(v)
       else delete cfg[k]
       continue
     }
-    // size_prices / size_costs：只有任意档位非零时才写入
     if (k === 'size_prices' || k === 'size_costs') {
-      const anyNonZero = typeof v === 'object' && v !== null && Object.values(v).some(x => x > 0)
-      if (anyNonZero) cfg[k] = v
+      const converted = {}
+      let anyNonZero = false
+      for (const tier of SIZE_TIERS) {
+        const cv = cnyToCredits(v?.[tier] || 0)
+        converted[tier] = cv
+        if (cv > 0) anyNonZero = true
+      }
+      if (anyNonZero) cfg[k] = converted
       else delete cfg[k]
       continue
     }
-    if (v !== 0 && v !== false) cfg[k] = v
-    else if (cfg[k] !== undefined) cfg[k] = v // 已有字段置为 0/false 也要保留
+    if (TOKEN_PRICE_FIELDS.includes(k) || SCALAR_PRICE_FIELDS.includes(k)) {
+      const credits = cnyToCredits(v || 0)
+      if (credits !== 0 || cfg[k] !== undefined) cfg[k] = credits
+      continue
+    }
+    // 非价格字段（input_from_response 等布尔/其他字段）
+    if (v !== false) cfg[k] = v
+    else if (cfg[k] !== undefined) cfg[k] = v
   }
   return cfg
 }
@@ -560,35 +606,37 @@ async function toggleActive(row) {
 
 function formatPrice(row) {
   const c = row.billing_config ?? {}
+  const fmtCny = (v) => v != null ? `¥${(v / CREDITS_PER_CNY).toFixed(4).replace(/\.?0+$/, '')}` : '¥0'
   if (row.billing_type === 'token') {
-    return `输入 ${c.input_price_per_1m_tokens ?? 0} / 输出 ${c.output_price_per_1m_tokens ?? 0}`
+    return `输入 ${fmtCny(c.input_price_per_1m_tokens)} / 输出 ${fmtCny(c.output_price_per_1m_tokens)}`
   }
   if (row.billing_type === 'image') {
     if (c.size_prices) {
-      const parts = SIZE_TIERS.filter(k => c.size_prices[k]).map(k => `${k}:${c.size_prices[k]}`)
-      return parts.length ? parts.join(' / ') : `基础 ${c.base_price ?? 0}`
+      const parts = SIZE_TIERS.filter(k => c.size_prices[k]).map(k => `${k}:${fmtCny(c.size_prices[k])}`)
+      return parts.length ? parts.join(' / ') : `基础 ${fmtCny(c.base_price)}`
     }
-    return `基础 ${c.base_price ?? 0}`
+    return `基础 ${fmtCny(c.base_price)}`
   }
-  if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.price_per_second ?? 0} /秒`
-  if (row.billing_type === 'count') return `${c.price_per_call ?? 0} /次`
+  if (row.billing_type === 'video' || row.billing_type === 'audio') return `${fmtCny(c.price_per_second)} /秒`
+  if (row.billing_type === 'count') return `${fmtCny(c.price_per_call)} /次`
   return '—'
 }
 
 function formatCost(row) {
   const c = row.billing_config ?? {}
+  const fmtCny = (v) => v != null ? `¥${(v / CREDITS_PER_CNY).toFixed(4).replace(/\.?0+$/, '')}` : '¥0'
   if (row.billing_type === 'token') {
-    return `输入 ${c.input_cost_per_1m_tokens ?? 0} / 输出 ${c.output_cost_per_1m_tokens ?? 0}`
+    return `输入 ${fmtCny(c.input_cost_per_1m_tokens)} / 输出 ${fmtCny(c.output_cost_per_1m_tokens)}`
   }
   if (row.billing_type === 'image') {
     if (c.size_costs) {
-      const parts = SIZE_TIERS.filter(k => c.size_costs[k]).map(k => `${k}:${c.size_costs[k]}`)
-      return parts.length ? parts.join(' / ') : `基础 ${c.base_cost ?? 0}`
+      const parts = SIZE_TIERS.filter(k => c.size_costs[k]).map(k => `${k}:${fmtCny(c.size_costs[k])}`)
+      return parts.length ? parts.join(' / ') : `基础 ${fmtCny(c.base_cost)}`
     }
-    return `基础 ${c.base_cost ?? 0}`
+    return `基础 ${fmtCny(c.base_cost)}`
   }
-  if (row.billing_type === 'video' || row.billing_type === 'audio') return `${c.cost_per_second ?? 0} /秒`
-  if (row.billing_type === 'count') return `${c.cost_per_call ?? 0} /次`
+  if (row.billing_type === 'video' || row.billing_type === 'audio') return `${fmtCny(c.cost_per_second)} /秒`
+  if (row.billing_type === 'count') return `${fmtCny(c.cost_per_call)} /次`
   return '—'
 }
 </script>

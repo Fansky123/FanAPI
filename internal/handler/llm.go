@@ -807,23 +807,41 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	if settleErr == nil {
 		inputFromResponse, _ := ch.BillingConfig["input_from_response"].(bool)
 		if !inputFromResponse {
-			// 分离结算：预扣已从 DB/Redis 扣除输入费用，结算仅处理输出部分。
+			// 分离结算：预扣已扣除估算输入费用，此处结算差额（输出 + 缓存折扣调整）。
+			// delta = actualCost - totalHold
+			//   > 0：实际费用超出预扣（有输出/补扣），需再扣差额
+			//   < 0：实际费用低于预扣（高缓存命中率导致输入成本降低），需退还差额
+			//   = 0：刚好持平，无需操作
 			outputCost := actualCost - totalHold
 			outputUpstreamCost := actualUpstreamCost - upstreamCostHold
 			if outputCost < 0 {
-				outputCost = 0
+				// 实际费用低于预扣：退还多扣部分（常见于 Prompt Cache 命中率较高的场景）
+				refundAmt := -outputCost
+				_ = billing.Refund(ctx, userID, refundAmt)
+				upstreamRefund := int64(0)
+				if outputUpstreamCost < 0 {
+					upstreamRefund = -outputUpstreamCost
+				}
+				_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "refund", refundAmt, upstreamRefund, model.JSON{
+					"actual_cost": actualCost,
+					"held":        totalHold,
+					"usage":       usageData,
+					"reason":      "cache_discount",
+				})
+			} else {
+				if outputCost > 0 {
+					_ = billing.Charge(ctx, userID, outputCost)
+				}
+				upstreamSettle := outputUpstreamCost
+				if upstreamSettle < 0 {
+					upstreamSettle = 0
+				}
+				_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "settle", outputCost, upstreamSettle, model.JSON{
+					"actual_cost": actualCost,
+					"held":        totalHold,
+					"usage":       usageData,
+				})
 			}
-			if outputUpstreamCost < 0 {
-				outputUpstreamCost = 0
-			}
-			if outputCost > 0 {
-				_ = billing.Charge(ctx, userID, outputCost)
-			}
-			_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "settle", outputCost, outputUpstreamCost, model.JSON{
-				"actual_cost": actualCost,
-				"held":        totalHold,
-				"usage":       usageData,
-			})
 		} else {
 			// input_from_response=true 或非 token 类型：预扣为估算，结算修正差额。
 			// 预扣已从 DB 扣除 totalHold，此处补充差额使总扣款等于实际费用。
