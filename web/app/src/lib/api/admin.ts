@@ -99,6 +99,38 @@ export type AdminWithdrawal = {
   admin_remark?: string
 }
 
+export type AdminKeyPool = {
+  id?: number
+  name?: string
+  channel_id?: number
+  is_active?: boolean
+  vendor_submittable?: boolean
+}
+
+export type AdminPoolKey = {
+  id?: number
+  value?: string
+  priority?: number
+  is_active?: boolean
+}
+
+export type AdminOcpcPlatform = {
+  id?: number
+  platform?: string
+  name?: string
+  enabled?: boolean
+  baidu_page_url?: string
+  baidu_token?: string
+  baidu_reg_type?: number
+  baidu_order_type?: number
+  e360_key?: string
+  e360_secret?: string
+  e360_jzqs?: string
+  e360_so_type?: string
+  e360_reg_event?: string
+  e360_order_event?: string
+}
+
 export const adminAuthApi = {
   login: (payload: { username: string; password: string }) =>
     http.post<AdminLoginResponse>('/auth/login', payload),
@@ -161,6 +193,42 @@ export const adminApi = {
     ),
   updateVendor: (id: number, payload: { is_active?: boolean; commission_ratio?: number }) =>
     http.patch<Record<string, unknown>>(`/admin/vendors/${id}`, payload),
+  listKeyPools: (channelId?: number) =>
+    http.get<{ pools?: AdminKeyPool[] } | AdminKeyPool[]>('/admin/key-pools', {
+      params: channelId ? { channel_id: channelId } : undefined,
+    }),
+  createKeyPool: (payload: { channel_id: number; name: string }) =>
+    http.post<Record<string, unknown>>('/admin/key-pools', payload),
+  deleteKeyPool: (id: number) =>
+    http.delete<Record<string, unknown>>(`/admin/key-pools/${id}`),
+  toggleKeyPool: (id: number) =>
+    http.patch<Record<string, unknown>>(`/admin/key-pools/${id}/toggle`, {}),
+  toggleVendorSubmittable: (id: number) =>
+    http.patch<Record<string, unknown>>(`/admin/key-pools/${id}/vendor-toggle`, {}),
+  listPoolKeys: (poolId: number) =>
+    http.get<{ keys?: AdminPoolKey[] } | AdminPoolKey[]>(`/admin/key-pools/${poolId}/keys`),
+  addPoolKey: (poolId: number, payload: { value: string; priority: number }) =>
+    http.post<Record<string, unknown>>(`/admin/key-pools/${poolId}/keys`, payload),
+  removePoolKey: (id: number) =>
+    http.delete<Record<string, unknown>>(`/admin/pool-keys/${id}`),
+  updatePoolKey: (id: number, payload: { priority: number; is_active: boolean }) =>
+    http.patch<Record<string, unknown>>(`/admin/pool-keys/${id}`, payload),
+  triggerOcpcUpload: () =>
+    http.post<Record<string, unknown>>('/admin/ocpc/upload', {}),
+  getOcpcSchedule: () =>
+    http.get<{ schedule?: Record<string, string> }>('/admin/ocpc/schedule'),
+  updateOcpcSchedule: (payload: { enabled: boolean; interval: number }) =>
+    http.put<Record<string, unknown>>('/admin/ocpc/schedule', payload),
+  listOcpcPlatforms: () =>
+    http.get<{ list?: AdminOcpcPlatform[] } | AdminOcpcPlatform[]>('/admin/ocpc/platforms'),
+  createOcpcPlatform: (payload: Record<string, unknown>) =>
+    http.post<Record<string, unknown>>('/admin/ocpc/platforms', payload),
+  updateOcpcPlatform: (id: number, payload: Record<string, unknown>) =>
+    http.put<Record<string, unknown>>(`/admin/ocpc/platforms/${id}`, payload),
+  deleteOcpcPlatform: (id: number) =>
+    http.delete<Record<string, unknown>>(`/admin/ocpc/platforms/${id}`),
+  toggleOcpcPlatform: (id: number) =>
+    http.patch<Record<string, unknown>>(`/admin/ocpc/platforms/${id}/toggle`, {}),
   generateCards: (payload: { count: number; credits: number; note: string }) =>
     http.post<{ cards?: AdminCard[] }>('/admin/cards/generate', payload),
   listCards: (params: Record<string, unknown> = {}) =>

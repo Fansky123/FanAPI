@@ -12,7 +12,7 @@ const vendorHttp = createHttpClient()
 
 export function VendorLoginPage() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
@@ -22,7 +22,7 @@ export function VendorLoginPage() {
 
     try {
       const response = await vendorHttp.post<{ token: string }>('/vendor/auth/login', {
-        email,
+        username,
         password,
       })
       setRoleToken('vendor', response.token)
@@ -40,7 +40,7 @@ export function VendorLoginPage() {
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="邮箱" />
+          <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="用户名" />
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" />
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           <Button className="w-full" type="submit">进入 Vendor 端</Button>

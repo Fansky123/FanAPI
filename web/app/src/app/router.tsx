@@ -19,10 +19,17 @@ const NotFoundPage = lazy(() => import('@/pages/public/NotFoundPage').then((m) =
 const UserDashboardPage = lazy(() => import('@/pages/user/UserDashboardPage').then((m) => ({ default: m.UserDashboardPage })))
 const UserModelsPage = lazy(() => import('@/pages/user/UserModelsPage').then((m) => ({ default: m.UserModelsPage })))
 const UserKeysPage = lazy(() => import('@/pages/user/UserKeysPage').then((m) => ({ default: m.UserKeysPage })))
+const UserPlaygroundPage = lazy(() => import('@/pages/user/UserPlaygroundPage').then((m) => ({ default: m.UserPlaygroundPage })))
+const UserImageGenPage = lazy(() => import('@/pages/user/UserImageGenPage').then((m) => ({ default: m.UserImageGenPage })))
+const UserVideoGenPage = lazy(() => import('@/pages/user/UserVideoGenPage').then((m) => ({ default: m.UserVideoGenPage })))
 const UserTasksPage = lazy(() => import('@/pages/user/UserTasksPage').then((m) => ({ default: m.UserTasksPage })))
 const UserLogsPage = lazy(() => import('@/pages/user/UserLogsPage').then((m) => ({ default: m.UserLogsPage })))
 const UserBillingPage = lazy(() => import('@/pages/user/UserBillingPage').then((m) => ({ default: m.UserBillingPage })))
+const UserDocsPage = lazy(() => import('@/pages/user/UserDocsPage').then((m) => ({ default: m.UserDocsPage })))
 const UserProfilePage = lazy(() => import('@/pages/user/UserProfilePage').then((m) => ({ default: m.UserProfilePage })))
+const UserStatsPage = lazy(() => import('@/pages/user/UserStatsPage').then((m) => ({ default: m.UserStatsPage })))
+const UserExchangePage = lazy(() => import('@/pages/user/UserExchangePage').then((m) => ({ default: m.UserExchangePage })))
+const UserInvitePage = lazy(() => import('@/pages/user/UserInvitePage').then((m) => ({ default: m.UserInvitePage })))
 
 const AdminLoginPage = lazy(() => import('@/pages/admin/AdminLoginPage').then((m) => ({ default: m.AdminLoginPage })))
 const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })))
@@ -30,6 +37,8 @@ const AdminChannelsPage = lazy(() => import('@/pages/admin/AdminChannelsPage').t
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 const AdminBillingPage = lazy(() => import('@/pages/admin/AdminBillingPage').then((m) => ({ default: m.AdminBillingPage })))
 const AdminCardsPage = lazy(() => import('@/pages/admin/AdminCardsPage').then((m) => ({ default: m.AdminCardsPage })))
+const AdminKeyPoolsPage = lazy(() => import('@/pages/admin/AdminKeyPoolsPage').then((m) => ({ default: m.AdminKeyPoolsPage })))
+const AdminOcpcPage = lazy(() => import('@/pages/admin/AdminOcpcPage').then((m) => ({ default: m.AdminOcpcPage })))
 const AdminTasksPage = lazy(() => import('@/pages/admin/AdminTasksPage').then((m) => ({ default: m.AdminTasksPage })))
 const AdminLogsPage = lazy(() => import('@/pages/admin/AdminLogsPage').then((m) => ({ default: m.AdminLogsPage })))
 const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })))
@@ -41,6 +50,7 @@ const AgentDashboardPage = lazy(() => import('@/pages/agent/AgentDashboardPage')
 
 const VendorLoginPage = lazy(() => import('@/pages/vendor/VendorLoginPage').then((m) => ({ default: m.VendorLoginPage })))
 const VendorDashboardPage = lazy(() => import('@/pages/vendor/VendorDashboardPage').then((m) => ({ default: m.VendorDashboardPage })))
+const VendorKeysPage = lazy(() => import('@/pages/vendor/VendorKeysPage').then((m) => ({ default: m.VendorKeysPage })))
 
 function renderLazy(node: ReactNode) {
   return (
@@ -119,10 +129,17 @@ export const router = createBrowserRouter([
         children: [
           { path: '/dashboard', element: renderLazy(<UserDashboardPage />) },
           { path: '/models', element: renderLazy(<UserModelsPage />) },
+          { path: '/playground', element: renderLazy(<UserPlaygroundPage />) },
+          { path: '/image-gen', element: renderLazy(<UserImageGenPage />) },
+          { path: '/video-gen', element: renderLazy(<UserVideoGenPage />) },
           { path: '/keys', element: renderLazy(<UserKeysPage />) },
           { path: '/tasks', element: renderLazy(<UserTasksPage />) },
           { path: '/llm-logs', element: renderLazy(<UserLogsPage />) },
           { path: '/billing', element: renderLazy(<UserBillingPage />) },
+          { path: '/docs', element: renderLazy(<UserDocsPage />) },
+          { path: '/stats', element: renderLazy(<UserStatsPage />) },
+          { path: '/exchange', element: renderLazy(<UserExchangePage />) },
+          { path: '/invite', element: renderLazy(<UserInvitePage />) },
           { path: '/profile', element: renderLazy(<UserProfilePage />) },
         ],
       },
@@ -151,6 +168,8 @@ export const router = createBrowserRouter([
           { path: 'users', element: renderLazy(<AdminUsersPage />) },
           { path: 'billing', element: renderLazy(<AdminBillingPage />) },
           { path: 'cards', element: renderLazy(<AdminCardsPage />) },
+          { path: 'key-pools', element: renderLazy(<AdminKeyPoolsPage />) },
+          { path: 'ocpc', element: renderLazy(<AdminOcpcPage />) },
           { path: 'tasks', element: renderLazy(<AdminTasksPage />) },
           { path: 'llm-logs', element: renderLazy(<AdminLogsPage />) },
           { path: 'settings', element: renderLazy(<AdminSettingsPage />) },
@@ -198,7 +217,10 @@ export const router = createBrowserRouter([
       {
         path: '/vendor',
         element: renderLazy(<VendorLayout />),
-        children: [{ path: 'dashboard', element: renderLazy(<VendorDashboardPage />) }],
+        children: [
+          { path: 'dashboard', element: renderLazy(<VendorDashboardPage />) },
+          { path: 'keys', element: renderLazy(<VendorKeysPage />) },
+        ],
       },
     ],
   },

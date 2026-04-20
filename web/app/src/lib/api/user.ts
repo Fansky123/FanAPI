@@ -15,6 +15,8 @@ export type UserBalanceResponse = {
 export type UserStatsResponse = {
   total_consumed?: number
   today_consumed?: number
+  daily_credits?: Array<{ day?: string; credits?: number }>
+  daily_requests?: Array<{ day?: string; success?: number; failed?: number }>
 }
 
 export type UserTransaction = {
@@ -63,6 +65,29 @@ export type UserLog = {
   status?: string
 }
 
+export type InviteInfo = {
+  invite_code?: string
+  invite_count?: number
+  frozen_balance?: number
+}
+
+export type RedeemRecord = {
+  code?: string
+  credits?: number
+  amount?: number
+  created_at?: string
+  redeemed_at?: string
+}
+
+export type WithdrawRecord = {
+  id?: number
+  created_at?: string
+  amount?: number
+  payment_type?: string
+  status?: string
+  admin_remark?: string
+}
+
 export const userApi = {
   getProfile: () => http.get<UserProfileResponse>('/user/profile'),
   getBalance: () => http.get<UserBalanceResponse>('/user/balance'),
@@ -82,6 +107,30 @@ export const userApi = {
     http.delete<Record<string, unknown>>(`/user/apikeys/${id}`),
   listChannels: () =>
     http.get<{ channels?: UserChannel[] } | UserChannel[]>('/user/channels'),
+  redeemCard: (code: string) =>
+    http.post<Record<string, unknown>>('/user/cards/redeem', { code }),
+  getRedeemHistory: (page = 1, size = 20) =>
+    http.get<{ records?: RedeemRecord[]; list?: RedeemRecord[] } | RedeemRecord[]>(
+      '/user/cards/redeem-history',
+      { params: { page, size } }
+    ),
+  getInviteInfo: () => http.get<InviteInfo>('/user/invite'),
+  convertFrozen: (amount = 0) =>
+    http.post<Record<string, unknown>>('/user/invite/convert', { amount }),
+  getPaymentQR: () =>
+    http.get<{ wechat_qr?: string; alipay_qr?: string }>('/user/payment-qr'),
+  savePaymentQR: (payload: { wechat_qr?: string; alipay_qr?: string }) =>
+    http.put<Record<string, unknown>>('/user/payment-qr', payload),
+  submitWithdraw: (amount: number, paymentType: string) =>
+    http.post<Record<string, unknown>>('/user/withdraw', {
+      amount,
+      payment_type: paymentType,
+    }),
+  listWithdrawHistory: (page = 1, size = 20) =>
+    http.get<{ records?: WithdrawRecord[]; list?: WithdrawRecord[] } | WithdrawRecord[]>(
+      '/user/withdraw/history',
+      { params: { page, size } }
+    ),
   listTasks: (params: Record<string, unknown> = {}) =>
     http.get<{ items?: UserTask[]; tasks?: UserTask[] } | UserTask[]>('/v1/tasks', {
       params,
