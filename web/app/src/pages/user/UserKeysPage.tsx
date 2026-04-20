@@ -123,16 +123,16 @@ export function UserKeysPage() {
                 <TableRow key={item.id ?? index}>
                   <TableCell className="font-medium">{item.name ?? '未命名'}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {item.key ?? item.masked_key ?? '***'}
+                    {item.viewable ? item.raw_key ?? item.key ?? '***' : item.key_prefix ? `${item.key_prefix}...` : item.masked_key ?? '***'}
                   </TableCell>
                   <TableCell>{item.key_type ?? 'low_price'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      {item.key ? (
+                      {item.viewable && (item.raw_key || item.key) ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyText(item.key as string)}
+                          onClick={() => copyText((item.raw_key ?? item.key) as string)}
                         >
                           复制
                         </Button>

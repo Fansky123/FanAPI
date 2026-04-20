@@ -39,7 +39,8 @@ export function UserImageGenPage() {
   }, [])
 
   function currentApiKey() {
-    return apiKeys.find((item) => item.id === selectedKeyId)?.key || ''
+    const key = apiKeys.find((item) => item.id === selectedKeyId)
+    return key?.raw_key || key?.key || ''
   }
 
   async function generate() {

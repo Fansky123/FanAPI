@@ -48,7 +48,8 @@ export function UserPlaygroundPage() {
   }, [messages, streamingText])
 
   function currentApiKey() {
-    return apiKeys.find((item) => item.id === selectedKeyId)?.key || apiKeys.find((item) => item.id === selectedKeyId)?.masked_key || ''
+    const key = apiKeys.find((item) => item.id === selectedKeyId)
+    return key?.raw_key || key?.key || ''
   }
 
   async function sendMessage() {

@@ -34,6 +34,9 @@ export type ApiKeyRecord = {
   id?: number
   name?: string
   key?: string
+  raw_key?: string
+  key_prefix?: string
+  viewable?: boolean
   masked_key?: string
   key_type?: string
 }
