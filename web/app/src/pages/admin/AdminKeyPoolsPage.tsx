@@ -20,25 +20,38 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { adminApi, type AdminKeyPool, type AdminPoolKey } from '@/lib/api/admin'
+import { adminApi, type AdminChannel, type AdminKeyPool, type AdminPoolKey } from '@/lib/api/admin'
 import { getApiErrorMessage } from '@/lib/api/http'
 
 export function AdminKeyPoolsPage() {
   const [pools, setPools] = useState<AdminKeyPool[]>([])
+  const [channels, setChannels] = useState<AdminChannel[]>([])
   const [keys, setKeys] = useState<AdminPoolKey[]>([])
   const [activePool, setActivePool] = useState<AdminKeyPool | null>(null)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [keyOpen, setKeyOpen] = useState(false)
   const [name, setName] = useState('')
-  const [channelId, setChannelId] = useState('1')
+  const [channelId, setChannelId] = useState('')
   const [keyValue, setKeyValue] = useState('')
   const [priority, setPriority] = useState('0')
 
-  async function loadPools() {
+  async function loadPage() {
     try {
-      const response = await adminApi.listKeyPools()
-      setPools(Array.isArray(response) ? response : response.pools ?? [])
+      setError('')
+      const [poolResponse, channelResponse] = await Promise.all([
+        adminApi.listKeyPools(),
+        adminApi.listChannels(),
+      ])
+      const nextPools = Array.isArray(poolResponse) ? poolResponse : poolResponse.pools ?? []
+      const nextChannels = (Array.isArray(channelResponse)
+        ? channelResponse
+        : channelResponse.channels ?? channelResponse.items ?? []
+      ).filter((item) => item?.id)
+      setPools(nextPools)
+      setChannels(nextChannels)
+      setChannelId((current) => current || String(nextChannels[0]?.id ?? ''))
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -46,13 +59,14 @@ export function AdminKeyPoolsPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPools()
+    void loadPage()
   }, [])
 
   async function openKeys(pool: AdminKeyPool) {
     setActivePool(pool)
     setKeyOpen(true)
     try {
+      setError('')
       const response = await adminApi.listPoolKeys(pool.id as number)
       setKeys(Array.isArray(response) ? response : response.keys ?? [])
     } catch (err) {
@@ -62,11 +76,12 @@ export function AdminKeyPoolsPage() {
 
   async function createPool() {
     try {
+      setError('')
       await adminApi.createKeyPool({ channel_id: Number(channelId), name })
+      setSuccess('号池已创建')
       setCreateOpen(false)
       setName('')
-      setChannelId('1')
-      await loadPools()
+      await loadPage()
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -75,8 +90,10 @@ export function AdminKeyPoolsPage() {
   async function togglePool(pool: AdminKeyPool) {
     if (!pool.id) return
     try {
+      setError('')
       await adminApi.toggleKeyPool(pool.id)
-      await loadPools()
+      setSuccess(`号池已${pool.is_active ? '停用' : '启用'}`)
+      await loadPage()
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -85,8 +102,10 @@ export function AdminKeyPoolsPage() {
   async function toggleVendor(pool: AdminKeyPool) {
     if (!pool.id) return
     try {
+      setError('')
       await adminApi.toggleVendorSubmittable(pool.id)
-      await loadPools()
+      setSuccess(`号商上传已${pool.vendor_submittable ? '关闭' : '开放'}`)
+      await loadPage()
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -96,8 +115,10 @@ export function AdminKeyPoolsPage() {
     if (!pool.id) return
     if (!window.confirm(`确认删除号池 ${pool.name ?? pool.id} 吗？`)) return
     try {
+      setError('')
       await adminApi.deleteKeyPool(pool.id)
-      await loadPools()
+      setSuccess('号池已删除')
+      await loadPage()
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -106,7 +127,9 @@ export function AdminKeyPoolsPage() {
   async function addKey() {
     if (!activePool?.id) return
     try {
+      setError('')
       await adminApi.addPoolKey(activePool.id, { value: keyValue, priority: Number(priority) })
+      setSuccess('号池 Key 已添加')
       setKeyValue('')
       setPriority('0')
       await openKeys(activePool)
@@ -118,10 +141,12 @@ export function AdminKeyPoolsPage() {
   async function updateKey(row: AdminPoolKey) {
     if (!row.id) return
     try {
+      setError('')
       await adminApi.updatePoolKey(row.id, {
         priority: row.priority ?? 0,
         is_active: row.is_active ?? true,
       })
+      setSuccess('Key 配置已保存')
       await openKeys(activePool as AdminKeyPool)
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -131,11 +156,24 @@ export function AdminKeyPoolsPage() {
   async function removeKey(row: AdminPoolKey) {
     if (!row.id) return
     try {
+      setError('')
       await adminApi.removePoolKey(row.id)
+      setSuccess('Key 已删除')
       await openKeys(activePool as AdminKeyPool)
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
+  }
+
+  function updateDraftKey(id: number | undefined, patch: Partial<AdminPoolKey>) {
+    if (!id) return
+    setKeys((current) =>
+      current.map((row) => (row.id === id ? { ...row, ...patch } : row))
+    )
+  }
+
+  function channelLabel(channel: AdminChannel) {
+    return `${channel.name ?? '未命名渠道'} · ${channel.type ?? 'unknown'} · #${channel.id}`
   }
 
   return (
@@ -149,6 +187,11 @@ export function AdminKeyPoolsPage() {
       {error ? (
         <Card className="border-destructive/25 bg-destructive/5">
           <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
+      {success ? (
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
         </Card>
       ) : null}
       <Card>
@@ -205,12 +248,23 @@ export function AdminKeyPoolsPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>新建号池</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <Input value={channelId} onChange={(event) => setChannelId(event.target.value)} placeholder="渠道 ID" />
+            <select
+              className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+              value={channelId}
+              onChange={(event) => setChannelId(event.target.value)}
+            >
+              <option value="">选择关联渠道</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={String(channel.id)}>
+                  {channelLabel(channel)}
+                </option>
+              ))}
+            </select>
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="号池名称" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={createPool}>创建</Button>
+            <Button onClick={createPool} disabled={!channelId || !name.trim()}>创建</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -238,8 +292,29 @@ export function AdminKeyPoolsPage() {
                 <TableRow key={row.id ?? index}>
                   <TableCell>{row.id ?? '-'}</TableCell>
                   <TableCell className="font-mono text-xs">{row.value ?? '-'}</TableCell>
-                  <TableCell>{row.priority ?? 0}</TableCell>
-                  <TableCell>{row.is_active === false ? '停用' : '启用'}</TableCell>
+                  <TableCell>
+                    <Input
+                      className="w-24"
+                      value={String(row.priority ?? 0)}
+                      onChange={(event) =>
+                        updateDraftKey(row.id, {
+                          priority: Number(event.target.value || '0'),
+                        })
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={row.is_active !== false}
+                        onChange={(event) =>
+                          updateDraftKey(row.id, { is_active: event.target.checked })
+                        }
+                      />
+                      {row.is_active === false ? '停用' : '启用'}
+                    </label>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => updateKey(row)}>保存</Button>

@@ -59,6 +59,7 @@ const emptyForm: PlatformForm = {
 export function AdminOcpcPage() {
   const [platforms, setPlatforms] = useState<AdminOcpcPlatform[]>([])
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [form, setForm] = useState<PlatformForm>(emptyForm)
   const [open, setOpen] = useState(false)
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
@@ -67,6 +68,7 @@ export function AdminOcpcPage() {
 
   async function load() {
     try {
+      setError('')
       const [platformRes, scheduleRes] = await Promise.all([
         adminApi.listOcpcPlatforms(),
         adminApi.getOcpcSchedule(),
@@ -117,10 +119,13 @@ export function AdminOcpcPage() {
       baidu_order_type: Number(form.baidu_order_type),
     }
     try {
+      setError('')
       if (form.id) {
         await adminApi.updateOcpcPlatform(form.id, payload)
+        setSuccess('推广账户已更新')
       } else {
         await adminApi.createOcpcPlatform(payload)
+        setSuccess('推广账户已创建')
       }
       setOpen(false)
       await load()
@@ -132,7 +137,9 @@ export function AdminOcpcPage() {
   async function togglePlatform(row: AdminOcpcPlatform) {
     if (!row.id) return
     try {
+      setError('')
       await adminApi.toggleOcpcPlatform(row.id)
+      setSuccess(`账户已${row.enabled ? '停用' : '启用'}`)
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -143,7 +150,9 @@ export function AdminOcpcPage() {
     if (!row.id) return
     if (!window.confirm(`确认删除 OCPC 账户 ${row.name ?? row.id} 吗？`)) return
     try {
+      setError('')
       await adminApi.deleteOcpcPlatform(row.id)
+      setSuccess('推广账户已删除')
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -152,7 +161,9 @@ export function AdminOcpcPage() {
 
   async function saveSchedule() {
     try {
+      setError('')
       await adminApi.updateOcpcSchedule({ enabled: scheduleEnabled, interval: Number(interval) })
+      setSuccess('自动上报调度已保存')
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -160,8 +171,10 @@ export function AdminOcpcPage() {
 
   async function triggerUpload() {
     try {
+      setError('')
       const result = await adminApi.triggerOcpcUpload()
       setUploadResult(JSON.stringify(result, null, 2))
+      setSuccess('手动上报已执行')
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -178,6 +191,11 @@ export function AdminOcpcPage() {
       {error ? (
         <Card className="border-destructive/25 bg-destructive/5">
           <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
+      {success ? (
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
         </Card>
       ) : null}
       <Card>

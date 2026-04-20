@@ -13,6 +13,22 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+
+  await page.route('**/api/admin/channels', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ channels: [] }),
+    })
+  })
+
+  await page.route('**/api/docs', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({}),
+    })
+  })
 })
 
 test('renders user login page', async ({ page }) => {

@@ -27,6 +27,7 @@ export function VendorKeysPage() {
   const [keys, setKeys] = useState<VendorKey[]>([])
   const [pools, setPools] = useState<VendorPool[]>([])
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [open, setOpen] = useState(false)
   const [poolId, setPoolId] = useState('')
   const [value, setValue] = useState('')
@@ -50,13 +51,23 @@ export function VendorKeysPage() {
   }, [])
 
   async function submit() {
+    if (!poolId) {
+      setError('请选择号池')
+      return
+    }
+    if (!value.trim()) {
+      setError('请输入要提交的 API Key')
+      return
+    }
     try {
+      setError('')
       const selected = pools.find((item) => String(item.id) === poolId)
       await vendorApi.submitKey({
         pool_id: selected?.id,
         channel_id: selected?.channel_id,
-        value,
+        value: value.trim(),
       })
+      setSuccess('Key 已通过校验并提交到号池')
       setOpen(false)
       setPoolId('')
       setValue('')
@@ -77,6 +88,11 @@ export function VendorKeysPage() {
       {error ? (
         <Card className="border-destructive/25 bg-destructive/5">
           <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
+      {success ? (
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
         </Card>
       ) : null}
       <Card>
@@ -119,10 +135,15 @@ export function VendorKeysPage() {
               ))}
             </select>
             <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder="请输入 API Key" />
+            {pools.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                当前没有开放给号商上传的号池，请先让管理员在后台开启。
+              </p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
-            <Button onClick={submit}>验证并提交</Button>
+            <Button onClick={submit} disabled={!poolId || !value.trim()}>验证并提交</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -15,7 +15,8 @@ export function UserPlaygroundPage() {
   const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>([])
   const [channels, setChannels] = useState<UserChannel[]>([])
   const [selectedKeyId, setSelectedKeyId] = useState<number | undefined>()
-  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>()
+  const [error, setError] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [inputText, setInputText] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -31,12 +32,15 @@ export function UserPlaygroundPage() {
           userApi.listChannels(),
         ])
         const nextKeys = Array.isArray(keysRes) ? keysRes : keysRes.api_keys ?? keysRes.keys ?? []
-        const nextChannels = Array.isArray(channelsRes) ? channelsRes : channelsRes.channels ?? []
+        const nextChannels = (Array.isArray(channelsRes) ? channelsRes : channelsRes.channels ?? []).filter(
+          (item) => item.type === 'llm'
+        )
         setApiKeys(nextKeys)
-        setChannels(nextChannels.filter((item) => item.type === 'llm'))
+        setChannels(nextChannels)
         if (nextKeys.length > 0) setSelectedKeyId(nextKeys[0].id)
+        if (nextChannels.length > 0) setSelectedChannelId(nextChannels[0].id)
       } catch {
-        // keep empty state
+        setError('读取 API 密钥或模型列表失败')
       }
     }
 
@@ -52,20 +56,35 @@ export function UserPlaygroundPage() {
     return key?.raw_key || key?.key || ''
   }
 
+  function currentChannel() {
+    return channels.find((item) => item.id === selectedChannelId) ?? channels[0]
+  }
+
   async function sendMessage() {
     if (!inputText.trim() || streaming) return
     const apiKey = currentApiKey()
-    if (!apiKey || apiKey.includes('...')) return
+    if (!apiKey || apiKey.includes('...')) {
+      setError('请选择可直接调用的 API 密钥')
+      return
+    }
+    if (!selectedChannelId && channels.length === 0) {
+      setError('当前没有可用的文本模型渠道')
+      return
+    }
 
     const userMessage: Message = { role: 'user', content: inputText.trim() }
     const nextMessages = [...messages, userMessage]
+    setError('')
     setMessages(nextMessages)
     setInputText('')
     setStreaming(true)
     setStreamingText('')
 
     const body = {
-      model: selectedModel || channels[0]?.routing_model || channels[0]?.name || 'gpt-3.5-turbo',
+      model:
+        currentChannel()?.routing_model ||
+        currentChannel()?.name ||
+        'gpt-3.5-turbo',
       messages: [
         ...(systemPrompt.trim()
           ? [{ role: 'system', content: systemPrompt.trim() }]
@@ -76,7 +95,11 @@ export function UserPlaygroundPage() {
     }
 
     try {
-      const response = await fetch('/v1/chat/completions', {
+      const channel = currentChannel()
+      const endpoint = channel?.id
+        ? `/v1/chat/completions?channel_id=${channel.id}`
+        : '/v1/chat/completions'
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +109,7 @@ export function UserPlaygroundPage() {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error(await response.text())
+        throw new Error((await response.text()) || `请求失败 (${response.status})`)
       }
 
       const reader = response.body.getReader()
@@ -120,6 +143,7 @@ export function UserPlaygroundPage() {
         ...current,
         { role: 'assistant', content: `请求失败：${error instanceof Error ? error.message : '未知错误'}` },
       ])
+      setError(error instanceof Error ? error.message : '请求失败')
     } finally {
       setStreaming(false)
     }
@@ -133,6 +157,11 @@ export function UserPlaygroundPage() {
         description="已经接上真实 `/v1/chat/completions`，可直接用已有 API Key 做对话验证。"
         actions={<Button onClick={() => setMessages([])}>新对话</Button>}
       />
+      {error ? (
+        <Card className="border-destructive/25 bg-destructive/5">
+          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
         <Card>
           <CardContent className="space-y-4 p-6">
@@ -157,16 +186,18 @@ export function UserPlaygroundPage() {
               <label className="text-sm font-medium">模型</label>
               <select
                 className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
-                value={selectedModel}
-                onChange={(event) => setSelectedModel(event.target.value)}
+                value={selectedChannelId}
+                onChange={(event) => setSelectedChannelId(Number(event.target.value))}
               >
-                <option value="">自动选择</option>
                 {channels.map((channel) => (
-                  <option key={channel.id} value={channel.routing_model || channel.name}>
-                    {channel.name}
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name} {channel.routing_model ? `· ${channel.routing_model}` : ''}
                   </option>
                 ))}
               </select>
+              {channels.length === 0 ? (
+                <p className="text-xs text-muted-foreground">当前没有可用的文本模型渠道。</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">系统提示词</label>
@@ -218,7 +249,10 @@ export function UserPlaygroundPage() {
                   onChange={(event) => setInputText(event.target.value)}
                   placeholder="输入消息，Enter 发送"
                 />
-                <Button onClick={sendMessage} disabled={streaming || !inputText.trim()}>
+                <Button
+                  onClick={sendMessage}
+                  disabled={streaming || !inputText.trim() || !currentApiKey() || channels.length === 0}
+                >
                   {streaming ? '生成中...' : '发送'}
                 </Button>
               </div>
