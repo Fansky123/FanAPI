@@ -255,6 +255,13 @@ func main() {
 			v1.POST("/audio", handler.CreateAudioTask)
 			v1.POST("/music", handler.CreateMusicTask) // Suno 音乐生成
 		}
+
+		// Gemini SDK 原生路径兼容（/v1beta/models/{model}:generateContent）
+		v1beta := authed.Group("/v1beta")
+		v1beta.Use(middleware.APIKeyOnly())
+		{
+			v1beta.POST("/models/*path", handler.GeminiNativeProxy)
+		}
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

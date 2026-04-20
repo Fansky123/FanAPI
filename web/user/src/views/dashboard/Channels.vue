@@ -241,6 +241,13 @@
           <code class="doc-endpoint-text">{{ docEndpoint(docChannel) }}</code>
           <el-icon class="doc-copy-icon" @click.stop="copyText(docEndpoint(docChannel))" title="复制"><CopyDocument /></el-icon>
         </div>
+        <!-- Gemini 渠道额外展示 OpenAI 兼容路径 -->
+        <template v-if="docChannel.type === 'llm' && docChannel.protocol === 'gemini'">
+          <div style="font-size:12px;color:#909399;margin:4px 0 8px">
+            流式请求使用 <code style="background:#f7f8fa;padding:1px 5px;border-radius:3px">:streamGenerateContent?alt=sse</code>；
+            也可用 OpenAI 兼容路径：<code style="background:#f7f8fa;padding:1px 5px;border-radius:3px">/v1/chat/completions</code>
+          </div>
+        </template>
 
         <!-- 模型名称 -->
         <div class="doc-section-title">model 字段值</div>
@@ -438,12 +445,22 @@ const endpointMap = {
 }
 
 function docEndpoint(ch) {
+  if (ch.type === 'llm' && (ch.protocol === 'gemini')) {
+    const model = ch.routing_model || ch.name
+    return `/v1beta/models/${model}:generateContent`
+  }
   return endpointMap[ch.type] || '/v1/chat/completions'
 }
 
 function docRequestBody(ch) {
   const model = ch.routing_model || ch.name
   if (ch.type === 'llm') {
+    if (ch.protocol === 'gemini') {
+      // Gemini 原生格式（用于 /v1beta/models/{model}:generateContent）
+      return JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: '你好，请介绍一下自己' }] }],
+      }, null, 2)
+    }
     return JSON.stringify({
       model,
       messages: [{ role: 'user', content: '你好，请介绍一下自己' }],

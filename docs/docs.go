@@ -15,6 +15,128 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/pool-keys/:id/vendor": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "管理-号商"
+                ],
+                "summary": "管理员绑定号池 Key 到号商",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "号池 Key ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "号商 ID（0 解绑）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "vendor_id": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/vendors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "管理-号商"
+                ],
+                "summary": "管理员列出号商",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "vendors": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/model.Vendor"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/vendors/:id": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "管理-号商"
+                ],
+                "summary": "管理员更新号商",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "号商 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/user/balance": {
             "get": {
                 "security": [
@@ -74,6 +196,85 @@ const docTemplate = `{
                                     "items": {
                                         "type": "object"
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/user/invite": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回邀请码、邀请人数及冻结积分（待解冻返佣）",
+                "tags": [
+                    "邀请"
+                ],
+                "summary": "查询邀请信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "frozen_balance": {
+                                    "type": "integer"
+                                },
+                                "invite_code": {
+                                    "type": "string"
+                                },
+                                "invite_count": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/user/invite/convert": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将指定数量的冻结返佣积分转换为可用余额",
+                "tags": [
+                    "邀请"
+                ],
+                "summary": "解冻积分",
+                "parameters": [
+                    {
+                        "description": "解冻数量（单位：积分，0 表示全部）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "amount": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "available_balance": {
+                                    "type": "integer"
+                                },
+                                "converted": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -649,6 +850,260 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/v1beta/models/{path}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "兼容 Google Gemini SDK 原生路径格式：非流式访问 :generateContent，流式访问 :streamGenerateContent?alt=sse。model 从 URL 路径自动提取。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "LLM"
+                ],
+                "summary": "Gemini 原生路径兼容（Google AI SDK）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "{model}:generateContent 或 {model}:streamGenerateContent",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Gemini 格式响应；流式时为 SSE",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "402": {
+                        "description": "余额不足",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/vendor/auth/login": {
+            "post": {
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商登录",
+                "parameters": [
+                    {
+                        "description": "登录凭证",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "password": {
+                                    "type": "string"
+                                },
+                                "username": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "token": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/vendor/auth/register": {
+            "post": {
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商注册",
+                "parameters": [
+                    {
+                        "description": "注册信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "password": {
+                                    "type": "string"
+                                },
+                                "username": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "integer"
+                                },
+                                "username": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/vendor/keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商查看自己的 Key 列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "keys": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商提交 Key",
+                "parameters": [
+                    {
+                        "description": "Key 信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "pool_id": {
+                                    "type": "integer"
+                                },
+                                "value": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/vendor/pools": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商获取可提交号池列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "pools": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/vendor/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "号商"
+                ],
+                "summary": "号商个人信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Vendor"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -706,6 +1161,10 @@ const docTemplate = `{
                 },
                 "metrics": {
                     "$ref": "#/definitions/model.JSON"
+                },
+                "pool_key_id": {
+                    "description": "号池 Key ID（0 表示未使用号池）",
+                    "type": "integer"
                 },
                 "type": {
                     "description": "类型：charge/hold/settle/refund/recharge",
@@ -862,6 +1321,41 @@ const docTemplate = `{
                 },
                 "url": {
                     "description": "生成结果 URL（成功时，单结果任务）",
+                    "type": "string"
+                }
+            }
+        },
+        "model.Vendor": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "description": "可提现余额（credits，平台扣除手续费后净额）",
+                    "type": "integer"
+                },
+                "commission_ratio": {
+                    "description": "平台手续费比例（nil 使用系统默认值）",
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "invite_code": {
+                    "description": "注册码（唯一，自动生成）",
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }

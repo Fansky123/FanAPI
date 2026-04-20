@@ -264,6 +264,71 @@ func GeminiProxy(c *gin.Context) {
 	llmProxy(c)
 }
 
+// GeminiNativeProxy 处理 POST /v1beta/models/{model}:generateContent 和
+// POST /v1beta/models/{model}:streamGenerateContent（Google Gemini SDK 原生路径格式）。
+//
+// 兼容官方 Google AI SDK，只需将 SDK 的 baseURL 指向本服务即可。
+// model 从 URL 路径中自动提取并注入请求体，stream 由 URL action 自动推断，
+// 无需客户端修改任何请求体字段。
+//
+// @Summary      Gemini 原生路径兼容（Google AI SDK）
+// @Description  兼容 Google Gemini SDK 原生路径格式：非流式访问 :generateContent，流式访问 :streamGenerateContent?alt=sse。model 从 URL 路径自动提取。
+// @Tags         LLM
+// @Accept       json
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        path  path  string  true  "{model}:generateContent 或 {model}:streamGenerateContent"
+// @Success      200   {object}  object  "Gemini 格式响应；流式时为 SSE"
+// @Failure      400   {object}  object  "参数错误"
+// @Failure      402   {object}  object  "余额不足"
+// @Router       /v1beta/models/{path} [post]
+func GeminiNativeProxy(c *gin.Context) {
+	// Gin wildcard 路由 /v1beta/models/*path 捕获的值形如 /gemini-2.5-flash:generateContent
+	path := strings.TrimPrefix(c.Param("path"), "/")
+
+	// 解析模型名和 action（格式：{model}:{action}）
+	parts := strings.SplitN(path, ":", 2)
+	modelName := parts[0]
+	action := ""
+	if len(parts) == 2 {
+		action = parts[1]
+	}
+
+	// 流式判断：action 为 streamGenerateContent，或查询参数 alt=sse
+	isStream := strings.HasPrefix(action, "streamGenerateContent") || c.Query("alt") == "sse"
+
+	// 读取请求体，注入 model 和 stream 字段后替换
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
+		return
+	}
+	if len(bodyBytes) == 0 {
+		bodyBytes = []byte("{}")
+	}
+	var reqData map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体 JSON 格式错误"})
+		return
+	}
+
+	// 注入 model（用于渠道路由）
+	if modelName != "" {
+		reqData["model"] = modelName
+	}
+	// 注入 stream（llmProxy 在协议转换前读取此字段）
+	if isStream {
+		reqData["stream"] = true
+	}
+
+	newBody, _ := json.Marshal(reqData)
+	c.Request.Body = io.NopCloser(bytes.NewReader(newBody))
+	c.Request.ContentLength = int64(len(newBody))
+
+	c.Set("client_proto", protocolGemini)
+	llmProxy(c)
+}
+
 // llmProxy 是三条 LLM 路由的共同实现。
 // 支持：
 //   - 多渠道负载均衡（加权随机 + 优先级 + 错误率自动屏蔽）

@@ -26,9 +26,11 @@
 --
 -- 如需多个模型（如 gemini-2.0-flash、gemini-1.5-pro），复制此 INSERT 修改 name/model 即可
 
+-- protocol=gemini：系统自动将 OpenAI 格式请求转换为 Gemini generateContent 格式
+-- billing_type=token：按 prompt/completion token 计费
 INSERT INTO channels (
     name, model, type, base_url, method, headers, timeout_ms,
-    protocol, billing_type, billing_config, is_active
+    protocol, billing_type, billing_config, icon_url, description, is_active
 ) VALUES (
     'Gemini 2.5 Flash',
     'gemini-2.5-flash',
@@ -37,17 +39,11 @@ INSERT INTO channels (
     'POST',
     '{"Authorization": "Bearer YOUR_GEMINI_KEY"}',
     60000,
-
-    -- protocol=gemini：系统自动将 OpenAI 格式请求转换为 Gemini generateContent 格式
     'gemini',
-
-    -- billing_type=token：按 prompt/completion token 计费
     'token',
-    '{
-        "input_price": 2,
-        "output_price": 8
-    }',
-
+    '{"input_price": 2, "output_price": 8}',
+    '',
+    '',
     true
 );
 
@@ -58,7 +54,7 @@ INSERT INTO channels (
 -- Gemini 2.0 Flash（更快，价格更低）
 -- INSERT INTO channels (
 --     name, model, type, base_url, method, headers, timeout_ms,
---     protocol, billing_type, billing_config, is_active
+--     protocol, billing_type, billing_config, icon_url, description, is_active
 -- ) VALUES (
 --     'Gemini 2.0 Flash',
 --     'gemini-2.0-flash',
@@ -70,13 +66,15 @@ INSERT INTO channels (
 --     'gemini',
 --     'token',
 --     '{"input_price": 1, "output_price": 4}',
+--     '',
+--     '',
 --     true
 -- );
 
 -- Gemini 1.5 Pro（长上下文）
 -- INSERT INTO channels (
 --     name, model, type, base_url, method, headers, timeout_ms,
---     protocol, billing_type, billing_config, is_active
+--     protocol, billing_type, billing_config, icon_url, description, is_active
 -- ) VALUES (
 --     'Gemini 1.5 Pro',
 --     'gemini-1.5-pro',
@@ -88,5 +86,7 @@ INSERT INTO channels (
 --     'gemini',
 --     'token',
 --     '{"input_price": 9, "output_price": 36}',
+--     '',
+--     '',
 --     true
 -- );

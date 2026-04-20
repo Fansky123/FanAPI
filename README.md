@@ -218,6 +218,8 @@ function checkError(resp) {
 | POST | `/v1/chat/completions` | LLM 对话（OpenAI 标准格式，支持 SSE） |
 | POST | `/v1/messages` | LLM 对话（Claude 原生格式，支持 SSE） |
 | POST | `/v1/gemini` | LLM 对话（Gemini 原生格式，支持 SSE） |
+| POST | `/v1beta/models/{model}:generateContent` | LLM 对话（Gemini SDK 原生路径，非流式） |
+| POST | `/v1beta/models/{model}:streamGenerateContent` | LLM 对话（Gemini SDK 原生路径，流式 SSE） |
 | POST | `/v1/image` | 图片生成（异步） |
 | POST | `/v1/video` | 视频生成（异步） |
 | POST | `/v1/audio` | 音频生成（异步） |
