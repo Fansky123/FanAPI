@@ -28,6 +28,9 @@
 
 -- protocol=gemini：系统自动将 OpenAI 格式请求转换为 Gemini generateContent 格式
 -- billing_type=token：按 prompt/completion token 计费
+-- 认证说明：Gemini 官方接口使用 ?key=API_KEY 查询参数，不用 Authorization header
+--   如需使用号池（KeyPool）管理多个 Key，将 ?key=YOUR_GEMINI_KEY 改为 ?key={{}}
+--   并在渠道配置中绑定对应号池
 INSERT INTO channels (
     name, model, type, base_url, method, headers, timeout_ms,
     protocol, billing_type, billing_config, icon_url, description, is_active
@@ -35,9 +38,9 @@ INSERT INTO channels (
     'Gemini 2.5 Flash',
     'gemini-2.5-flash',
     'llm',
-    'https://generativelanguage.googleapis.com/v1beta/models/{model}:{stream_action}',
+    'https://generativelanguage.googleapis.com/v1beta/models/{model}:{stream_action}?key=YOUR_GEMINI_KEY',
     'POST',
-    '{"Authorization": "Bearer YOUR_GEMINI_KEY"}',
+    '{}',
     60000,
     'gemini',
     'token',

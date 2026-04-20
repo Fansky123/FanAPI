@@ -568,6 +568,13 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	modelName := resolvedModel
 	// 预先计算实际上游 URL（与 sendLLMRequest 中逻辑保持一致）
 	upstreamURL := strings.ReplaceAll(ch.BaseURL, "{model}", modelName)
+	if strings.Contains(upstreamURL, "{stream_action}") {
+		if isStream {
+			upstreamURL = strings.ReplaceAll(upstreamURL, "{stream_action}", "streamGenerateContent")
+		} else {
+			upstreamURL = strings.ReplaceAll(upstreamURL, "{stream_action}", "generateContent")
+		}
+	}
 	upstreamMethod := ch.Method
 	if upstreamMethod == "" {
 		upstreamMethod = "POST"
