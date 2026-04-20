@@ -345,14 +345,21 @@ func estimateTokensFromMessages(req map[string]interface{}) int64 {
 	if req == nil {
 		return 0
 	}
-	// 优先读 messages（OpenAI / Claude 格式），没有时尝试 contents（Gemini 原生格式）
+	// 优先读 messages（OpenAI / Claude 格式），没有时尝试 contents（Gemini 原生格式），
+	// 再没有时尝试 input（OpenAI Responses API / Codex CLI 格式）。
 	var payload interface{}
 	if msgs, ok := req["messages"]; ok {
 		payload = msgs
 	} else if contents, ok := req["contents"]; ok {
 		payload = contents
+	} else if inp, ok := req["input"]; ok {
+		payload = inp
 	} else {
 		return 0
+	}
+	// Responses API 的 instructions 字段相当于 system message，也需纳入估算。
+	if inst, ok := req["instructions"].(string); ok && inst != "" {
+		return int64(math.Ceil(float64(countStringLen(payload)+int64(len(inst))) / 4.0 * 1.2))
 	}
 	totalChars := countStringLen(payload)
 	if totalChars == 0 {
