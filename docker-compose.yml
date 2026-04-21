@@ -23,6 +23,45 @@
 # =============================================================
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fanapi
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ww123456
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fanapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./docker/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ── API 服务 + 前端静态（nginx + fanapi-server）──────────
   api:
@@ -31,30 +70,42 @@ services:
       target: api
     image: fanapi-api:latest
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     ports:
-      - "127.0.0.1:8088:80"
+      - "${FANAPI_BIND_IP:-127.0.0.1}:${FANAPI_HTTP_PORT:-8088}:80"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-    extra_hosts:
-      - "host-gateway:host-gateway"
+      - ./config.docker.yaml:/app/config.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 20s
 
   # ── Script Worker（异步任务处理）────────────────────────
-  #
-  # 同机部署：直接 up；扩容时注释掉此 service，
-  # 另开服务器单独 build --target script 部署即可。
   script:
     build:
       context: .
       target: script
     image: fanapi-script:latest
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-    extra_hosts:
-      - "host-gateway:host-gateway"
+      - ./config.docker.yaml:/app/config.yaml:ro
+
+volumes:
+  postgres-data:
+  redis-data:
+  nats-data:

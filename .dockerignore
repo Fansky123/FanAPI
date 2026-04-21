@@ -5,6 +5,10 @@
 Dockerfile.dev
 web/user/node_modules
 web/user/dist
+web/app/node_modules
+web/app/dist
+web/app/playwright-report
+web/app/test-results
 /tmp
 *.log
 *.pid
