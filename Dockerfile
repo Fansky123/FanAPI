@@ -19,30 +19,14 @@
 # ─────────────────────────────────────────────────────────────
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:20.19.6-alpine3.23 AS node-builder
 
-ENV http_proxy= \
-    https_proxy= \
-    HTTP_PROXY= \
-    HTTPS_PROXY= \
-    all_proxy= \
-    ALL_PROXY= \
-    no_proxy=* \
-    NO_PROXY=*
-
 WORKDIR /web
-RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
-    npm config delete proxy || true && \
-    npm config delete https-proxy || true && \
-    npm install -g pnpm@9.15.9
 
 # 先复制 package 文件利用缓存层
-COPY web/app/package.json ./
-COPY web/app/pnpm-lock.yaml ./
-RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
-    npm_config_proxy= npm_config_https_proxy= pnpm install --frozen-lockfile
+COPY web/user/package*.json ./
+RUN npm ci --prefer-offline
 
-COPY web/app/ ./
-RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
-    npm_config_proxy= npm_config_https_proxy= pnpm build
+COPY web/user/ ./
+RUN npm run build
 
 # ─────────────────────────────────────────────────────────────
 # Stage 2: 编译 Go 二进制（静态链接，无 CGO）
@@ -52,28 +36,16 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26.2-al
 ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOPROXY=https://goproxy.cn,direct \
-    GOSUMDB=sum.golang.google.cn \
-    http_proxy= \
-    https_proxy= \
-    HTTP_PROXY= \
-    HTTPS_PROXY= \
-    all_proxy= \
-    ALL_PROXY= \
-    no_proxy=* \
-    NO_PROXY=*
+    GOSUMDB=sum.golang.google.cn
 
 WORKDIR /src
 
 # 先下载依赖（利用 Docker 层缓存）
 COPY go.mod go.sum ./
-RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
-    HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn go mod download
+RUN go mod download
 
 COPY . .
-RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
-    HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn \
-    go build -ldflags="-s -w" -trimpath -o /out/fanapi-server ./cmd/server && \
-    HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn \
+RUN go build -ldflags="-s -w" -trimpath -o /out/fanapi-server ./cmd/server && \
     go build -ldflags="-s -w" -trimpath -o /out/fanapi-script ./cmd/script
 
 # ─────────────────────────────────────────────────────────────
@@ -81,18 +53,8 @@ RUN unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY && \
 # ─────────────────────────────────────────────────────────────
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim AS api
 
-ENV http_proxy= \
-    https_proxy= \
-    HTTP_PROXY= \
-    HTTPS_PROXY= \
-    all_proxy= \
-    ALL_PROXY= \
-    no_proxy=* \
-    NO_PROXY=*
-
-RUN printf 'Acquire::http::Proxy "false";\nAcquire::https::Proxy "false";\n' > /etc/apt/apt.conf.d/99no-proxy && \
-    apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update && \
-    apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         nginx \
         supervisor \
         curl \
@@ -120,18 +82,8 @@ CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
 # ─────────────────────────────────────────────────────────────
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim AS script
 
-ENV http_proxy= \
-    https_proxy= \
-    HTTP_PROXY= \
-    HTTPS_PROXY= \
-    all_proxy= \
-    ALL_PROXY= \
-    no_proxy=* \
-    NO_PROXY=*
-
-RUN printf 'Acquire::http::Proxy "false";\nAcquire::https::Proxy "false";\n' > /etc/apt/apt.conf.d/99no-proxy && \
-    apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false update && \
-    apt-get -o Acquire::http::Proxy=false -o Acquire::https::Proxy=false install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         ca-certificates \
         tzdata && \
     rm -rf /var/lib/apt/lists/*

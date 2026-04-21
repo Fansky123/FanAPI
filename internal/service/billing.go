@@ -6,7 +6,6 @@ import (
 	"log"
 	"strconv"
 
-	"fanapi/internal/billing"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
 )
@@ -208,13 +207,9 @@ func GetBalance(ctx context.Context, userID int64) (int64, error) {
 }
 
 // Recharge 为用户增加 credits（管理员操作）。
-// 余额更新已在 WriteTx 内完成，但运行时扣费走 Redis，需要立刻同步缓存。
+// 余额更新已在 WriteTx 内完成，请勿在此处重复更新 DB。
 func Recharge(ctx context.Context, userID, adminID, credits int64) error {
-	if err := WriteTx(ctx, userID, 0, 0, 0, "", "recharge", credits, 0, nil); err != nil {
-		return err
-	}
-	_, err := billing.SyncBalanceToRedis(ctx, userID)
-	return err
+	return WriteTx(ctx, userID, 0, 0, 0, "", "recharge", credits, 0, nil)
 }
 
 // ListTransactions 返回用户的分页计费历史。corrID/taskID 非空时分别按对应字段过滤。

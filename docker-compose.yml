@@ -1,8 +1,5 @@
 # =============================================================
-# FanAPI — docker-compose 生产部署（依赖外部中间件）
-#
-# 前提：PostgreSQL、Redis、NATS 需在容器外部（或其他 compose 项目）
-# 独立部署，并在 config.docker.yaml 中填写正确的连接地址。
+# FanAPI — docker-compose 生产部署
 #
 # 【同机部署（默认）】
 #   docker-compose up -d
@@ -26,6 +23,7 @@
 # =============================================================
 
 services:
+
   # ── API 服务 + 前端静态（nginx + fanapi-server）──────────
   api:
     build:
@@ -34,17 +32,22 @@ services:
     image: fanapi-api:latest
     restart: unless-stopped
     ports:
-      - "${FANAPI_BIND_IP:-127.0.0.1}:${FANAPI_HTTP_PORT:-8088}:80"
+      - "127.0.0.1:8088:80"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host-gateway:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]
       interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 3
+      start_period: 15s
 
   # ── Script Worker（异步任务处理）────────────────────────
+  #
+  # 同机部署：直接 up；扩容时注释掉此 service，
+  # 另开服务器单独 build --target script 部署即可。
   script:
     build:
       context: .
@@ -53,3 +56,5 @@ services:
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host-gateway:host-gateway"
