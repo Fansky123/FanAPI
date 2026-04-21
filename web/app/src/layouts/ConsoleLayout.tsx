@@ -72,7 +72,7 @@ export function ConsoleLayout({
 }: ConsoleLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { siteName, logoUrl } = useSiteSettings()
+  const { settings: { siteName, logoUrl } } = useSiteSettings()
 
   return (
     <SidebarProvider>

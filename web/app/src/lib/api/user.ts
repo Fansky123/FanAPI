@@ -3,9 +3,11 @@ import { createHttpClient } from '@/lib/api/http'
 const http = createHttpClient('user')
 
 export type UserProfileResponse = {
+  id?: number
   username?: string
   email?: string
   group?: string
+  balance?: number
 }
 
 export type UserBalanceResponse = {
@@ -49,6 +51,9 @@ export type UserChannel = {
   description?: string
   type?: string
   category?: string
+  protocol?: string
+  icon_url?: string
+  price_display?: string
 }
 
 export type UserTask = {
@@ -59,13 +64,30 @@ export type UserTask = {
   upstream_task_id?: string
 }
 
+export interface UserLogUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  estimated?: boolean;
+}
+
 export type UserLog = {
   id?: number
   model?: string
   created_at?: string
+  updated_at?: string
   corr_id?: string
   cost_credits?: number
   status?: string
+  is_stream?: boolean
+  error_msg?: string
+  client_request?: any
+  client_response?: any
+  upstream_headers?: any
+  latency_ms?: number
+  usage?: UserLogUsage
 }
 
 export type InviteInfo = {
@@ -91,59 +113,6 @@ export type WithdrawRecord = {
   admin_remark?: string
 }
 
-export const userApi = {
-  getProfile: () => http.get<UserProfileResponse>('/user/profile'),
-  getBalance: () => http.get<UserBalanceResponse>('/user/balance'),
-  getStats: () => http.get<UserStatsResponse>('/user/stats'),
-  getTransactions: (page = 1, size = 20) =>
-    http.get<{ items?: UserTransaction[]; transactions?: UserTransaction[] } | UserTransaction[]>(
-      '/user/transactions',
-      { params: { page, size } }
-    ),
-  listApiKeys: () =>
-    http.get<{ api_keys?: ApiKeyRecord[]; keys?: ApiKeyRecord[] } | ApiKeyRecord[]>(
-      '/user/apikeys'
-    ),
-  createApiKey: (name: string, keyType = 'low_price') =>
-    http.post<Record<string, unknown>>('/user/apikeys', { name, key_type: keyType }),
-  deleteApiKey: (id: number) =>
-    http.delete<Record<string, unknown>>(`/user/apikeys/${id}`),
-  listChannels: () =>
-    http.get<{ channels?: UserChannel[] } | UserChannel[]>('/user/channels'),
-  redeemCard: (code: string) =>
-    http.post<Record<string, unknown>>('/user/cards/redeem', { code }),
-  getRedeemHistory: (page = 1, size = 20) =>
-    http.get<{ records?: RedeemRecord[]; list?: RedeemRecord[] } | RedeemRecord[]>(
-      '/user/cards/redeem-history',
-      { params: { page, size } }
-    ),
-  getInviteInfo: () => http.get<InviteInfo>('/user/invite'),
-  convertFrozen: (amount = 0) =>
-    http.post<Record<string, unknown>>('/user/invite/convert', { amount }),
-  getPaymentQR: () =>
-    http.get<{ wechat_qr?: string; alipay_qr?: string }>('/user/payment-qr'),
-  savePaymentQR: (payload: { wechat_qr?: string; alipay_qr?: string }) =>
-    http.put<Record<string, unknown>>('/user/payment-qr', payload),
-  submitWithdraw: (amount: number, paymentType: string) =>
-    http.post<Record<string, unknown>>('/user/withdraw', {
-      amount,
-      payment_type: paymentType,
-    }),
-  listWithdrawHistory: (page = 1, size = 20) =>
-    http.get<{ records?: WithdrawRecord[]; list?: WithdrawRecord[] } | WithdrawRecord[]>(
-      '/user/withdraw/history',
-      { params: { page, size } }
-    ),
-  listTasks: (params: Record<string, unknown> = {}) =>
-    http.get<{ items?: UserTask[]; tasks?: UserTask[] } | UserTask[]>('/v1/tasks', {
-      params,
-    }),
-  listLogs: (params: Record<string, unknown> = {}) =>
-    http.get<{ items?: UserLog[]; logs?: UserLog[] } | UserLog[]>('/v1/llm-logs', {
-      params,
-    }),
-}
-
 export interface PaymentOrder {
   id: number;
   out_trade_no: string;
@@ -155,9 +124,41 @@ export interface PaymentOrder {
   paid_at?: string;
 }
 
-export const getPaymentOrders = (page = 1, size = 20) =>
-  http.get<{ items: PaymentOrder[]; total: number }>('/user/payment-orders', {
-    params: { page, size },
-  })
-
-userApi.getPaymentOrders = getPaymentOrders;
+export const userApi = {
+  getProfile: () => http.get<UserProfileResponse>('/user/profile'),
+  getBalance: () => http.get<UserBalanceResponse>('/user/balance'),
+  getStats: () => http.get<UserStatsResponse>('/user/stats'),
+  getTransactions: (page = 1, size = 20) =>
+    http.get<{ items?: UserTransaction[]; transactions?: UserTransaction[]; total?: number }>('/user/transactions', { params: { page, size } }),
+  listApiKeys: () =>
+    http.get<{ api_keys?: ApiKeyRecord[]; keys?: ApiKeyRecord[] } | ApiKeyRecord[]>('/user/apikeys'),
+  createApiKey: (name: string, keyType = 'low_price') =>
+    http.post<Record<string, unknown>>('/user/apikeys', { name, key_type: keyType }),
+  deleteApiKey: (id: number) =>
+    http.delete<Record<string, unknown>>(`/user/apikeys/${id}`),
+  listChannels: () =>
+    http.get<{ channels?: UserChannel[] } | UserChannel[]>('/user/channels'),
+  redeemCard: (code: string) =>
+    http.post<Record<string, unknown>>('/user/cards/redeem', { code }),
+  getRedeemHistory: (page = 1, size = 20) =>
+    http.get<{ records?: RedeemRecord[]; list?: RedeemRecord[] } | RedeemRecord[]>('/user/cards/redeem-history', { params: { page, size } }),
+  getInviteInfo: () => http.get<InviteInfo>('/user/invite'),
+  convertFrozen: (amount = 0) =>
+    http.post<Record<string, unknown>>('/user/invite/convert', { amount }),
+  getPaymentQR: () =>
+    http.get<{ wechat_qr?: string; alipay_qr?: string }>('/user/payment-qr'),
+  savePaymentQR: (payload: { wechat_qr?: string; alipay_qr?: string }) =>
+    http.put<Record<string, unknown>>('/user/payment-qr', payload),
+  submitWithdraw: (amount: number, paymentType: string) =>
+    http.post<Record<string, unknown>>('/user/withdraw', { amount, payment_type: paymentType }),
+  listWithdrawHistory: (page = 1, size = 20) =>
+    http.get<{ records?: WithdrawRecord[]; list?: WithdrawRecord[] } | WithdrawRecord[]>('/user/withdraw/history', { params: { page, size } }),
+  listTasks: (params: Record<string, unknown> = {}) =>
+    http.get<{ items?: UserTask[]; tasks?: UserTask[] } | UserTask[]>('/v1/tasks', { params }),
+  listLogs: (params: Record<string, unknown> = {}) =>
+    http.get<{ items?: UserLog[]; logs?: UserLog[]; total?: number }>('/v1/llm-logs', { params }),
+  getLog: (id: number) =>
+    http.get<UserLog>(`/v1/llm-logs/${id}`),
+  getPaymentOrders: (page = 1, size = 20) =>
+    http.get<{ items: PaymentOrder[]; total: number }>('/user/payment-orders', { params: { page, size } }),
+}

@@ -19,21 +19,13 @@ function asyncReduce<T>(state: AsyncState<T>, action: AsyncAction<T>): AsyncStat
   }
 }
 
-/**
- * General-purpose async data fetching hook.
- *
- * - Tracks loading / error / data state
- * - call `reload()` after mutations to trigger a fresh fetch
- * - Cleans up on unmount to prevent set-state on unmounted component
- */
-export function useAsync<T>(fetcher: () => Promise<T>, initialData: T) {
+export function useAsync<T>(fetcher: () => Promise<T>, initialData: T, deps: any[] = []) {
   const [state, dispatch] = useReducer(
     (s: AsyncState<T>, a: AsyncAction<T>) => asyncReduce(s, a),
     { data: initialData, loading: true, error: '' },
   )
   const [revision, setRevision] = useState(0)
 
-  // Sync fetcher ref after each render so async callbacks always use the latest version
   const fetcherRef = useRef(fetcher)
   useLayoutEffect(() => {
     fetcherRef.current = fetcher
@@ -55,7 +47,7 @@ export function useAsync<T>(fetcher: () => Promise<T>, initialData: T) {
     return () => {
       cancelled = true
     }
-  }, [revision])
+  }, [revision, ...deps])
 
   const reload = useCallback(() => setRevision((v) => v + 1), [])
 

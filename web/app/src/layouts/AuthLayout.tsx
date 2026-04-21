@@ -4,7 +4,7 @@ import { AppLogo } from '@/components/shared/AppLogo'
 import { useSiteSettings } from '@/hooks/use-site-settings'
 
 export function AuthLayout({ adminMode = false }: { adminMode?: boolean }) {
-  const { siteName, logoUrl } = useSiteSettings()
+  const { settings: { siteName, logoUrl } } = useSiteSettings()
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(15,118,110,0.08),transparent_34%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--muted)_8%))] px-6 py-10">

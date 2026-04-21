@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TablePagination } from '@/components/shared/TablePagination'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,9 +15,8 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { userApi, type UserTransaction } from '@/lib/api/user'
+import { userApi } from '@/lib/api/user'
 import { payApi } from '@/lib/api/pay'
-import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
 import { useSiteSettings } from '@/hooks/use-site-settings'
 import { useAuth } from '@/hooks/use-auth'
@@ -26,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Check, Info, Loader2, RefreshCcw, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PaymentOrder } from '@/lib/api/user'
+import type { PaymentOrder } from '@/lib/api/user'
 
 function cx(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(' ')
@@ -51,7 +49,7 @@ export function UserBillingPage() {
   // Transaction State
   const [txPage, setTxPage] = useState(1)
   const [txTaskIdFilter, setTxTaskIdFilter] = useState('')
-  const { data: txData, loading: txLoading, reload: txReload } = useAsync(async () => {
+  const { data: txData, reload: txReload } = useAsync(async () => {
     // We adjust the params since old API was /user/transactions?page=..&task_id=..
     // We didn't add task_id into userApi, so let's mock it for the get. 
     // Actually userApi.getTransactions doesn't take id. Let's cast to ignore
@@ -60,17 +58,17 @@ export function UserBillingPage() {
       items: Array.isArray(res) ? res : res.items ?? res.transactions ?? [],
       total: !Array.isArray(res) ? res.total ?? 0 : 0
     }
-  }, [txPage, txTaskIdFilter])
+  }, { items: [], total: 0 } as any, [txPage, txTaskIdFilter])
 
   // Orders State
   const [orderPage, setOrderPage] = useState(1)
-  const { data: orderData, loading: orderLoading, reload: orderReload } = useAsync(async () => {
+  const { data: orderData, reload: orderReload } = useAsync(async () => {
     const res = await userApi.getPaymentOrders(orderPage, 20)
     return {
       items: res.items || [],
       total: res.total || 0
     }
-  }, [orderPage])
+  }, { items: [], total: 0 } as any, [orderPage])
 
   // Update URL on tab change
   const handleTabChange = (val: string) => {
@@ -92,16 +90,16 @@ export function UserBillingPage() {
         const res = await payApi.createPayApplyOrder({ amount, pay_flat: payFlat, pay_from: 'pc' })
         if (res.pay_url) {
           setPayUrl(res.pay_url)
-          setCurrentOutTradeNo(res.out_trade_no)
+          setCurrentOutTradeNo(res.out_trade_no || "")
           setShowPayFrame(true)
-          startPolling(res.out_trade_no)
+          startPolling(res.out_trade_no || "")
         }
       } else if (settings.epayEnabled) {
         const type = payMethod === 'wechat' ? 'wxpay' : 'alipay'
         const res = await payApi.createEpayOrder(amount, type)
         if (res.pay_url) {
           window.open(res.pay_url, '_blank')
-          setCurrentOutTradeNo(res.out_trade_no)
+          setCurrentOutTradeNo(res.out_trade_no || "")
           setShowPayFrame(true) // Also show to ask user if paid
         }
       }
@@ -343,7 +341,7 @@ export function UserBillingPage() {
             </Table>
             {txData?.total > 0 && (
               <div className="p-4 border-t">
-                <TablePagination page={txPage} total={txData.total} pageSize={20} onChange={setTxPage} />
+                <TablePagination current={txPage} total={txData.total} pageSize={20} onChange={setTxPage} />
               </div>
             )}
           </Card>
@@ -383,7 +381,7 @@ export function UserBillingPage() {
             </Table>
             {orderData?.total > 0 && (
               <div className="p-4 border-t">
-                <TablePagination page={orderPage} total={orderData.total} pageSize={20} onChange={setOrderPage} />
+                <TablePagination current={orderPage} total={orderData.total} pageSize={20} onChange={setOrderPage} />
               </div>
             )}
           </Card>
