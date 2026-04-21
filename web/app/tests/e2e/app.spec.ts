@@ -22,11 +22,15 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
-  await page.route('**/api/docs', async (route) => {
+  await page.route('**/openapi.json', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'FanAPI', version: '1.0.0' },
+        paths: {},
+      }),
     })
   })
 })
@@ -184,7 +188,11 @@ test('renders extended user routes with authenticated session', async ({ page })
 
   for (const route of ['/playground', '/image-gen', '/video-gen', '/docs', '/stats', '/exchange', '/invite']) {
     await page.goto(route)
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    if (route === '/docs') {
+      await expect(page.getByTestId('scalar-root')).toBeVisible()
+    } else {
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    }
   }
 })
 

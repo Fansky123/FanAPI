@@ -47,12 +47,12 @@ const scalarHTMLTpl = `<!doctype html>
 <style>body{margin:0}</style>
 </head>
 <body>
-<script
-  id="api-reference"
+<div
+	id="api-reference"
   data-url="/openapi.json"
   data-configuration='{"theme":"default","darkMode":false,"layout":"sidebar","hideDarkModeToggle":true}'
-><\/script>
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"><\/script>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>`
 
