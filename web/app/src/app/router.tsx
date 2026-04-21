@@ -93,7 +93,6 @@ function PublicOnly({
 
 function RootRedirect() {
   const mode = getSiteModePreference()
-  const userToken = getRoleToken('user')
   const adminToken = getRoleToken('admin')
   const agentToken = getRoleToken('agent')
   const vendorToken = getRoleToken('vendor')
