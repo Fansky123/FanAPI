@@ -71,7 +71,7 @@ func SubmitWithdraw(c *gin.Context) {
 	// 读取冻结余额和收款码
 	var user model.User
 	if found, err := db.Engine.ID(userID).
-		Cols("frozen_balance", "payment_qr_wechat", "payment_qr_alipay", "username").
+		Cols("frozen_balance", "payment_qr_wechat", "payment_qr_alipay").
 		Get(&user); err != nil || !found {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取用户信息失败"})
 		return

@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
-  await page.route('**/openapi.json', async (route) => {
+  await page.route('**/openapi-user.json', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

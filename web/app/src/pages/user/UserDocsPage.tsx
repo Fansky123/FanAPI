@@ -18,7 +18,7 @@ export function UserDocsPage() {
 
     const reference = document.createElement('div')
     reference.id = 'api-reference'
-    reference.setAttribute('data-url', '/openapi.json')
+    reference.setAttribute('data-url', '/openapi-user.json')
     reference.setAttribute('data-configuration', scalarConfiguration)
     root.replaceChildren(reference)
 

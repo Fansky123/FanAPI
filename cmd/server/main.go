@@ -91,6 +91,7 @@ func main() {
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// OpenAPI spec（动态替换域名）
 	r.GET("/openapi.json", handler.SwaggerJSON)
+	r.GET("/openapi-user.json", handler.UserSwaggerJSON)
 
 	// API 文档页面（无需认证）
 	r.GET("/docs", handler.APIDocs)

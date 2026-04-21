@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"fanapi/docs"
@@ -14,8 +16,21 @@ import (
 
 var swaggerMu sync.Mutex
 
-// SwaggerJSON 动态将 swagger host 替换为实际请求域名后返回 JSON spec。
-func SwaggerJSON(c *gin.Context) {
+var allowedUserDocOps = map[string]map[string]bool{
+	"/user/balance": {
+		"get": true,
+	},
+	"/v1/tasks/{id}": {
+		"get": true,
+	},
+}
+
+var allowedUserDocTags = map[string]bool{
+	"媒体生成": true,
+	"LLM":  true,
+}
+
+func readSwaggerDoc(c *gin.Context) ([]byte, error) {
 	host := c.Request.Host
 	if fwd := c.GetHeader("X-Forwarded-Host"); fwd != "" {
 		host = fwd
@@ -30,12 +45,91 @@ func SwaggerJSON(c *gin.Context) {
 	docs.SwaggerInfo.Schemes = schemes
 	doc, err := swag.ReadDoc()
 	swaggerMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(doc), nil
+}
 
+func shouldKeepUserDocOperation(path, method string, op map[string]any) bool {
+	if methods, ok := allowedUserDocOps[path]; ok && methods[strings.ToLower(method)] {
+		return true
+	}
+
+	tags, _ := op["tags"].([]any)
+	for _, rawTag := range tags {
+		tag, _ := rawTag.(string)
+		if allowedUserDocTags[tag] {
+			return true
+		}
+	}
+
+	return false
+}
+
+func buildUserSwaggerDoc(doc []byte) ([]byte, error) {
+	var spec map[string]any
+	if err := json.Unmarshal(doc, &spec); err != nil {
+		return nil, err
+	}
+
+	paths, _ := spec["paths"].(map[string]any)
+	filteredPaths := make(map[string]any)
+	for path, rawMethods := range paths {
+		methods, ok := rawMethods.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		keptMethods := make(map[string]any)
+		for method, rawOperation := range methods {
+			op, ok := rawOperation.(map[string]any)
+			if !ok {
+				continue
+			}
+			if shouldKeepUserDocOperation(path, method, op) {
+				keptMethods[method] = rawOperation
+			}
+		}
+
+		if len(keptMethods) > 0 {
+			filteredPaths[path] = keptMethods
+		}
+	}
+	spec["paths"] = filteredPaths
+
+	if info, ok := spec["info"].(map[string]any); ok {
+		info["description"] = "LLM 对话 · 媒体生成 · 查询任务结果 · 查询账户余额"
+	}
+
+	return json.Marshal(spec)
+}
+
+// SwaggerJSON 动态将 swagger host 替换为实际请求域名后返回 JSON spec。
+func SwaggerJSON(c *gin.Context) {
+	doc, err := readSwaggerDoc(c)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "swagger doc error"})
 		return
 	}
-	c.Data(200, "application/json; charset=utf-8", []byte(doc))
+	c.Data(200, "application/json; charset=utf-8", doc)
+}
+
+// UserSwaggerJSON 返回用户端精简版 OpenAPI spec。
+func UserSwaggerJSON(c *gin.Context) {
+	doc, err := readSwaggerDoc(c)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "swagger doc error"})
+		return
+	}
+
+	filteredDoc, err := buildUserSwaggerDoc(doc)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "swagger doc error"})
+		return
+	}
+
+	c.Data(200, "application/json; charset=utf-8", filteredDoc)
 }
 
 const scalarHTMLTpl = `<!doctype html>
@@ -49,7 +143,7 @@ const scalarHTMLTpl = `<!doctype html>
 <body>
 <div
 	id="api-reference"
-  data-url="/openapi.json"
+	data-url="/openapi-user.json"
   data-configuration='{"theme":"default","darkMode":false,"layout":"sidebar","hideDarkModeToggle":true}'
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>

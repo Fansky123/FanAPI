@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
@@ -59,6 +59,8 @@ export function UserInvitePage() {
   const [wechatQrEdit, setWechatQrEdit] = useState('')
   const [alipayQrEdit, setAlipayQrEdit] = useState('')
   const [qrInitialized, setQrInitialized] = useState(false)
+  const wechatUploadRef = useRef<HTMLInputElement>(null)
+  const alipayUploadRef = useRef<HTMLInputElement>(null)
 
   // Sync QR fields from loaded data once
   if (!loading && !qrInitialized && (data.wechatQr || data.alipayQr)) {
@@ -78,6 +80,31 @@ export function UserInvitePage() {
       const { getApiErrorMessage } = await import('@/lib/api/http')
       setMutError(getApiErrorMessage(err))
     }
+  }
+
+  function readLocalFile(file: File, onDone: (base64: string) => void) {
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const result = event.target?.result
+      if (typeof result === 'string') {
+        onDone(result)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function pickQr(kind: 'wechat' | 'alipay', file: File | undefined) {
+    if (!file) {
+      return
+    }
+
+    readLocalFile(file, (base64) => {
+      if (kind === 'wechat') {
+        setWechatQrEdit(base64)
+        return
+      }
+      setAlipayQrEdit(base64)
+    })
   }
 
   async function convert() {
@@ -174,16 +201,92 @@ export function UserInvitePage() {
           <CardTitle>收款码</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Textarea
-            value={wechatQrEdit}
-            onChange={(event) => setWechatQrEdit(event.target.value)}
-            placeholder="微信收款码（URL 或 base64）"
-          />
-          <Textarea
-            value={alipayQrEdit}
-            onChange={(event) => setAlipayQrEdit(event.target.value)}
-            placeholder="支付宝收款码（URL 或 base64）"
-          />
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">微信收款码</span>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={wechatUploadRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    pickQr('wechat', event.target.files?.[0])
+                    event.target.value = ''
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => wechatUploadRef.current?.click()}>
+                  本地上传
+                </Button>
+                {wechatQrEdit ? (
+                  <Button size="sm" variant="ghost" onClick={() => setWechatQrEdit('')}>
+                    清空
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <Textarea
+              value={wechatQrEdit}
+              onChange={(event) => setWechatQrEdit(event.target.value)}
+              placeholder="微信收款码（URL 或 base64）"
+            />
+            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3">
+              {wechatQrEdit ? (
+                <img
+                  src={wechatQrEdit}
+                  alt="微信收款码预览"
+                  className="max-h-56 rounded-md border bg-background object-contain"
+                />
+              ) : (
+                <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                  暂无微信收款码
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">支付宝收款码</span>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={alipayUploadRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    pickQr('alipay', event.target.files?.[0])
+                    event.target.value = ''
+                  }}
+                />
+                <Button size="sm" variant="outline" onClick={() => alipayUploadRef.current?.click()}>
+                  本地上传
+                </Button>
+                {alipayQrEdit ? (
+                  <Button size="sm" variant="ghost" onClick={() => setAlipayQrEdit('')}>
+                    清空
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <Textarea
+              value={alipayQrEdit}
+              onChange={(event) => setAlipayQrEdit(event.target.value)}
+              placeholder="支付宝收款码（URL 或 base64）"
+            />
+            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3">
+              {alipayQrEdit ? (
+                <img
+                  src={alipayQrEdit}
+                  alt="支付宝收款码预览"
+                  className="max-h-56 rounded-md border bg-background object-contain"
+                />
+              ) : (
+                <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                  暂无支付宝收款码
+                </div>
+              )}
+            </div>
+          </div>
           <div className="md:col-span-2">
             <Button onClick={saveQr}>保存收款码</Button>
           </div>

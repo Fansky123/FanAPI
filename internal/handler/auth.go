@@ -134,7 +134,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	userID := c.MustGet("user_id").(int64)
 	user := &model.User{}
-	found, err := db.Engine.ID(userID).Get(user)
+	found, err := db.Engine.ID(userID).Cols("id", "username", "email", "role", "group").Get(user)
 	if err != nil || !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
@@ -496,7 +496,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 
 	user := &model.User{}
-	found, err := db.Engine.ID(userID).Get(user)
+	found, err := db.Engine.ID(userID).Cols("password_hash").Get(user)
 	if err != nil || !found {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
 		return

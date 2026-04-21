@@ -30,7 +30,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 			c.Set("auth_type", "apikey")
 			// 加载用户以获取 group（分组定价）
 			user := &model.User{}
-			if found, _ := db.Engine.ID(apiKey.UserID).Get(user); found {
+			if found, _ := db.Engine.ID(apiKey.UserID).Cols("group").Get(user); found {
 				c.Set("user_group", user.Group)
 			}
 			c.Next()
@@ -49,7 +49,7 @@ func Auth(cfg *config.ServerConfig) gin.HandlerFunc {
 				c.Set("key_type", apiKey.KeyType)
 				c.Set("auth_type", "apikey")
 				user := &model.User{}
-				if found, _ := db.Engine.ID(apiKey.UserID).Get(user); found {
+				if found, _ := db.Engine.ID(apiKey.UserID).Cols("group").Get(user); found {
 					c.Set("user_group", user.Group)
 				}
 				c.Next()

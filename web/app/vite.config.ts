@@ -21,6 +21,9 @@ export default defineConfig({
       '/openapi.json': {
         target: 'http://localhost:8080',
       },
+      '/openapi-user.json': {
+        target: 'http://localhost:8080',
+      },
     },
   },
 })

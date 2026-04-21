@@ -61,13 +61,17 @@ func generateInviteCode() string {
 func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.ServerConfig) (string, *model.User, error) {
 	user := &model.User{}
 	// 先尝试用户名登录，失败再尝试邂算
-	found, err := db.Engine.Where("username = ?", usernameOrEmail).Get(user)
+	found, err := db.Engine.Where("username = ?", usernameOrEmail).
+		Cols("id", "username", "email", "password_hash", "role", "group", "is_active", "inviter_id").
+		Get(user)
 	if err != nil {
 		log.Printf("[login] db error (username lookup): %v", err)
 		return "", nil, fmt.Errorf("内部错误，请稍后重试")
 	}
 	if !found {
-		found, err = db.Engine.Where("email = ?", usernameOrEmail).Get(user)
+		found, err = db.Engine.Where("email = ?", usernameOrEmail).
+			Cols("id", "username", "email", "password_hash", "role", "group", "is_active", "inviter_id").
+			Get(user)
 		if err != nil {
 			log.Printf("[login] db error (email lookup): %v", err)
 			return "", nil, fmt.Errorf("内部错误，请稍后重试")
@@ -99,7 +103,9 @@ func Login(ctx context.Context, usernameOrEmail, password string, cfg *config.Se
 // nickname 为微信昵称（首次注册时用作用户名前缀）。
 func LoginOrRegisterWithOpenID(ctx context.Context, openid, nickname string, inviterID *int64, cfg *config.ServerConfig) (string, *model.User, error) {
 	user := &model.User{}
-	found, err := db.Engine.Where("wechat_openid = ?", openid).Get(user)
+	found, err := db.Engine.Where("wechat_openid = ?", openid).
+		Cols("id", "username", "email", "password_hash", "role", "group", "is_active", "invite_code", "inviter_id", "wechat_openid").
+		Get(user)
 	if err != nil {
 		return "", nil, fmt.Errorf("内部错误，请稍后重试")
 	}
@@ -127,7 +133,9 @@ func LoginOrRegisterWithOpenID(ctx context.Context, openid, nickname string, inv
 		}
 		if _, err := db.Engine.Insert(user); err != nil {
 			// 并发重复注册时再次查询
-			if found2, _ := db.Engine.Where("wechat_openid = ?", openid).Get(user); !found2 {
+			if found2, _ := db.Engine.Where("wechat_openid = ?", openid).
+				Cols("id", "username", "email", "password_hash", "role", "group", "is_active", "invite_code", "inviter_id", "wechat_openid").
+				Get(user); !found2 {
 				return "", nil, fmt.Errorf("注册失败，请稍后重试")
 			}
 		}
