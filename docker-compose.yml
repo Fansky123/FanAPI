@@ -1,5 +1,8 @@
 # =============================================================
-# FanAPI — docker-compose 生产部署
+# FanAPI — docker-compose 生产部署（依赖外部中间件）
+#
+# 前提：PostgreSQL、Redis、NATS 需在容器外部（或其他 compose 项目）
+# 独立部署，并在 config.docker.yaml 中填写正确的连接地址。
 #
 # 【同机部署（默认）】
 #   docker-compose up -d
@@ -23,46 +26,6 @@
 # =============================================================
 
 services:
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: fanapi
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ww123456
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d fanapi"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  nats:
-    image: nats:2.10-alpine
-    restart: unless-stopped
-    command: ["-c", "/etc/nats/nats-server.conf"]
-    volumes:
-      - ./docker/nats-server.conf:/etc/nats/nats-server.conf:ro
-      - nats-data:/data
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   # ── API 服务 + 前端静态（nginx + fanapi-server）──────────
   api:
     build:
@@ -70,13 +33,6 @@ services:
       target: api
     image: fanapi-api:latest
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
     ports:
       - "${FANAPI_BIND_IP:-127.0.0.1}:${FANAPI_HTTP_PORT:-8088}:80"
     volumes:
@@ -95,17 +51,5 @@ services:
       target: script
     image: fanapi-script:latest
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
     volumes:
       - ./config.docker.yaml:/app/config.yaml:ro
-
-volumes:
-  postgres-data:
-  redis-data:
-  nats-data:
