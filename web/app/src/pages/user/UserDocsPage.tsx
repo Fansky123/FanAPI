@@ -6,7 +6,7 @@ export function UserDocsPage() {
       <CardContent className="p-0">
         <iframe
           className="min-h-[85vh] w-full border-0"
-          src="/swagger/index.html"
+          src="/docs"
           title="FanAPI Docs"
         />
       </CardContent>
