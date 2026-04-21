@@ -1,36 +1,31 @@
-import { useEffect, useState } from 'react'
 import { ActivityIcon, BadgeDollarSignIcon, UsersIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { adminApi, type AdminStatsResponse } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 export function AdminDashboardPage() {
-  const [stats, setStats] = useState<AdminStatsResponse>({})
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await adminApi.getStats()
-        setStats(response ?? {})
-      } catch (err) {
-        setError(getApiErrorMessage(err))
-      }
-    }
-
-    void load()
-  }, [])
+  const { data: stats, loading, error, reload } = useAsync(
+    () => adminApi.getStats(),
+    {} as AdminStatsResponse,
+  )
 
   return (
     <>
       <PageHeader
         eyebrow="Operations"
         title="平台运营看板"
-        description="用更稳定的后台卡片与内容节奏替代旧版堆叠式 dashboard。"
+        description="平台核心运营指标：用户数、请求量与收入概览。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -42,28 +37,21 @@ export function AdminDashboardPage() {
           title="总用户数"
           value={String(stats.total_users ?? stats.users ?? 0)}
           icon={<UsersIcon className="size-4" />}
+          loading={loading}
         />
         <StatCard
           title="总请求数"
           value={String(stats.total_requests ?? stats.requests ?? 0)}
           icon={<ActivityIcon className="size-4" />}
+          loading={loading}
         />
         <StatCard
           title="总收入"
           value={String(stats.total_revenue ?? stats.revenue ?? 0)}
           icon={<BadgeDollarSignIcon className="size-4" />}
+          loading={loading}
         />
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>后台重构目标</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-          <p>1. 列表页、筛选栏、详情和弹窗全部统一。</p>
-          <p>2. 信息密度高，但不靠更小的字和更乱的卡片实现。</p>
-          <p>3. 后续 agent/vendor 直接继承同一套模式。</p>
-        </CardContent>
-      </Card>
     </>
   )
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   Table,
@@ -12,32 +12,28 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminLog } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
 import { formatCredits } from '@/lib/formatters/credits'
+import { useAsync } from '@/hooks/use-async'
 
 export function AdminLogsPage() {
-  const [rows, setRows] = useState<AdminLog[]>([])
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await adminApi.listLogs()
-        setRows(Array.isArray(response) ? response : response.items ?? response.logs ?? [])
-      } catch (err) {
-        setError(getApiErrorMessage(err))
-      }
-    }
-
-    void load()
-  }, [])
+  const { data: rows, loading, error, reload } = useAsync(async () => {
+    const response = await adminApi.listLogs()
+    return Array.isArray(response) ? response : response.items ?? response.logs ?? []
+  }, [] as AdminLog[])
 
   return (
     <>
       <PageHeader
         eyebrow="Observability"
         title="调用日志"
-        description="日志页已接入真实列表，后续继续补详情抽屉和高级筛选。"
+        description="查看平台所有 API 调用日志记录。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -56,20 +52,32 @@ export function AdminLogsPage() {
               <TableHead>时间</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.id ?? '-'}</TableCell>
-                <TableCell>{row.model ?? '-'}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {row.corr_id ?? '-'}
-                </TableCell>
-                <TableCell>{formatCredits(row.cost_credits ?? 0)}</TableCell>
-                <TableCell>{row.status ?? '-'}</TableCell>
-                <TableCell>{row.created_at ?? '-'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={6} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    暂无日志记录
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
+                    <TableCell>{row.model ?? '-'}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {row.corr_id ?? '-'}
+                    </TableCell>
+                    <TableCell>{formatCredits(row.cost_credits ?? 0)}</TableCell>
+                    <TableCell>{row.status ?? '-'}</TableCell>
+                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
     </>

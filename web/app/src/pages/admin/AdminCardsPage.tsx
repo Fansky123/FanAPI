@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { RefreshCwIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -32,11 +33,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminCard } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 export function AdminCardsPage() {
-  const [rows, setRows] = useState<AdminCard[]>([])
-  const [error, setError] = useState('')
+  const { data: rows, loading, error: loadError, reload } = useAsync(async () => {
+    const response = await adminApi.listCards()
+    return response.cards ?? []
+  }, [] as AdminCard[])
+
+  const [mutError, setMutError] = useState('')
   const [generateOpen, setGenerateOpen] = useState(false)
   const [resultOpen, setResultOpen] = useState(false)
   const [generatedCards, setGeneratedCards] = useState<AdminCard[]>([])
@@ -45,21 +50,10 @@ export function AdminCardsPage() {
   const [note, setNote] = useState('')
   const [pendingDeleteCard, setPendingDeleteCard] = useState<AdminCard | undefined>()
 
-  async function load() {
-    try {
-      const response = await adminApi.listCards()
-      setRows(response.cards ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   async function generateCards() {
+    setMutError('')
     try {
       const response = await adminApi.generateCards({
         count: Number(count),
@@ -69,24 +63,22 @@ export function AdminCardsPage() {
       setGeneratedCards(response.cards ?? [])
       setGenerateOpen(false)
       setResultOpen(true)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
-  }
-
-  async function deleteCard(row: AdminCard) {
-    if (!row.id) return
-    setPendingDeleteCard(row)
   }
 
   async function executeDeleteCard() {
     if (!pendingDeleteCard?.id) return
+    setMutError('')
     try {
       await adminApi.deleteCard(pendingDeleteCard.id)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setPendingDeleteCard(undefined)
     }
@@ -97,11 +89,16 @@ export function AdminCardsPage() {
       <PageHeader
         eyebrow="Cards"
         title="卡密管理"
-        description="支持批量生成和删除未使用卡密，满足后台最小运营需求。"
+        description="批量生成和删除未使用卡密。"
         actions={
-          <Button onClick={() => setGenerateOpen(true)}>
-            生成卡密
-          </Button>
+          <>
+            {error ? (
+              <Button size="sm" variant="outline" onClick={reload}>
+                重试
+              </Button>
+            ) : null}
+            <Button onClick={() => setGenerateOpen(true)}>生成卡密</Button>
+          </>
         }
       />
       {error ? (
@@ -121,24 +118,36 @@ export function AdminCardsPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell className="font-mono text-xs">{row.code ?? '-'}</TableCell>
-                <TableCell>{((row.credits ?? 0) / 1_000_000).toFixed(4)}</TableCell>
-                <TableCell>{row.status ?? '-'}</TableCell>
-                <TableCell>{row.note ?? '-'}</TableCell>
-                <TableCell>{row.created_at ?? '-'}</TableCell>
-                <TableCell className="text-right">
-                  {row.status === 'unused' ? (
-                    <Button size="sm" variant="outline" onClick={() => deleteCard(row)}>
-                      删除
-                    </Button>
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={6} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    暂无卡密数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell className="font-mono text-xs">{row.code ?? '-'}</TableCell>
+                    <TableCell>{((row.credits ?? 0) / 1_000_000).toFixed(4)}</TableCell>
+                    <TableCell>{row.status ?? '-'}</TableCell>
+                    <TableCell>{row.note ?? '-'}</TableCell>
+                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                    <TableCell className="text-right">
+                      {row.status === 'unused' ? (
+                        <Button size="sm" variant="outline" onClick={() => setPendingDeleteCard(row)}>
+                          删除
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 
@@ -153,9 +162,7 @@ export function AdminCardsPage() {
             <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="备注" />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGenerateOpen(false)}>
-              取消
-            </Button>
+            <Button variant="outline" onClick={() => setGenerateOpen(false)}>取消</Button>
             <Button onClick={generateCards}>生成</Button>
           </DialogFooter>
         </DialogContent>
@@ -170,9 +177,7 @@ export function AdminCardsPage() {
             {generatedCards.map((card) => `${card.code} ${(card.credits ?? 0) / 1_000_000}元`).join('\n')}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResultOpen(false)}>
-              关闭
-            </Button>
+            <Button variant="outline" onClick={() => setResultOpen(false)}>关闭</Button>
             <Button
               onClick={() =>
                 navigator.clipboard.writeText(

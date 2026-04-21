@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,37 +26,31 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminVendor } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 export function AdminVendorsPage() {
-  const [rows, setRows] = useState<AdminVendor[]>([])
-  const [error, setError] = useState('')
+  const { data: rows, loading, error: loadError, reload } = useAsync(async () => {
+    const response = await adminApi.listVendors()
+    return Array.isArray(response) ? response : response.items ?? response.vendors ?? []
+  }, [] as AdminVendor[])
+
+  const [mutError, setMutError] = useState('')
   const [editing, setEditing] = useState<AdminVendor | null>(null)
   const [commission, setCommission] = useState('')
 
-  async function load() {
-    try {
-      const response = await adminApi.listVendors()
-      setRows(Array.isArray(response) ? response : response.items ?? response.vendors ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   async function toggleActive(row: AdminVendor) {
     if (!row.id) return
+    setMutError('')
     try {
       await adminApi.updateVendor(row.id, {
         is_active: !(row.is_active ?? row.enabled ?? true),
       })
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -66,18 +61,21 @@ export function AdminVendorsPage() {
         ? String(row.commission_ratio)
         : ''
     )
+    setMutError('')
   }
 
   async function saveVendor() {
     if (!editing?.id) return
+    setMutError('')
     try {
       await adminApi.updateVendor(editing.id, {
         commission_ratio: commission === '' ? undefined : Number(commission),
       })
       setEditing(null)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -86,7 +84,14 @@ export function AdminVendorsPage() {
       <PageHeader
         eyebrow="Supply"
         title="号商管理"
-        description="号商页已支持启停和手续费比例编辑，满足最小运营要求。"
+        description="管理平台号商账号，支持启停和手续费比例编辑。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -105,31 +110,43 @@ export function AdminVendorsPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.id ?? '-'}</TableCell>
-                <TableCell>{row.username ?? row.name ?? '-'}</TableCell>
-                <TableCell>{row.email ?? '-'}</TableCell>
-                <TableCell>
-                  <Badge variant={(row.is_active ?? row.enabled ?? true) ? 'default' : 'secondary'}>
-                    {(row.is_active ?? row.enabled ?? true) ? '启用' : '停用'}
-                  </Badge>
-                </TableCell>
-                <TableCell>{row.commission_ratio ?? row.fee_ratio ?? '-'}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                      编辑比例
-                    </Button>
-                    <Button size="sm" onClick={() => toggleActive(row)}>
-                      {(row.is_active ?? row.enabled ?? true) ? '禁用' : '启用'}
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={6} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    暂无号商数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
+                    <TableCell>{row.username ?? row.name ?? '-'}</TableCell>
+                    <TableCell>{row.email ?? '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={(row.is_active ?? row.enabled ?? true) ? 'default' : 'secondary'}>
+                        {(row.is_active ?? row.enabled ?? true) ? '启用' : '停用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{row.commission_ratio ?? row.fee_ratio ?? '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
+                          编辑比例
+                        </Button>
+                        <Button size="sm" onClick={() => toggleActive(row)}>
+                          {(row.is_active ?? row.enabled ?? true) ? '禁用' : '启用'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 

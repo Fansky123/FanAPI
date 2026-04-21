@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { PlusIcon, SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { adminApi, type AdminChannel, type AdminKeyPool } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 type ChannelForm = {
   id?: number
@@ -137,32 +138,27 @@ function formatBilling(channel: AdminChannel) {
 }
 
 export function AdminChannelsPage() {
-  const [rows, setRows] = useState<AdminChannel[]>([])
-  const [pools, setPools] = useState<AdminKeyPool[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [channelResponse, poolResponse] = await Promise.all([
+      adminApi.listChannels(),
+      adminApi.listKeyPools(),
+    ])
+    const rows = Array.isArray(channelResponse)
+      ? channelResponse
+      : channelResponse.channels ?? channelResponse.items ?? []
+    const pools = Array.isArray(poolResponse) ? poolResponse : poolResponse.pools ?? []
+    return { rows, pools }
+  }, { rows: [] as AdminChannel[], pools: [] as AdminKeyPool[] })
+
+  const rows = data.rows
+  const pools = data.pools
+
+  const [mutError, setMutError] = useState('')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<ChannelForm>(emptyForm)
   const [pendingDeleteChannel, setPendingDeleteChannel] = useState<AdminChannel | undefined>()
 
-  async function load() {
-    try {
-      setError('')
-      const [channelResponse, poolResponse] = await Promise.all([
-        adminApi.listChannels(),
-        adminApi.listKeyPools(),
-      ])
-      setRows(Array.isArray(channelResponse) ? channelResponse : channelResponse.channels ?? channelResponse.items ?? [])
-      setPools(Array.isArray(poolResponse) ? poolResponse : poolResponse.pools ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   const poolOptions = useMemo(
     () =>
@@ -177,6 +173,7 @@ export function AdminChannelsPage() {
   function openCreate() {
     setForm(emptyForm)
     setOpen(true)
+    setMutError('')
   }
 
   function openEdit(row: AdminChannel) {
@@ -212,11 +209,12 @@ export function AdminChannelsPage() {
       is_active: row.is_active ?? true,
     })
     setOpen(true)
+    setMutError('')
   }
 
   async function saveChannel() {
+    setMutError('')
     try {
-      setError('')
       const payload = {
         name: form.name.trim(),
         model: form.model.trim(),
@@ -249,44 +247,38 @@ export function AdminChannelsPage() {
       }
       if (form.id) {
         await adminApi.updateChannel(form.id, payload)
-        setSuccess('渠道已更新')
       } else {
         await adminApi.createChannel(payload)
-        setSuccess('渠道已创建')
       }
       setOpen(false)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
   async function toggleChannel(row: AdminChannel) {
     if (!row.id) return
+    setMutError('')
     try {
-      setError('')
       await adminApi.toggleChannel(row.id, !(row.is_active ?? true))
-      setSuccess(`渠道已${row.is_active === false ? '启用' : '停用'}`)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
-  }
-
-  async function deleteChannel(row: AdminChannel) {
-    if (!row.id) return
-    setPendingDeleteChannel(row)
   }
 
   async function executeDeleteChannel() {
     if (!pendingDeleteChannel?.id) return
+    setMutError('')
     try {
-      setError('')
       await adminApi.deleteChannel(pendingDeleteChannel.id)
-      setSuccess('渠道已删除')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setPendingDeleteChannel(undefined)
     }
@@ -297,23 +289,25 @@ export function AdminChannelsPage() {
       <PageHeader
         eyebrow="Catalog"
         title="渠道管理"
-        description="已补到可维护真实渠道配置，支持认证、计费、脚本、轮询、号池和负载参数。"
+        description="管理 API 渠道，支持认证、计费、脚本、轮询、号池和负载参数。"
         actions={
-          <Button onClick={openCreate}>
-            <PlusIcon data-icon="inline-start" />
-            新增渠道
-          </Button>
+          <>
+            {error ? (
+              <Button size="sm" variant="outline" onClick={reload}>
+                重试
+              </Button>
+            ) : null}
+            <Button onClick={openCreate}>
+              <PlusIcon data-icon="inline-start" />
+              新增渠道
+            </Button>
+          </>
         }
       />
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      ) : null}
-      {success ? (
-        <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
-        </Card>
       ) : null}
       <Card>
         <Table>
@@ -330,44 +324,50 @@ export function AdminChannelsPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell className="max-w-56">
-                  <div className="font-medium">{row.name ?? '未命名渠道'}</div>
-                  {row.description ? (
-                    <div className="line-clamp-1 text-xs text-muted-foreground">{row.description}</div>
-                  ) : null}
-                </TableCell>
-                <TableCell className="max-w-48 break-all text-xs">{row.model ?? row.routing_model ?? '-'}</TableCell>
-                <TableCell>{row.type ?? '-'}</TableCell>
-                <TableCell>{row.protocol ?? 'openai'}</TableCell>
-                <TableCell className="text-xs">{formatBilling(row)}</TableCell>
-                <TableCell>{row.key_pool_id ? `#${row.key_pool_id}` : '—'}</TableCell>
-                <TableCell className="text-xs">
-                  P{row.priority ?? 0} / W{row.weight ?? 1}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={row.is_active === false ? 'secondary' : 'default'}>
-                    {row.is_active === false ? '停用' : '启用'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                      编辑
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
-                      {row.is_active === false ? '启用' : '停用'}
-                    </Button>
-                    <Button size="sm" onClick={() => deleteChannel(row)}>
-                      删除
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={9} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                    暂无渠道数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell className="max-w-56">
+                      <div className="font-medium">{row.name ?? '未命名渠道'}</div>
+                      {row.description ? (
+                        <div className="line-clamp-1 text-xs text-muted-foreground">{row.description}</div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="max-w-48 break-all text-xs">{row.model ?? row.routing_model ?? '-'}</TableCell>
+                    <TableCell>{row.type ?? '-'}</TableCell>
+                    <TableCell>{row.protocol ?? 'openai'}</TableCell>
+                    <TableCell className="text-xs">{formatBilling(row)}</TableCell>
+                    <TableCell>{row.key_pool_id ? `#${row.key_pool_id}` : '—'}</TableCell>
+                    <TableCell className="text-xs">P{row.priority ?? 0} / W{row.weight ?? 1}</TableCell>
+                    <TableCell>
+                      <Badge variant={row.is_active === false ? 'secondary' : 'default'}>
+                        {row.is_active === false ? '停用' : '启用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                        <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
+                          {row.is_active === false ? '启用' : '停用'}
+                        </Button>
+                        <Button size="sm" onClick={() => setPendingDeleteChannel(row)}>删除</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 
@@ -375,7 +375,7 @@ export function AdminChannelsPage() {
         <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>{form.id ? '编辑渠道' : '新增渠道'}</DialogTitle>
-            <DialogDescription>这套表单覆盖真实上游接入所需的核心字段。</DialogDescription>
+            <DialogDescription>覆盖上游接入所需的核心字段。</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[75vh] gap-4 overflow-y-auto pr-2 md:grid-cols-2">
             <div className="flex flex-col gap-2">
@@ -527,9 +527,7 @@ export function AdminChannelsPage() {
             </Label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
-            </Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
             <Button onClick={saveChannel} disabled={!form.name.trim() || !form.model.trim() || !form.base_url.trim()}>
               <SaveIcon data-icon="inline-start" />
               保存

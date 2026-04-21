@@ -22,10 +22,10 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:20.19.6-alpine3.23 
 WORKDIR /web
 
 # 先复制 package 文件利用缓存层
-COPY web/user/package*.json ./
+COPY web/app/package*.json ./
 RUN npm ci --prefer-offline
 
-COPY web/user/ ./
+COPY web/app/ ./
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────

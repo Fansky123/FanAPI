@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,81 +23,98 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getApiErrorMessage } from '@/lib/api/http'
 import { userApi, type InviteInfo, type WithdrawRecord } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
+import { useAsync } from '@/hooks/use-async'
+
+type InviteData = {
+  info: InviteInfo
+  wechatQr: string
+  alipayQr: string
+  withdrawals: WithdrawRecord[]
+}
 
 export function UserInvitePage() {
-  const [info, setInfo] = useState<InviteInfo>({})
-  const [withdrawals, setWithdrawals] = useState<WithdrawRecord[]>([])
-  const [error, setError] = useState('')
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [inviteRes, qrRes, historyRes] = await Promise.all([
+      userApi.getInviteInfo(),
+      userApi.getPaymentQR(),
+      userApi.listWithdrawHistory(),
+    ])
+    return {
+      info: inviteRes,
+      wechatQr: qrRes.wechat_qr ?? '',
+      alipayQr: qrRes.alipay_qr ?? '',
+      withdrawals: Array.isArray(historyRes)
+        ? historyRes
+        : historyRes.records ?? historyRes.list ?? [],
+    } satisfies InviteData
+  }, { info: {}, wechatQr: '', alipayQr: '', withdrawals: [] } as InviteData)
+
+  const [mutError, setMutError] = useState('')
   const [convertOpen, setConvertOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [amount, setAmount] = useState('0')
   const [paymentType, setPaymentType] = useState('wechat')
-  const [wechatQr, setWechatQr] = useState('')
-  const [alipayQr, setAlipayQr] = useState('')
+  const [wechatQrEdit, setWechatQrEdit] = useState('')
+  const [alipayQrEdit, setAlipayQrEdit] = useState('')
+  const [qrInitialized, setQrInitialized] = useState(false)
 
-  async function load() {
+  // Sync QR fields from loaded data once
+  if (!loading && !qrInitialized && (data.wechatQr || data.alipayQr)) {
+    setWechatQrEdit(data.wechatQr)
+    setAlipayQrEdit(data.alipayQr)
+    setQrInitialized(true)
+  }
+
+  const error = loadError || mutError
+
+  async function withMut(fn: () => Promise<void>) {
+    setMutError('')
     try {
-      const [inviteRes, qrRes, historyRes] = await Promise.all([
-        userApi.getInviteInfo(),
-        userApi.getPaymentQR(),
-        userApi.listWithdrawHistory(),
-      ])
-      setInfo(inviteRes)
-      setWechatQr(qrRes.wechat_qr ?? '')
-      setAlipayQr(qrRes.alipay_qr ?? '')
-      setWithdrawals(
-        Array.isArray(historyRes) ? historyRes : historyRes.records ?? historyRes.list ?? []
-      )
+      await fn()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
-
   async function convert() {
-    try {
+    await withMut(async () => {
       await userApi.convertFrozen(Number(amount))
       setConvertOpen(false)
       setAmount('0')
-      await load()
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
+    })
   }
 
   async function saveQr() {
-    try {
-      await userApi.savePaymentQR({ wechat_qr: wechatQr, alipay_qr: alipayQr })
-      await load()
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
+    await withMut(async () => { await userApi.savePaymentQR({ wechat_qr: wechatQrEdit, alipay_qr: alipayQrEdit }) })
   }
 
   async function submitWithdraw() {
-    try {
+    await withMut(async () => {
       await userApi.submitWithdraw(Number(amount), paymentType)
       setWithdrawOpen(false)
       setAmount('0')
-      await load()
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
+    })
   }
+
+  const info = data.info
 
   return (
     <>
       <PageHeader
         eyebrow="Invite"
         title="邀请中心"
-        description="支持查看邀请码、冻结返佣、解冻积分和提现申请。"
+        description="查看邀请码、冻结返佣、解冻积分和提现申请。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -105,34 +123,67 @@ export function UserInvitePage() {
       ) : null}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle>邀请码</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>邀请码</CardTitle>
+          </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">
-            <div className="font-mono">{info.invite_code ?? '-'}</div>
-            <Button size="sm" onClick={() => navigator.clipboard.writeText(info.invite_code ?? '')}>
+            <div className="font-mono">{loading ? '加载中...' : (info.invite_code ?? '-')}</div>
+            <Button
+              size="sm"
+              disabled={loading || !info.invite_code}
+              onClick={() => navigator.clipboard.writeText(info.invite_code ?? '')}
+            >
               复制邀请码
             </Button>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>已邀请人数</CardTitle></CardHeader>
-          <CardContent className="text-2xl font-semibold">{info.invite_count ?? 0}</CardContent>
+          <CardHeader>
+            <CardTitle>已邀请人数</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">
+            {loading ? '-' : (info.invite_count ?? 0)}
+          </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>冻结返佣</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>冻结返佣</CardTitle>
+          </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="text-2xl font-semibold">{formatCredits(info.frozen_balance ?? 0)}</div>
+            <div className="text-2xl font-semibold">
+              {loading ? '-' : formatCredits(info.frozen_balance ?? 0)}
+            </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => setConvertOpen(true)}>解冻</Button>
-              <Button size="sm" variant="outline" onClick={() => setWithdrawOpen(true)}>提现</Button>
+              <Button size="sm" disabled={loading} onClick={() => setConvertOpen(true)}>
+                解冻
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={loading}
+                onClick={() => setWithdrawOpen(true)}
+              >
+                提现
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
       <Card>
-        <CardHeader><CardTitle>收款码</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>收款码</CardTitle>
+        </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Textarea value={wechatQr} onChange={(event) => setWechatQr(event.target.value)} placeholder="微信收款码（URL 或 base64）" />
-          <Textarea value={alipayQr} onChange={(event) => setAlipayQr(event.target.value)} placeholder="支付宝收款码（URL 或 base64）" />
+          <Textarea
+            value={wechatQrEdit}
+            onChange={(event) => setWechatQrEdit(event.target.value)}
+            placeholder="微信收款码（URL 或 base64）"
+          />
+          <Textarea
+            value={alipayQrEdit}
+            onChange={(event) => setAlipayQrEdit(event.target.value)}
+            placeholder="支付宝收款码（URL 或 base64）"
+          />
           <div className="md:col-span-2">
             <Button onClick={saveQr}>保存收款码</Button>
           </div>
@@ -149,26 +200,46 @@ export function UserInvitePage() {
               <TableHead>备注</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {withdrawals.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.created_at ?? '-'}</TableCell>
-                <TableCell>{formatCredits(row.amount ?? 0)}</TableCell>
-                <TableCell>{row.payment_type ?? '-'}</TableCell>
-                <TableCell>{row.status ?? '-'}</TableCell>
-                <TableCell>{row.admin_remark ?? '-'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={5} rows={3} />
+          ) : (
+            <TableBody>
+              {data.withdrawals.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    暂无提现记录
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.withdrawals.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                    <TableCell>{formatCredits(row.amount ?? 0)}</TableCell>
+                    <TableCell>{row.payment_type ?? '-'}</TableCell>
+                    <TableCell>{row.status ?? '-'}</TableCell>
+                    <TableCell>{row.admin_remark ?? '-'}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 
       <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>解冻积分</DialogTitle></DialogHeader>
-          <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0 表示全部" />
+          <DialogHeader>
+            <DialogTitle>解冻积分</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="0 表示全部"
+          />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConvertOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setConvertOpen(false)}>
+              取消
+            </Button>
             <Button onClick={convert}>确认解冻</Button>
           </DialogFooter>
         </DialogContent>
@@ -176,16 +247,27 @@ export function UserInvitePage() {
 
       <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>申请提现</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>申请提现</DialogTitle>
+          </DialogHeader>
           <div className="flex flex-col gap-4">
-            <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="提现积分数量" />
-            <NativeSelect value={paymentType} onChange={(event) => setPaymentType(event.target.value)}>
+            <Input
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="提现积分数量"
+            />
+            <NativeSelect
+              value={paymentType}
+              onChange={(event) => setPaymentType(event.target.value)}
+            >
               <option value="wechat">微信</option>
               <option value="alipay">支付宝</option>
             </NativeSelect>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setWithdrawOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setWithdrawOpen(false)}>
+              取消
+            </Button>
             <Button onClick={submitWithdraw}>提交提现</Button>
           </DialogFooter>
         </DialogContent>

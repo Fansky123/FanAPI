@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { KeyRoundIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -24,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
 import {
@@ -34,13 +36,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getApiErrorMessage } from '@/lib/api/http'
-import { Input } from '@/components/ui/input'
 import { userApi, type ApiKeyRecord } from '@/lib/api/user'
+import { useAsync } from '@/hooks/use-async'
 
 export function UserKeysPage() {
-  const [keys, setKeys] = useState<ApiKeyRecord[]>([])
-  const [error, setError] = useState('')
+  const { data: keys, loading, error: loadError, reload } = useAsync(async () => {
+    const response = await userApi.listApiKeys()
+    return Array.isArray(response) ? response : response.api_keys ?? response.keys ?? []
+  }, [] as ApiKeyRecord[])
+
+  const [mutError, setMutError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createdKey, setCreatedKey] = useState('')
   const [newKeyName, setNewKeyName] = useState('')
@@ -48,52 +53,39 @@ export function UserKeysPage() {
   const [submitting, setSubmitting] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<number | undefined>()
 
-  async function load() {
-    try {
-      const response = await userApi.listApiKeys()
-      setKeys(Array.isArray(response) ? response : response.api_keys ?? response.keys ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   async function handleCreate() {
     if (!newKeyName.trim()) {
-      setError('请输入密钥名称')
+      setMutError('请输入密钥名称')
       return
     }
     setSubmitting(true)
+    setMutError('')
     try {
       const response = await userApi.createApiKey(newKeyName.trim(), newKeyType)
       setCreatedKey(String((response as { key?: string }).key ?? ''))
       setCreateOpen(false)
       setNewKeyName('')
       setNewKeyType('low_price')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
   }
 
-  async function handleDelete(id: number | undefined) {
-    if (!id) return
-    setPendingDeleteId(id)
-  }
-
   async function executeDelete() {
     if (!pendingDeleteId) return
+    setMutError('')
     try {
       await userApi.deleteApiKey(pendingDeleteId)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setPendingDeleteId(undefined)
     }
@@ -108,7 +100,7 @@ export function UserKeysPage() {
       <PageHeader
         eyebrow="Security"
         title="API 密钥"
-        description="现在已支持创建和删除密钥，确保用户能在新前端中完成真实调用前的准备工作。"
+        description="管理用于 API 调用鉴权的密钥，创建后的完整密钥只会展示一次。"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <PlusIcon data-icon="inline-start" />
@@ -121,11 +113,25 @@ export function UserKeysPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      {keys.length === 0 ? (
+      {loading ? (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>名称</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSkeleton cols={4} rows={3} />
+          </Table>
+        </Card>
+      ) : keys.length === 0 ? (
         <EmptyState
           icon={<KeyRoundIcon className="size-6 text-muted-foreground" />}
           title="还没有 API 密钥"
-          description="点击右上角即可创建，生成后的完整密钥只会展示一次。"
+          description="点击右上角「新建密钥」即可创建，生成后的完整密钥只会展示一次。"
         />
       ) : (
         <Card>
@@ -143,7 +149,11 @@ export function UserKeysPage() {
                 <TableRow key={item.id ?? index}>
                   <TableCell className="font-medium">{item.name ?? '未命名'}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {item.viewable ? item.raw_key ?? item.key ?? '***' : item.key_prefix ? `${item.key_prefix}...` : item.masked_key ?? '***'}
+                    {item.viewable
+                      ? (item.raw_key ?? item.key ?? '***')
+                      : item.key_prefix
+                        ? `${item.key_prefix}...`
+                        : (item.masked_key ?? '***')}
                   </TableCell>
                   <TableCell>{item.key_type ?? 'low_price'}</TableCell>
                   <TableCell className="text-right">
@@ -160,10 +170,10 @@ export function UserKeysPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => setPendingDeleteId(item.id)}
                       >
-                      <Trash2Icon data-icon="inline-end" />
-                      删除
+                        <Trash2Icon data-icon="inline-start" />
+                        删除
                       </Button>
                     </div>
                   </TableCell>
@@ -231,11 +241,16 @@ export function UserKeysPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={pendingDeleteId !== undefined} onOpenChange={() => setPendingDeleteId(undefined)}>
+      <AlertDialog
+        open={pendingDeleteId !== undefined}
+        onOpenChange={() => setPendingDeleteId(undefined)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>确认永久删除该 API Key 吗？此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogDescription>
+              确认永久删除该 API Key 吗？此操作不可撤销。
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -246,3 +261,5 @@ export function UserKeysPage() {
     </>
   )
 }
+
+

@@ -1,34 +1,45 @@
-import { useEffect, useState } from 'react'
-
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { Skeleton } from '@/components/ui/skeleton'
 import { userApi, type UserProfileResponse } from '@/lib/api/user'
+import { useAsync } from '@/hooks/use-async'
+
+function InfoRow({ label, value, loading }: { label: string; value?: string; loading: boolean }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      {loading ? (
+        <Skeleton className="mt-2 h-4 w-28" />
+      ) : (
+        <p className="mt-2 text-sm">{value ?? '-'}</p>
+      )}
+    </div>
+  )
+}
 
 export function UserProfilePage() {
-  const [profile, setProfile] = useState<UserProfileResponse | null>(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await userApi.getProfile()
-        setProfile(response)
-      } catch (err) {
-        setError(getApiErrorMessage(err))
-      }
-    }
-
-    void load()
-  }, [])
+  const { data: profile, loading, error, reload } = useAsync(
+    () => userApi.getProfile(),
+    null as UserProfileResponse | null,
+  )
 
   return (
     <>
       <PageHeader
         eyebrow="Identity"
         title="个人中心"
-        description="这里优先聚合账号身份信息，后续会继续补邮箱绑定、密码修改和返佣相关能力。"
+        description="账号基本信息，包括用户名、邮箱和所属分组。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -40,24 +51,9 @@ export function UserProfilePage() {
           <CardTitle>账号信息</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              用户名
-            </p>
-            <p className="mt-2 text-sm">{profile?.username ?? '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              邮箱
-            </p>
-            <p className="mt-2 text-sm">{profile?.email ?? '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              分组
-            </p>
-            <p className="mt-2 text-sm">{profile?.group ?? '-'}</p>
-          </div>
+          <InfoRow label="用户名" value={profile?.username} loading={loading} />
+          <InfoRow label="邮箱" value={profile?.email} loading={loading} />
+          <InfoRow label="分组" value={profile?.group} loading={loading} />
         </CardContent>
       </Card>
     </>

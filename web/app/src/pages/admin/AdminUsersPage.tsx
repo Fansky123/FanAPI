@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -24,39 +25,33 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminUser } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 type DialogMode = 'recharge' | 'password' | 'group' | null
 
 export function AdminUsersPage() {
-  const [rows, setRows] = useState<AdminUser[]>([])
-  const [error, setError] = useState('')
+  const { data: rows, loading, error: loadError, reload } = useAsync(async () => {
+    const response = await adminApi.listUsers()
+    return Array.isArray(response) ? response : response.items ?? response.users ?? []
+  }, [] as AdminUser[])
+
+  const [mutError, setMutError] = useState('')
   const [activeUser, setActiveUser] = useState<AdminUser | null>(null)
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [value, setValue] = useState('')
 
-  async function load() {
-    try {
-      const response = await adminApi.listUsers()
-      setRows(Array.isArray(response) ? response : response.items ?? response.users ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   function openDialog(user: AdminUser, mode: Exclude<DialogMode, null>) {
     setActiveUser(user)
     setDialogMode(mode)
-    setValue(mode === 'group' ? user.group ?? '' : '')
+    setValue(mode === 'group' ? (user.group ?? '') : '')
+    setMutError('')
   }
 
   async function submitDialog() {
     if (!activeUser?.id || !dialogMode) return
+    setMutError('')
     try {
       if (dialogMode === 'recharge') {
         await adminApi.rechargeUser(activeUser.id, Number(value))
@@ -68,20 +63,23 @@ export function AdminUsersPage() {
       setDialogMode(null)
       setActiveUser(null)
       setValue('')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
   async function toggleAgent(user: AdminUser & { role?: string }) {
     if (!user.id) return
+    setMutError('')
     const nextRole = user.role === 'agent' ? 'user' : 'agent'
     try {
       await adminApi.setUserRole(user.id, nextRole)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -90,7 +88,14 @@ export function AdminUsersPage() {
       <PageHeader
         eyebrow="Accounts"
         title="用户管理"
-        description="已补上最小运营动作，后台现在可以直接充值、改密、调分组和切换客服角色。"
+        description="管理平台用户账号，支持充值、改密、调分组和切换角色。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -109,33 +114,48 @@ export function AdminUsersPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.id ?? '-'}</TableCell>
-                <TableCell className="font-medium">{row.username ?? '-'}</TableCell>
-                <TableCell>{row.email ?? '-'}</TableCell>
-                <TableCell>{row.group ?? '-'}</TableCell>
-                <TableCell>{row.balance_credits ?? row.balance ?? '-'}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openDialog(row, 'recharge')}>
-                      充值
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => openDialog(row, 'password')}>
-                      改密
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => openDialog(row, 'group')}>
-                      分组
-                    </Button>
-                    <Button size="sm" onClick={() => toggleAgent(row as AdminUser & { role?: string })}>
-                      切角色
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={6} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    暂无用户数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
+                    <TableCell className="font-medium">{row.username ?? '-'}</TableCell>
+                    <TableCell>{row.email ?? '-'}</TableCell>
+                    <TableCell>{row.group ?? '-'}</TableCell>
+                    <TableCell>{row.balance_credits ?? row.balance ?? '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openDialog(row, 'recharge')}>
+                          充值
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => openDialog(row, 'password')}>
+                          改密
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => openDialog(row, 'group')}>
+                          分组
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => toggleAgent(row as AdminUser & { role?: string })}
+                        >
+                          切角色
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 

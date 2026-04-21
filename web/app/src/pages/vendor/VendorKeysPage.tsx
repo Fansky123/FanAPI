@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -21,61 +22,56 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getApiErrorMessage } from '@/lib/api/http'
 import { vendorApi, type VendorKey, type VendorPool } from '@/lib/api/vendor'
 import { formatCredits } from '@/lib/formatters/credits'
+import { useAsync } from '@/hooks/use-async'
 
 export function VendorKeysPage() {
-  const [keys, setKeys] = useState<VendorKey[]>([])
-  const [pools, setPools] = useState<VendorPool[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [keysRes, poolsRes] = await Promise.all([
+      vendorApi.getKeys(),
+      vendorApi.getPools(),
+    ])
+    return {
+      keys: Array.isArray(keysRes) ? keysRes : keysRes.items ?? keysRes.keys ?? [] as VendorKey[],
+      pools: Array.isArray(poolsRes) ? poolsRes : poolsRes.pools ?? [] as VendorPool[],
+    }
+  }, { keys: [] as VendorKey[], pools: [] as VendorPool[] })
+
+  const keys = data.keys
+  const pools = data.pools
+
+  const [mutError, setMutError] = useState('')
   const [open, setOpen] = useState(false)
   const [poolId, setPoolId] = useState('')
   const [value, setValue] = useState('')
 
-  async function load() {
-    try {
-      const [keysRes, poolsRes] = await Promise.all([
-        vendorApi.getKeys(),
-        vendorApi.getPools(),
-      ])
-      setKeys(Array.isArray(keysRes) ? keysRes : keysRes.items ?? keysRes.keys ?? [])
-      setPools(Array.isArray(poolsRes) ? poolsRes : poolsRes.pools ?? [])
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   async function submit() {
     if (!poolId) {
-      setError('请选择号池')
+      setMutError('请选择号池')
       return
     }
     if (!value.trim()) {
-      setError('请输入要提交的 API Key')
+      setMutError('请输入要提交的 API Key')
       return
     }
+    setMutError('')
     try {
-      setError('')
       const selected = pools.find((item) => String(item.id) === poolId)
       await vendorApi.submitKey({
         pool_id: selected?.id,
         channel_id: selected?.channel_id,
         value: value.trim(),
       })
-      setSuccess('Key 已通过校验并提交到号池')
       setOpen(false)
       setPoolId('')
       setValue('')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -84,18 +80,22 @@ export function VendorKeysPage() {
       <PageHeader
         eyebrow="Vendor"
         title="我的 API Key"
-        description="支持上传新 Key，并查看累计消耗与收益。"
-        actions={<Button onClick={() => setOpen(true)}>上传新 Key</Button>}
+        description="上传新 Key，并查看累计消耗与收益。"
+        actions={
+          <>
+            {error ? (
+              <Button size="sm" variant="outline" onClick={reload}>
+                重试
+              </Button>
+            ) : null}
+            <Button onClick={() => setOpen(true)}>上传新 Key</Button>
+          </>
+        }
       />
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      ) : null}
-      {success ? (
-        <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
-        </Card>
       ) : null}
       <Card>
         <Table>
@@ -108,17 +108,29 @@ export function VendorKeysPage() {
               <TableHead>状态</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {keys.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.channel_name ?? row.channel_id ?? '-'}</TableCell>
-                <TableCell className="font-mono text-xs">{row.masked_value ?? row.key ?? '-'}</TableCell>
-                <TableCell>{formatCredits(row.total_cost ?? 0)}</TableCell>
-                <TableCell>{formatCredits(row.my_earn ?? row.total_profit ?? 0)}</TableCell>
-                <TableCell>{row.is_active === false ? '停用' : '启用'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={5} />
+          ) : (
+            <TableBody>
+              {keys.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    暂无 Key 数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                keys.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.channel_name ?? row.channel_id ?? '-'}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.masked_value ?? row.key ?? '-'}</TableCell>
+                    <TableCell>{formatCredits(row.total_cost ?? 0)}</TableCell>
+                    <TableCell>{formatCredits(row.my_earn ?? row.total_profit ?? 0)}</TableCell>
+                    <TableCell>{row.is_active === false ? '停用' : '启用'}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 

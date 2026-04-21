@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
-
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -11,35 +12,39 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getApiErrorMessage } from '@/lib/api/http'
 import { vendorApi, type VendorKey, type VendorProfile } from '@/lib/api/vendor'
 import { formatCredits } from '@/lib/formatters/credits'
+import { useAsync } from '@/hooks/use-async'
 
 export function VendorDashboardPage() {
-  const [profile, setProfile] = useState<VendorProfile | null>(null)
-  const [keys, setKeys] = useState<VendorKey[]>([])
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const [profileResponse, keysResponse] = await Promise.all([
-          vendorApi.getProfile(),
-          vendorApi.getKeys(),
-        ])
-        setProfile(profileResponse)
-        setKeys(Array.isArray(keysResponse) ? keysResponse : keysResponse.items ?? keysResponse.keys ?? [])
-      } catch (err) {
-        setError(getApiErrorMessage(err))
-      }
+  const { data, loading, error, reload } = useAsync(async () => {
+    const [profileResponse, keysResponse] = await Promise.all([
+      vendorApi.getProfile(),
+      vendorApi.getKeys(),
+    ])
+    return {
+      profile: profileResponse as VendorProfile,
+      keys: Array.isArray(keysResponse) ? keysResponse : keysResponse.items ?? keysResponse.keys ?? [] as VendorKey[],
     }
+  }, { profile: null as VendorProfile | null, keys: [] as VendorKey[] })
 
-    void load()
-  }, [])
+  const profile = data.profile
+  const keys = data.keys
 
   return (
     <>
-      <PageHeader eyebrow="Vendor" title="Vendor 工作台" description="Vendor 端已接入资料与 key 数据，后续继续补提交流程和筛选器。" />
+      <PageHeader
+        eyebrow="Vendor"
+        title="Vendor 工作台"
+        description="供应侧资料与名下 Key 概览。"
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
+      />
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -50,30 +55,26 @@ export function VendorDashboardPage() {
           <CardTitle>供应侧资料</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              用户名
-            </p>
-            <p className="mt-2 text-sm">{profile?.username ?? profile?.name ?? '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              邮箱
-            </p>
-            <p className="mt-2 text-sm">{profile?.email ?? '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              余额
-            </p>
-            <p className="mt-2 text-sm">{formatCredits(profile?.balance ?? 0)}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              佣金比例
-            </p>
-            <p className="mt-2 text-sm">{profile?.commission_ratio ?? '-'}</p>
-          </div>
+          {(['用户名', '邮箱', '余额', '佣金比例'] as const).map((label) => (
+            <div key={label}>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                {label}
+              </p>
+              {loading ? (
+                <Skeleton className="mt-2 h-4 w-24" />
+              ) : (
+                <p className="mt-2 text-sm">
+                  {label === '用户名'
+                    ? (profile?.username ?? profile?.name ?? '-')
+                    : label === '邮箱'
+                      ? (profile?.email ?? '-')
+                      : label === '余额'
+                        ? formatCredits(profile?.balance ?? 0)
+                        : (profile?.commission_ratio ?? '-')}
+                </p>
+              )}
+            </div>
+          ))}
         </CardContent>
       </Card>
       <Card>
@@ -91,19 +92,31 @@ export function VendorDashboardPage() {
                 <TableHead>总收益</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {keys.map((key, index) => (
-                <TableRow key={key.id ?? index}>
-                  <TableCell>{key.id ?? '-'}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {key.key ?? '-'}
-                  </TableCell>
-                  <TableCell>{key.key_type ?? '-'}</TableCell>
-                  <TableCell>{formatCredits(key.total_cost ?? 0)}</TableCell>
-                  <TableCell>{formatCredits(key.total_profit ?? 0)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {loading ? (
+              <TableSkeleton cols={5} rows={3} />
+            ) : (
+              <TableBody>
+                {keys.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                      暂无 Key 数据
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  keys.map((key, index) => (
+                    <TableRow key={key.id ?? index}>
+                      <TableCell>{key.id ?? '-'}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {key.key ?? '-'}
+                      </TableCell>
+                      <TableCell>{key.key_type ?? '-'}</TableCell>
+                      <TableCell>{formatCredits(key.total_cost ?? 0)}</TableCell>
+                      <TableCell>{formatCredits(key.total_profit ?? 0)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            )}
           </Table>
         </CardContent>
       </Card>

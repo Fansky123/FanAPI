@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -31,46 +32,36 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminWithdrawal } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 export function AdminWithdrawPage() {
-  const [rows, setRows] = useState<AdminWithdrawal[]>([])
-  const [pendingCount, setPendingCount] = useState(0)
-  const [error, setError] = useState('')
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [listRes, countRes] = await Promise.all([
+      adminApi.listWithdrawals(),
+      adminApi.getPendingWithdrawCount(),
+    ])
+    return { rows: listRes.records ?? [], pendingCount: countRes.count ?? 0 }
+  }, { rows: [] as AdminWithdrawal[], pendingCount: 0 })
+
+  const rows = data.rows
+  const pendingCount = data.pendingCount
+
+  const [mutError, setMutError] = useState('')
   const [rejecting, setRejecting] = useState<AdminWithdrawal | null>(null)
   const [remark, setRemark] = useState('')
   const [pendingApprove, setPendingApprove] = useState<AdminWithdrawal | null>(null)
 
-  async function load() {
-    try {
-      const [listRes, countRes] = await Promise.all([
-        adminApi.listWithdrawals(),
-        adminApi.getPendingWithdrawCount(),
-      ])
-      setRows(listRes.records ?? [])
-      setPendingCount(countRes.count ?? 0)
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
-
-  async function approve(row: AdminWithdrawal) {
-    if (!row.id) return
-    setPendingApprove(row)
-  }
+  const error = loadError || mutError
 
   async function executeApprove() {
     if (!pendingApprove?.id) return
+    setMutError('')
     try {
       await adminApi.approveWithdrawal(pendingApprove.id)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setPendingApprove(null)
     }
@@ -78,13 +69,15 @@ export function AdminWithdrawPage() {
 
   async function reject() {
     if (!rejecting?.id) return
+    setMutError('')
     try {
       await adminApi.rejectWithdrawal(rejecting.id, remark)
       setRejecting(null)
       setRemark('')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -93,7 +86,14 @@ export function AdminWithdrawPage() {
       <PageHeader
         eyebrow="Withdraw"
         title="提现审核"
-        description={`当前待处理 ${pendingCount} 条，已支持通过与拒绝操作。`}
+        description={`当前待处理 ${pendingCount} 条提现申请。`}
+        actions={
+          error ? (
+            <Button size="sm" variant="outline" onClick={reload}>
+              重试
+            </Button>
+          ) : null
+        }
       />
       {error ? (
         <Alert variant="destructive">
@@ -113,30 +113,42 @@ export function AdminWithdrawPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.id ?? '-'}</TableCell>
-                <TableCell>{row.username ?? '-'}</TableCell>
-                <TableCell>{row.created_at ?? '-'}</TableCell>
-                <TableCell>{((row.amount ?? 0) / 1_000_000).toFixed(4)} 积分</TableCell>
-                <TableCell>{row.payment_type ?? '-'}</TableCell>
-                <TableCell>{row.status ?? '-'}</TableCell>
-                <TableCell className="text-right">
-                  {row.status === 'pending' ? (
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => approve(row)}>
-                        通过
-                      </Button>
-                      <Button size="sm" onClick={() => setRejecting(row)}>
-                        拒绝
-                      </Button>
-                    </div>
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={7} />
+          ) : (
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                    暂无提现申请
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
+                    <TableCell>{row.username ?? '-'}</TableCell>
+                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                    <TableCell>{((row.amount ?? 0) / 1_000_000).toFixed(4)} 积分</TableCell>
+                    <TableCell>{row.payment_type ?? '-'}</TableCell>
+                    <TableCell>{row.status ?? '-'}</TableCell>
+                    <TableCell className="text-right">
+                      {row.status === 'pending' ? (
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setPendingApprove(row)}>
+                            通过
+                          </Button>
+                          <Button size="sm" onClick={() => setRejecting(row)}>
+                            拒绝
+                          </Button>
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
 

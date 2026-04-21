@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -34,7 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi, type AdminOcpcPlatform } from '@/lib/api/admin'
-import { getApiErrorMessage } from '@/lib/api/http'
+import { useAsync } from '@/hooks/use-async'
 
 type PlatformForm = {
   id?: number
@@ -70,40 +71,38 @@ const emptyForm: PlatformForm = {
 }
 
 export function AdminOcpcPage() {
-  const [platforms, setPlatforms] = useState<AdminOcpcPlatform[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [platformRes, scheduleRes] = await Promise.all([
+      adminApi.listOcpcPlatforms(),
+      adminApi.getOcpcSchedule(),
+    ])
+    const platforms = Array.isArray(platformRes) ? platformRes : platformRes.list ?? []
+    const schedule = scheduleRes.schedule ?? {}
+    return {
+      platforms,
+      scheduleEnabled: schedule.ocpc_schedule_enabled === 'true',
+      scheduleInterval: schedule.ocpc_schedule_interval ?? '30',
+    }
+  }, { platforms: [] as AdminOcpcPlatform[], scheduleEnabled: false, scheduleInterval: '30' })
+
+  const [mutError, setMutError] = useState('')
   const [form, setForm] = useState<PlatformForm>(emptyForm)
   const [open, setOpen] = useState(false)
-  const [scheduleEnabled, setScheduleEnabled] = useState(false)
-  const [interval, setInterval] = useState('30')
+  const [scheduleEnabled, setScheduleEnabled] = useState<boolean | null>(null)
+  const [interval, setInterval] = useState<string | null>(null)
   const [uploadResult, setUploadResult] = useState('')
   const [pendingDeletePlatform, setPendingDeletePlatform] = useState<AdminOcpcPlatform | undefined>()
 
-  async function load() {
-    try {
-      setError('')
-      const [platformRes, scheduleRes] = await Promise.all([
-        adminApi.listOcpcPlatforms(),
-        adminApi.getOcpcSchedule(),
-      ])
-      setPlatforms(Array.isArray(platformRes) ? platformRes : platformRes.list ?? [])
-      const schedule = scheduleRes.schedule ?? {}
-      setScheduleEnabled(schedule.ocpc_schedule_enabled === 'true')
-      setInterval(schedule.ocpc_schedule_interval ?? '30')
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }
+  // Use loaded values unless user has changed them
+  const effectiveScheduleEnabled = scheduleEnabled ?? data.scheduleEnabled
+  const effectiveInterval = interval ?? data.scheduleInterval
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [])
+  const error = loadError || mutError
 
   function openCreate() {
     setForm(emptyForm)
     setOpen(true)
+    setMutError('')
   }
 
   function openEdit(row: AdminOcpcPlatform) {
@@ -124,6 +123,7 @@ export function AdminOcpcPage() {
       e360_order_event: row.e360_order_event ?? '',
     })
     setOpen(true)
+    setMutError('')
   }
 
   async function savePlatform() {
@@ -132,71 +132,65 @@ export function AdminOcpcPage() {
       baidu_reg_type: Number(form.baidu_reg_type),
       baidu_order_type: Number(form.baidu_order_type),
     }
+    setMutError('')
     try {
-      setError('')
       if (form.id) {
         await adminApi.updateOcpcPlatform(form.id, payload)
-        setSuccess('推广账户已更新')
       } else {
         await adminApi.createOcpcPlatform(payload)
-        setSuccess('推广账户已创建')
       }
       setOpen(false)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
   async function togglePlatform(row: AdminOcpcPlatform) {
     if (!row.id) return
+    setMutError('')
     try {
-      setError('')
       await adminApi.toggleOcpcPlatform(row.id)
-      setSuccess(`账户已${row.enabled ? '停用' : '启用'}`)
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
-  }
-
-  async function deletePlatform(row: AdminOcpcPlatform) {
-    if (!row.id) return
-    setPendingDeletePlatform(row)
   }
 
   async function executeDeletePlatform() {
     if (!pendingDeletePlatform?.id) return
+    setMutError('')
     try {
-      setError('')
       await adminApi.deleteOcpcPlatform(pendingDeletePlatform.id)
-      setSuccess('推广账户已删除')
-      await load()
+      reload()
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     } finally {
       setPendingDeletePlatform(undefined)
     }
   }
 
   async function saveSchedule() {
+    setMutError('')
     try {
-      setError('')
-      await adminApi.updateOcpcSchedule({ enabled: scheduleEnabled, interval: Number(interval) })
-      setSuccess('自动上报调度已保存')
+      await adminApi.updateOcpcSchedule({ enabled: effectiveScheduleEnabled, interval: Number(effectiveInterval) })
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
   async function triggerUpload() {
+    setMutError('')
     try {
-      setError('')
       const result = await adminApi.triggerOcpcUpload()
       setUploadResult(JSON.stringify(result, null, 2))
-      setSuccess('手动上报已执行')
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
     }
   }
 
@@ -205,18 +199,22 @@ export function AdminOcpcPage() {
       <PageHeader
         eyebrow="OCPC"
         title="推广账户管理"
-        description="支持平台账户配置、手动上报和定时调度。"
-        actions={<Button onClick={openCreate}>新增账户</Button>}
+        description="平台账户配置、手动上报和定时调度。"
+        actions={
+          <>
+            {error ? (
+              <Button size="sm" variant="outline" onClick={reload}>
+                重试
+              </Button>
+            ) : null}
+            <Button onClick={openCreate}>新增账户</Button>
+          </>
+        }
       />
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      ) : null}
-      {success ? (
-        <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="py-4 text-sm text-emerald-700">{success}</CardContent>
-        </Card>
       ) : null}
       <Card>
         <Table>
@@ -230,39 +228,58 @@ export function AdminOcpcPage() {
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {platforms.map((row, index) => (
-              <TableRow key={row.id ?? index}>
-                <TableCell>{row.id ?? '-'}</TableCell>
-                <TableCell>{row.platform ?? '-'}</TableCell>
-                <TableCell>{row.name ?? '-'}</TableCell>
-                <TableCell>{row.baidu_page_url ?? row.e360_key ?? '-'}</TableCell>
-                <TableCell>
-                  <Badge variant={row.enabled ? 'default' : 'secondary'}>
-                    {row.enabled ? '启用' : '停用'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                      编辑
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => togglePlatform(row)}>
-                      {row.enabled ? '停用' : '启用'}
-                    </Button>
-                    <Button size="sm" onClick={() => deletePlatform(row)}>删除</Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {loading ? (
+            <TableSkeleton cols={6} />
+          ) : (
+            <TableBody>
+              {data.platforms.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    暂无推广账户
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.platforms.map((row, index) => (
+                  <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
+                    <TableCell>{row.platform ?? '-'}</TableCell>
+                    <TableCell>{row.name ?? '-'}</TableCell>
+                    <TableCell>{row.baidu_page_url ?? row.e360_key ?? '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={row.enabled ? 'default' : 'secondary'}>
+                        {row.enabled ? '启用' : '停用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                        <Button size="sm" variant="outline" onClick={() => togglePlatform(row)}>
+                          {row.enabled ? '停用' : '启用'}
+                        </Button>
+                        <Button size="sm" onClick={() => setPendingDeletePlatform(row)}>删除</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          )}
         </Table>
       </Card>
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4 p-6">
           <Label>自动上报</Label>
-          <input type="checkbox" checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} />
-          <Input className="w-32" value={interval} onChange={(event) => setInterval(event.target.value)} placeholder="间隔分钟" />
+          <input
+            type="checkbox"
+            checked={effectiveScheduleEnabled}
+            onChange={(event) => setScheduleEnabled(event.target.checked)}
+          />
+          <Input
+            className="w-32"
+            value={effectiveInterval}
+            onChange={(event) => setInterval(event.target.value)}
+            placeholder="间隔分钟"
+          />
           <Button onClick={saveSchedule}>保存调度</Button>
           <Button variant="outline" onClick={triggerUpload}>立即上报</Button>
         </CardContent>
@@ -279,20 +296,43 @@ export function AdminOcpcPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{form.id ? '编辑账户' : '新增账户'}</DialogTitle></DialogHeader>
           <div className="grid gap-4">
-            <NativeSelect value={form.platform} onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}>
+            <NativeSelect
+              value={form.platform}
+              onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}
+            >
               <option value="baidu">百度</option>
               <option value="360">360</option>
             </NativeSelect>
-            <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="名称" />
+            <Input
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="名称"
+            />
             {form.platform === 'baidu' ? (
               <>
-                <Input value={form.baidu_token} onChange={(event) => setForm((current) => ({ ...current, baidu_token: event.target.value }))} placeholder="百度 Token" />
-                <Input value={form.baidu_page_url} onChange={(event) => setForm((current) => ({ ...current, baidu_page_url: event.target.value }))} placeholder="落地页 URL" />
+                <Input
+                  value={form.baidu_token}
+                  onChange={(event) => setForm((current) => ({ ...current, baidu_token: event.target.value }))}
+                  placeholder="百度 Token"
+                />
+                <Input
+                  value={form.baidu_page_url}
+                  onChange={(event) => setForm((current) => ({ ...current, baidu_page_url: event.target.value }))}
+                  placeholder="落地页 URL"
+                />
               </>
             ) : (
               <>
-                <Input value={form.e360_key} onChange={(event) => setForm((current) => ({ ...current, e360_key: event.target.value }))} placeholder="360 Key" />
-                <Input value={form.e360_secret} onChange={(event) => setForm((current) => ({ ...current, e360_secret: event.target.value }))} placeholder="360 Secret" />
+                <Input
+                  value={form.e360_key}
+                  onChange={(event) => setForm((current) => ({ ...current, e360_key: event.target.value }))}
+                  placeholder="360 Key"
+                />
+                <Input
+                  value={form.e360_secret}
+                  onChange={(event) => setForm((current) => ({ ...current, e360_secret: event.target.value }))}
+                  placeholder="360 Secret"
+                />
               </>
             )}
           </div>
@@ -303,7 +343,10 @@ export function AdminOcpcPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={pendingDeletePlatform !== undefined} onOpenChange={() => setPendingDeletePlatform(undefined)}>
+      <AlertDialog
+        open={pendingDeletePlatform !== undefined}
+        onOpenChange={() => setPendingDeletePlatform(undefined)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
