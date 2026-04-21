@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { userApi, type ApiKeyRecord, type UserChannel } from '@/lib/api/user'
 
@@ -158,17 +161,16 @@ export function UserPlaygroundPage() {
         actions={<Button onClick={() => setMessages([])}>新对话</Button>}
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
         <Card>
-          <CardContent className="space-y-4 p-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">API 密钥</label>
-              <select
-                className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+          <CardContent className="flex flex-col gap-4 p-6">
+            <div className="flex flex-col gap-2">
+              <Label>API 密钥</Label>
+              <NativeSelect
                 value={selectedKeyId}
                 onChange={(event) => setSelectedKeyId(Number(event.target.value))}
               >
@@ -177,15 +179,14 @@ export function UserPlaygroundPage() {
                     {key.name || key.masked_key || key.key}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <p className="text-xs text-muted-foreground">
                 仅新创建的密钥含明文，旧密钥因安全原因不可直接用于此页面。
               </p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">模型</label>
-              <select
-                className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+            <div className="flex flex-col gap-2">
+              <Label>模型</Label>
+              <NativeSelect
                 value={selectedChannelId}
                 onChange={(event) => setSelectedChannelId(Number(event.target.value))}
               >
@@ -194,13 +195,13 @@ export function UserPlaygroundPage() {
                     {channel.name} {channel.routing_model ? `· ${channel.routing_model}` : ''}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {channels.length === 0 ? (
                 <p className="text-xs text-muted-foreground">当前没有可用的文本模型渠道。</p>
               ) : null}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">系统提示词</label>
+            <div className="flex flex-col gap-2">
+              <Label>系统提示词</Label>
               <Textarea
                 value={systemPrompt}
                 onChange={(event) => setSystemPrompt(event.target.value)}
@@ -211,7 +212,7 @@ export function UserPlaygroundPage() {
         </Card>
         <Card className="flex min-h-[70vh] flex-col overflow-hidden">
           <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-            <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto p-6">
+            <div ref={scrollRef} className="flex-1 flex flex-col gap-4 overflow-auto p-6">
               {messages.length === 0 && !streaming ? (
                 <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
                   开始一段对话吧。

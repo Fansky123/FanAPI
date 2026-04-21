@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
-import { Card, CardContent } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -39,9 +40,9 @@ export function AdminLogsPage() {
         description="日志页已接入真实列表，后续继续补详情抽屉和高级筛选。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <Table>

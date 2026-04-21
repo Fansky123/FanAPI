@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -58,9 +59,9 @@ export function UserExchangePage() {
         description="支持输入卡密兑换，并查看最近兑换记录。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <CardContent className="flex gap-3 p-6">

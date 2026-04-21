@@ -35,7 +35,7 @@ export function AgentLoginPage() {
         <CardTitle>登录 Agent 端</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="用户名" />
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" />
           {error ? <div className="text-sm text-destructive">{error}</div> : null}

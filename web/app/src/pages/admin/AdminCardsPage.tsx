@@ -2,8 +2,19 @@ import { useEffect, useState } from 'react'
 import { RefreshCwIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -32,6 +43,7 @@ export function AdminCardsPage() {
   const [count, setCount] = useState('10')
   const [amount, setAmount] = useState('10')
   const [note, setNote] = useState('')
+  const [pendingDeleteCard, setPendingDeleteCard] = useState<AdminCard | undefined>()
 
   async function load() {
     try {
@@ -65,12 +77,18 @@ export function AdminCardsPage() {
 
   async function deleteCard(row: AdminCard) {
     if (!row.id) return
-    if (!window.confirm(`确认删除卡密 ${row.code ?? row.id} 吗？`)) return
+    setPendingDeleteCard(row)
+  }
+
+  async function executeDeleteCard() {
+    if (!pendingDeleteCard?.id) return
     try {
-      await adminApi.deleteCard(row.id)
+      await adminApi.deleteCard(pendingDeleteCard.id)
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingDeleteCard(undefined)
     }
   }
 
@@ -87,9 +105,9 @@ export function AdminCardsPage() {
         }
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <Table>
@@ -170,6 +188,21 @@ export function AdminCardsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeleteCard !== undefined} onOpenChange={() => setPendingDeleteCard(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认删除卡密 {pendingDeleteCard?.code ?? pendingDeleteCard?.id} 吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDeleteCard}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

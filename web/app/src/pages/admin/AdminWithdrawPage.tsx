@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +39,7 @@ export function AdminWithdrawPage() {
   const [error, setError] = useState('')
   const [rejecting, setRejecting] = useState<AdminWithdrawal | null>(null)
   const [remark, setRemark] = useState('')
+  const [pendingApprove, setPendingApprove] = useState<AdminWithdrawal | null>(null)
 
   async function load() {
     try {
@@ -49,12 +61,18 @@ export function AdminWithdrawPage() {
 
   async function approve(row: AdminWithdrawal) {
     if (!row.id) return
-    if (!window.confirm(`确认通过 ${row.username} 的提现申请吗？`)) return
+    setPendingApprove(row)
+  }
+
+  async function executeApprove() {
+    if (!pendingApprove?.id) return
     try {
-      await adminApi.approveWithdrawal(row.id)
+      await adminApi.approveWithdrawal(pendingApprove.id)
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingApprove(null)
     }
   }
 
@@ -78,9 +96,9 @@ export function AdminWithdrawPage() {
         description={`当前待处理 ${pendingCount} 条，已支持通过与拒绝操作。`}
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <Table>
@@ -140,6 +158,21 @@ export function AdminWithdrawPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingApprove !== null} onOpenChange={() => setPendingApprove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认通过</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认通过 {pendingApprove?.username} 的提现申请吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeApprove}>通过</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

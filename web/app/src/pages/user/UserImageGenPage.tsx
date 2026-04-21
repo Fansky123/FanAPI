@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { NativeSelect } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { userApi, type ApiKeyRecord, type UserChannel } from '@/lib/api/user'
 
@@ -112,45 +114,45 @@ export function UserImageGenPage() {
         description="接入真实 `/v1/image` 接口，支持基础参数提交和任务返回。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
         <Card>
-          <CardContent className="space-y-4 p-6">
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={selectedKeyId} onChange={(event) => setSelectedKeyId(Number(event.target.value))}>
+          <CardContent className="flex flex-col gap-4 p-6">
+            <NativeSelect value={selectedKeyId} onChange={(event) => setSelectedKeyId(Number(event.target.value))}>
               {apiKeys.map((key) => (
                 <option key={key.id} value={key.id}>{key.name || key.masked_key || key.key}</option>
               ))}
-            </select>
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={selectedChannelId} onChange={(event) => setSelectedChannelId(Number(event.target.value))}>
+            </NativeSelect>
+            <NativeSelect value={selectedChannelId} onChange={(event) => setSelectedChannelId(Number(event.target.value))}>
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>{channel.name}</option>
               ))}
-            </select>
+            </NativeSelect>
             {channels.length === 0 ? (
               <p className="text-sm text-muted-foreground">当前没有可用的图片模型渠道。</p>
             ) : null}
             <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述你想生成的图片" />
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={size} onChange={(event) => setSize(event.target.value)}>
+            <NativeSelect value={size} onChange={(event) => setSize(event.target.value)}>
               <option value="1k">1k</option>
               <option value="2k">2k</option>
               <option value="3k">3k</option>
               <option value="4k">4k</option>
-            </select>
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+            </NativeSelect>
+            <NativeSelect value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
               <option value="1:1">1:1</option>
               <option value="16:9">16:9</option>
               <option value="9:16">9:16</option>
-            </select>
+            </NativeSelect>
             <Button onClick={generate} disabled={running || !prompt.trim() || !currentApiKey() || channels.length === 0}>
               {running ? '生成中...' : '生成图片'}
             </Button>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="space-y-4 p-6">
+          <CardContent className="flex flex-col gap-4 p-6">
             {taskId ? <p className="text-sm text-muted-foreground">任务 ID：{taskId}</p> : null}
             {images.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">

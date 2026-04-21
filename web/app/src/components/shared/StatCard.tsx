@@ -15,13 +15,13 @@ export function StatCard({
 }) {
   return (
     <Card className="border-border/70">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+      <CardHeader className="flex flex-row items-start justify-between">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
         {icon ? <div className="text-muted-foreground">{icon}</div> : null}
       </CardHeader>
-      <CardContent className="space-y-1">
+      <CardContent className="flex flex-col gap-1">
         <p className="text-2xl font-semibold tracking-tight">{value}</p>
         {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       </CardContent>
