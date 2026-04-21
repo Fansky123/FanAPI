@@ -1,4 +1,4 @@
-// @title           DAGEAPI
+// @title           FANAPI
 // @version         1.0
 // @description     LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询
 // @host            localhost:8080

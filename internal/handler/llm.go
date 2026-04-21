@@ -245,18 +245,19 @@ func ClaudeProxy(c *gin.Context) {
 	llmProxy(c)
 }
 
-// GeminiProxy 处理 POST /v1/gemini（Google Gemini 原生格式）。
-// 客户端发送 Gemini 原生格式请求，收到 Gemini 原生格式 SSE 响应。
+// GeminiProxy 处理 POST /v1/gemini（Gemini generateContent 兼容格式，非原生路径）。
+// 客户端发送 Gemini generateContent 风格请求，收到 Gemini 风格响应。
+// 如需兼容 Google AI SDK 原生 URL 路径，请使用 /v1beta/models/{path}。
 //
-// @Summary      Google Gemini 原生对话
-// @Description  发送 Gemini generateContent 格式请求；model 填渠道的 routing_model（可省略，由 channel_id 指定）。
+// @Summary      Gemini generateContent 兼容接口（非原生路径）
+// @Description  接收 Gemini generateContent 风格请求体并按统一路由转发；这不是 Google Gemini 的原生 URL 路径。若需兼容 Google AI SDK 原生路径，请使用 /v1beta/models/{path}。
 // @Tags         LLM
 // @Accept       json
 // @Produce      json
 // @Security     ApiKeyAuth
 // @Param        channel_id  query     int     false  "渠道 ID（兼容旧版）"
-// @Param        body        body      object  true   "Gemini generateContent 请求体"
-// @Success      200   {object}  object  "Gemini 格式响应"
+// @Param        body        body      object  true   "Gemini generateContent 风格请求体"
+// @Success      200   {object}  object  "Gemini 风格响应"
 // @Failure      400   {object}  object  "参数错误"
 // @Failure      402   {object}  object  "余额不足"
 // @Router       /v1/gemini [post]

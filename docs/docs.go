@@ -402,7 +402,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "发送 Gemini generateContent 格式请求；model 填渠道的 routing_model（可省略，由 channel_id 指定）。",
+                "description": "接收 Gemini generateContent 风格请求体并按统一路由转发；这不是 Google Gemini 的原生 URL 路径。若需兼容 Google AI SDK 原生路径，请使用 /v1beta/models/{path}。",
                 "consumes": [
                     "application/json"
                 ],
@@ -412,7 +412,7 @@ const docTemplate = `{
                 "tags": [
                     "LLM"
                 ],
-                "summary": "Google Gemini 原生对话",
+                "summary": "Gemini generateContent 兼容接口（非原生路径）",
                 "parameters": [
                     {
                         "type": "integer",
@@ -421,7 +421,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "description": "Gemini generateContent 请求体",
+                        "description": "Gemini generateContent 风格请求体",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -432,7 +432,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Gemini 格式响应",
+                        "description": "Gemini 风格响应",
                         "schema": {
                             "type": "object"
                         }
@@ -608,6 +608,63 @@ const docTemplate = `{
                     },
                     "402": {
                         "description": "余额不足",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/responses": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "兼容 OpenAI Responses API（POST /v1/responses），Codex CLI 默认使用此接口。将 Responses API 格式请求转换为 Chat Completions 格式转发上游，并将响应转换回 Responses API 格式。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "LLM"
+                ],
+                "summary": "OpenAI Responses API（Codex CLI 兼容）",
+                "parameters": [
+                    {
+                        "description": "Responses API 请求体；model 填渠道名称（routing_model）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Responses API 格式响应；stream=true 时为 SSE 流",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "402": {
+                        "description": "余额不足",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "503": {
+                        "description": "无可用渠道",
                         "schema": {
                             "type": "object"
                         }
@@ -1409,7 +1466,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8080",
 	BasePath:         "",
 	Schemes:          []string{"http", "https"},
-	Title:            "DAGEAPI",
+	Title:            "FANAPI",
 	Description:      "LLM 对话 · 图片 / 视频 / 音频生成 · 任务查询",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
