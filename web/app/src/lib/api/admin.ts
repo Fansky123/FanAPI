@@ -7,12 +7,27 @@ export type AdminLoginResponse = {
 }
 
 export type AdminStatsResponse = {
+  // flat fields (fallback)
   total_users?: number
   users?: number
   total_requests?: number
   requests?: number
   total_revenue?: number
   revenue?: number
+  // structured fields (preferred)
+  channels?: number
+  active_channels?: number
+  today?: {
+    revenue?: number
+    cost?: number
+    profit?: number
+    count?: number
+  }
+  total?: {
+    revenue?: number
+    cost?: number
+    profit?: number
+  }
 }
 
 export type AdminChannel = {
@@ -52,27 +67,52 @@ export type AdminUser = {
   id?: number
   username?: string
   email?: string
+  role?: string
   group?: string
   balance_credits?: number
   balance?: number
+  is_active?: boolean
+  rebate_ratio?: number | null
+  created_at?: string
 }
 
 export type AdminTransaction = {
   id?: number
+  user_id?: number
   created_at?: string
   type?: string
   amount?: number
   credits?: number
+  cost?: number
+  channel_id?: number
+  corr_id?: string
   remark?: string
   description?: string
 }
 
+export type AdminTransactionSummary = {
+  revenue?: number
+  cost?: number
+  profit?: number
+  transaction_count?: number
+}
+
 export type AdminTask = {
   id?: number
+  user_id?: number
+  channel_id?: number
   type?: string
   status?: string
-  created_at?: string
+  error_msg?: string
+  credits_charged?: number
   upstream_task_id?: string
+  corr_id?: string
+  request?: Record<string, unknown>
+  upstream_request?: Record<string, unknown>
+  upstream_response?: Record<string, unknown>
+  result?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
 }
 
 export type AdminLog = {
@@ -92,6 +132,11 @@ export type AdminLog = {
     total_tokens?: number
     estimated?: boolean
   }
+  client_request?: Record<string, unknown>
+  client_response?: Record<string, unknown>
+  upstream_headers?: Record<string, unknown>
+  upstream_request?: Record<string, unknown>
+  upstream_response?: Record<string, unknown>
 }
 
 export type AdminVendor = {
@@ -99,10 +144,14 @@ export type AdminVendor = {
   name?: string
   username?: string
   email?: string
+  invite_code?: string
   is_active?: boolean
   enabled?: boolean
   commission_ratio?: number
   fee_ratio?: number
+  balance?: number
+  balance_credits?: number
+  created_at?: string
 }
 
 export type AdminCard = {
@@ -136,6 +185,8 @@ export type AdminKeyPool = {
 
 export type AdminPoolKey = {
   id?: number
+  pool_id?: number
+  vendor_id?: number | null
   value?: string
   priority?: number
   is_active?: boolean
@@ -180,7 +231,7 @@ export const adminApi = {
   deleteChannel: (id: number) =>
     http.delete<Record<string, unknown>>(`/admin/channels/${id}`),
   listUsers: (page = 1, size = 20) =>
-    http.get<{ items?: AdminUser[]; users?: AdminUser[] } | AdminUser[]>(
+    http.get<{ items?: AdminUser[]; users?: AdminUser[]; total?: number } | AdminUser[]>(
       '/admin/users',
       { params: { page, size } }
     ),
@@ -193,15 +244,17 @@ export const adminApi = {
   setUserRole: (id: number, role: string) =>
     http.put<Record<string, unknown>>(`/admin/users/${id}/role`, { role }),
   listTransactions: (params: Record<string, unknown> = {}) =>
-    http.get<{ items?: AdminTransaction[]; transactions?: AdminTransaction[] } | AdminTransaction[]>(
+    http.get<{ items?: AdminTransaction[]; transactions?: AdminTransaction[]; total?: number; summary?: AdminTransactionSummary } | AdminTransaction[]>(
       '/admin/transactions',
       { params }
     ),
   listTasks: (params: Record<string, unknown> = {}) =>
-    http.get<{ items?: AdminTask[]; tasks?: AdminTask[] } | AdminTask[]>(
+    http.get<{ items?: AdminTask[]; tasks?: AdminTask[]; total?: number } | AdminTask[]>(
       '/admin/tasks',
       { params }
     ),
+  getAdminTask: (id: number) =>
+    http.get<{ task?: AdminTask } | AdminTask>(`/admin/tasks/${id}`),
   listLogs: (params: Record<string, unknown> = {}) =>
     http.get<{ logs?: AdminLog[]; items?: AdminLog[]; total?: number }>('/admin/llm-logs', { params }),
   getLog: (id: number) =>
@@ -239,6 +292,10 @@ export const adminApi = {
     http.delete<Record<string, unknown>>(`/admin/pool-keys/${id}`),
   updatePoolKey: (id: number, payload: { priority: number; is_active: boolean }) =>
     http.patch<Record<string, unknown>>(`/admin/pool-keys/${id}`, payload),
+  setPoolKeyVendor: (id: number, vendorId: number | null) =>
+    http.patch<Record<string, unknown>>(`/admin/pool-keys/${id}/vendor`, { vendor_id: vendorId }),
+  setUserRebateRatio: (id: number, ratio: number | null) =>
+    http.put<Record<string, unknown>>(`/admin/users/${id}/rebate-ratio`, { rebate_ratio: ratio }),
   triggerOcpcUpload: () =>
     http.post<Record<string, unknown>>('/admin/ocpc/upload', {}),
   getOcpcSchedule: () =>

@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { createHttpClient, getApiErrorMessage } from '@/lib/api/http'
-import { setRoleToken, setSiteModePreference } from '@/lib/auth/storage'
 
 const vendorHttp = createHttpClient()
 
-export function VendorLoginPage() {
+export function VendorRegisterPage() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -21,13 +20,12 @@ export function VendorLoginPage() {
     setError('')
 
     try {
-      const response = await vendorHttp.post<{ token: string }>('/vendor/auth/login', {
+      await vendorHttp.post<{ id: number; username: string }>('/vendor/auth/register', {
         username,
         password,
       })
-      setRoleToken('vendor', response.token)
-      setSiteModePreference('vendor')
-      navigate('/vendor/dashboard')
+      // Backend only returns {id, username} — login separately to get token
+      navigate('/vendor/login')
     } catch (err) {
       setError(getApiErrorMessage(err))
     }
@@ -36,18 +34,18 @@ export function VendorLoginPage() {
   return (
     <Card className="w-full max-w-xl border-border/70 bg-card/92 shadow-lg">
       <CardHeader>
-        <CardTitle>登录 Vendor 端</CardTitle>
+        <CardTitle>注册 Vendor 账号</CardTitle>
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="用户名" />
-          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" />
+          <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="用户名（3-32 字符）" minLength={3} maxLength={32} required />
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码（至少 6 位）" minLength={6} required />
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
-          <Button className="w-full" type="submit">进入 Vendor 端</Button>
+          <Button className="w-full" type="submit">注册并进入 Vendor 端</Button>
           <p className="text-center text-sm text-muted-foreground">
-            还没有账号？{' '}
-            <Link to="/vendor/register" className="text-primary hover:underline">
-              立即注册
+            已有账号？{' '}
+            <Link to="/vendor/login" className="text-primary hover:underline">
+              立即登录
             </Link>
           </p>
         </form>

@@ -26,8 +26,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -54,7 +54,21 @@ type ChannelForm = {
   query_timeout_ms: string
   billing_type: string
   headers_text: string
-  billing_config_text: string
+  // token billing
+  billing_input_price: string
+  billing_output_price: string
+  billing_input_cost: string
+  billing_output_cost: string
+  billing_cache_read_price: string
+  billing_cache_read_cost: string
+  billing_input_from_response: boolean
+  // image billing
+  billing_base_price: string
+  billing_default_size_price: string
+  // video / audio billing
+  billing_price_per_second: string
+  // count billing
+  billing_price_per_call: string
   billing_script: string
   request_script: string
   response_script: string
@@ -87,7 +101,17 @@ const emptyForm: ChannelForm = {
   query_timeout_ms: '30000',
   billing_type: 'token',
   headers_text: emptyJson,
-  billing_config_text: emptyJson,
+  billing_input_price: '',
+  billing_output_price: '',
+  billing_input_cost: '',
+  billing_output_cost: '',
+  billing_cache_read_price: '',
+  billing_cache_read_cost: '',
+  billing_input_from_response: false,
+  billing_base_price: '',
+  billing_default_size_price: '',
+  billing_price_per_second: '',
+  billing_price_per_call: '',
   billing_script: '',
   request_script: '',
   response_script: '',
@@ -117,6 +141,46 @@ function parseJsonField(label: string, value: string) {
     return JSON.parse(value || emptyJson) as Record<string, unknown>
   } catch {
     throw new Error(`${label} 不是合法 JSON`)
+  }
+}
+
+function getNum(cfg: Record<string, unknown>, key: string): string {
+  const v = cfg[key]
+  return v !== undefined && v !== null ? String(v) : ''
+}
+
+function buildBillingConfig(form: ChannelForm): Record<string, unknown> {
+  switch (form.billing_type) {
+    case 'token': {
+      const cfg: Record<string, unknown> = {}
+      if (form.billing_input_price) cfg.input_price_per_1m_tokens = Number(form.billing_input_price)
+      if (form.billing_output_price) cfg.output_price_per_1m_tokens = Number(form.billing_output_price)
+      if (form.billing_input_cost) cfg.input_cost_per_1m_tokens = Number(form.billing_input_cost)
+      if (form.billing_output_cost) cfg.output_cost_per_1m_tokens = Number(form.billing_output_cost)
+      if (form.billing_cache_read_price) cfg.cache_read_price_per_1m_tokens = Number(form.billing_cache_read_price)
+      if (form.billing_cache_read_cost) cfg.cache_read_cost_per_1m_tokens = Number(form.billing_cache_read_cost)
+      if (form.billing_input_from_response) cfg.input_from_response = true
+      return cfg
+    }
+    case 'image': {
+      const cfg: Record<string, unknown> = {}
+      if (form.billing_base_price) cfg.base_price = Number(form.billing_base_price)
+      if (form.billing_default_size_price) cfg.default_size_price = Number(form.billing_default_size_price)
+      return cfg
+    }
+    case 'video':
+    case 'audio': {
+      const cfg: Record<string, unknown> = {}
+      if (form.billing_price_per_second) cfg.price_per_second = Number(form.billing_price_per_second)
+      return cfg
+    }
+    case 'count': {
+      const cfg: Record<string, unknown> = {}
+      if (form.billing_price_per_call) cfg.price_per_call = Number(form.billing_price_per_call)
+      return cfg
+    }
+    default:
+      return {}
   }
 }
 
@@ -191,7 +255,17 @@ export function AdminChannelsPage() {
       query_timeout_ms: String(row.query_timeout_ms ?? 30000),
       billing_type: row.billing_type ?? 'token',
       headers_text: prettyJson(row.headers),
-      billing_config_text: prettyJson(row.billing_config),
+      billing_input_price: getNum(row.billing_config ?? {}, 'input_price_per_1m_tokens'),
+      billing_output_price: getNum(row.billing_config ?? {}, 'output_price_per_1m_tokens'),
+      billing_input_cost: getNum(row.billing_config ?? {}, 'input_cost_per_1m_tokens'),
+      billing_output_cost: getNum(row.billing_config ?? {}, 'output_cost_per_1m_tokens'),
+      billing_cache_read_price: getNum(row.billing_config ?? {}, 'cache_read_price_per_1m_tokens'),
+      billing_cache_read_cost: getNum(row.billing_config ?? {}, 'cache_read_cost_per_1m_tokens'),
+      billing_input_from_response: Boolean(row.billing_config?.input_from_response),
+      billing_base_price: getNum(row.billing_config ?? {}, 'base_price'),
+      billing_default_size_price: getNum(row.billing_config ?? {}, 'default_size_price'),
+      billing_price_per_second: getNum(row.billing_config ?? {}, 'price_per_second'),
+      billing_price_per_call: getNum(row.billing_config ?? {}, 'price_per_call'),
       billing_script: row.billing_script ?? '',
       request_script: row.request_script ?? '',
       response_script: row.response_script ?? '',
@@ -228,7 +302,7 @@ export function AdminChannelsPage() {
         query_timeout_ms: Number(form.query_timeout_ms || '30000'),
         billing_type: form.billing_type,
         headers: parseJsonField('请求头', form.headers_text),
-        billing_config: parseJsonField('计费配置', form.billing_config_text),
+        billing_config: buildBillingConfig(form),
         billing_script: form.billing_script,
         request_script: form.request_script,
         response_script: form.response_script,
@@ -377,155 +451,298 @@ export function AdminChannelsPage() {
             <DialogTitle>{form.id ? '编辑渠道' : '新增渠道'}</DialogTitle>
             <DialogDescription>覆盖上游接入所需的核心字段。</DialogDescription>
           </DialogHeader>
-          <div className="grid max-h-[75vh] gap-4 overflow-y-auto pr-2 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label>路由名称</Label>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>标准模型名</Label>
-              <Input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>接口类型</Label>
-              <NativeSelect value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>
-                <option value="llm">llm</option>
-                <option value="image">image</option>
-                <option value="video">video</option>
-                <option value="audio">audio</option>
-                <option value="music">music</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>协议</Label>
-              <NativeSelect value={form.protocol} onChange={(event) => setForm((current) => ({ ...current, protocol: event.target.value }))}>
-                <option value="openai">openai</option>
-                <option value="claude">claude</option>
-                <option value="gemini">gemini</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>上游 URL</Label>
-              <Input value={form.base_url} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>请求方法</Label>
-              <NativeSelect value={form.method} onChange={(event) => setForm((current) => ({ ...current, method: event.target.value }))}>
-                <option value="POST">POST</option>
-                <option value="GET">GET</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>超时（ms）</Label>
-              <Input value={form.timeout_ms} onChange={(event) => setForm((current) => ({ ...current, timeout_ms: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>认证方式</Label>
-              <NativeSelect value={form.auth_type} onChange={(event) => setForm((current) => ({ ...current, auth_type: event.target.value }))}>
-                <option value="bearer">bearer</option>
-                <option value="query_param">query_param</option>
-                <option value="basic">basic</option>
-                <option value="sigv4">sigv4</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>计费类型</Label>
-              <NativeSelect value={form.billing_type} onChange={(event) => setForm((current) => ({ ...current, billing_type: event.target.value }))}>
-                <option value="token">token</option>
-                <option value="image">image</option>
-                <option value="video">video</option>
-                <option value="audio">audio</option>
-                <option value="count">count</option>
-                <option value="custom">custom</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Query Param 名</Label>
-              <Input value={form.auth_param_name} onChange={(event) => setForm((current) => ({ ...current, auth_param_name: event.target.value }))} placeholder="如 key" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>AWS Region</Label>
-              <Input value={form.auth_region} onChange={(event) => setForm((current) => ({ ...current, auth_region: event.target.value }))} placeholder="us-east-1" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>AWS Service</Label>
-              <Input value={form.auth_service} onChange={(event) => setForm((current) => ({ ...current, auth_service: event.target.value }))} placeholder="execute-api" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>号池绑定</Label>
-              <NativeSelect value={form.key_pool_id} onChange={(event) => setForm((current) => ({ ...current, key_pool_id: event.target.value }))}>
-                <option value="">不启用</option>
-                {poolOptions.map((pool) => (
-                  <option key={pool.id} value={String(pool.id)}>
-                    #{pool.id} {pool.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>权重</Label>
-              <Input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>优先级</Label>
-              <Input value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>图标 URL</Label>
-              <Input value={form.icon_url} onChange={(event) => setForm((current) => ({ ...current, icon_url: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>描述</Label>
-              <Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={2} />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>请求头（JSON）</Label>
-              <Textarea value={form.headers_text} onChange={(event) => setForm((current) => ({ ...current, headers_text: event.target.value }))} rows={4} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>计费配置（JSON）</Label>
-              <Textarea value={form.billing_config_text} onChange={(event) => setForm((current) => ({ ...current, billing_config_text: event.target.value }))} rows={6} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>入参脚本</Label>
-              <Textarea value={form.request_script} onChange={(event) => setForm((current) => ({ ...current, request_script: event.target.value }))} rows={6} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>出参脚本</Label>
-              <Textarea value={form.response_script} onChange={(event) => setForm((current) => ({ ...current, response_script: event.target.value }))} rows={6} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>自定义计费脚本</Label>
-              <Textarea value={form.billing_script} onChange={(event) => setForm((current) => ({ ...current, billing_script: event.target.value }))} rows={5} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>轮询 URL</Label>
-              <Input value={form.query_url} onChange={(event) => setForm((current) => ({ ...current, query_url: event.target.value }))} placeholder="异步任务用，支持 {id}" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>轮询方法</Label>
-              <NativeSelect value={form.query_method} onChange={(event) => setForm((current) => ({ ...current, query_method: event.target.value }))}>
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-              </NativeSelect>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>轮询超时（ms）</Label>
-              <Input value={form.query_timeout_ms} onChange={(event) => setForm((current) => ({ ...current, query_timeout_ms: event.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>轮询脚本</Label>
-              <Textarea value={form.query_script} onChange={(event) => setForm((current) => ({ ...current, query_script: event.target.value }))} rows={5} className="font-mono text-xs" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <Label>错误检测脚本</Label>
-              <Textarea value={form.error_script} onChange={(event) => setForm((current) => ({ ...current, error_script: event.target.value }))} rows={5} className="font-mono text-xs" />
-            </div>
-            <Label className="flex items-center gap-2 text-sm md:col-span-2">
-              <input type="checkbox" checked={form.is_active} onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))} />
-              渠道启用
-            </Label>
-          </div>
+
+          <Tabs defaultValue="basic">
+            <TabsList className="w-full">
+              <TabsTrigger value="basic">基本信息</TabsTrigger>
+              <TabsTrigger value="auth">认证 &amp; 号池</TabsTrigger>
+              <TabsTrigger value="billing">计费</TabsTrigger>
+              <TabsTrigger value="scripts">脚本 &amp; 轮询</TabsTrigger>
+            </TabsList>
+
+            {/* ── 基本信息 ── */}
+            <TabsContent value="basic" className="mt-5 max-h-[62vh] overflow-y-auto pr-1">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">路由名称</label>
+                  <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">标准模型名</label>
+                  <Input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">接口类型</label>
+                  <NativeSelect value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>
+                    <option value="llm">llm</option>
+                    <option value="image">image</option>
+                    <option value="video">video</option>
+                    <option value="audio">audio</option>
+                    <option value="music">music</option>
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">协议</label>
+                  <NativeSelect value={form.protocol} onChange={(event) => setForm((current) => ({ ...current, protocol: event.target.value }))}>
+                    <option value="openai">openai</option>
+                    <option value="claude">claude</option>
+                    <option value="gemini">gemini</option>
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">上游 URL</label>
+                  <Input value={form.base_url} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} placeholder="https://api.example.com/v1/chat/completions" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">请求方法</label>
+                  <NativeSelect value={form.method} onChange={(event) => setForm((current) => ({ ...current, method: event.target.value }))}>
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">超时（ms）</label>
+                  <Input value={form.timeout_ms} onChange={(event) => setForm((current) => ({ ...current, timeout_ms: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">图标 URL</label>
+                  <Input value={form.icon_url} onChange={(event) => setForm((current) => ({ ...current, icon_url: event.target.value }))} placeholder="https://…/icon.png" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">描述</label>
+                  <Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="可选，显示在渠道名称下方" />
+                </div>
+                <div className="flex items-center gap-2 md:col-span-2 pt-1">
+                  <input
+                    id="channel-active"
+                    type="checkbox"
+                    checked={form.is_active}
+                    onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <label htmlFor="channel-active" className="cursor-pointer text-sm font-medium">渠道启用</label>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── 认证 & 号池 ── */}
+            <TabsContent value="auth" className="mt-5 max-h-[62vh] overflow-y-auto pr-1">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">认证方式</label>
+                  <NativeSelect value={form.auth_type} onChange={(event) => setForm((current) => ({ ...current, auth_type: event.target.value }))}>
+                    <option value="bearer">bearer</option>
+                    <option value="query_param">query_param</option>
+                    <option value="basic">basic</option>
+                    <option value="sigv4">sigv4</option>
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Query Param 名</label>
+                  <Input value={form.auth_param_name} onChange={(event) => setForm((current) => ({ ...current, auth_param_name: event.target.value }))} placeholder="如 key（query_param 认证用）" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">AWS Region</label>
+                  <Input value={form.auth_region} onChange={(event) => setForm((current) => ({ ...current, auth_region: event.target.value }))} placeholder="us-east-1（sigv4 认证用）" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">AWS Service</label>
+                  <Input value={form.auth_service} onChange={(event) => setForm((current) => ({ ...current, auth_service: event.target.value }))} placeholder="execute-api（sigv4 认证用）" />
+                </div>
+
+                <div className="border-t pt-4 md:col-span-2" />
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">号池绑定</label>
+                  <NativeSelect value={form.key_pool_id} onChange={(event) => setForm((current) => ({ ...current, key_pool_id: event.target.value }))}>
+                    <option value="">不启用</option>
+                    {poolOptions.map((pool) => (
+                      <option key={pool.id} value={String(pool.id)}>
+                        #{pool.id} {pool.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">{/* placeholder for grid alignment */}</div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">优先级</label>
+                  <Input value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))} placeholder="数值越大越优先" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">权重</label>
+                  <Input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} placeholder="加权随机，越大被选中概率越高" />
+                </div>
+
+                <div className="border-t pt-4 md:col-span-2" />
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">请求头（JSON）</label>
+                  <p className="text-xs text-muted-foreground">固定注入到每次上游请求的 HTTP 头，如 Authorization。</p>
+                  <Textarea
+                    value={form.headers_text}
+                    onChange={(event) => setForm((current) => ({ ...current, headers_text: event.target.value }))}
+                    rows={6}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── 计费 ── */}
+            <TabsContent value="billing" className="mt-5 max-h-[62vh] overflow-y-auto pr-1">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">计费类型</label>
+                  <NativeSelect value={form.billing_type} onChange={(event) => setForm((current) => ({ ...current, billing_type: event.target.value }))}>
+                    <option value="token">token — 按 token 数计费</option>
+                    <option value="image">image — 按图片张数计费</option>
+                    <option value="video">video — 按视频秒数计费</option>
+                    <option value="audio">audio — 按音频秒数计费</option>
+                    <option value="count">count — 按调用次数计费</option>
+                    <option value="custom">custom — 自定义脚本计费</option>
+                  </NativeSelect>
+                </div>
+
+                {form.billing_type === 'token' && (
+                  <>
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">用户侧价格</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">输入价格（/百万 token）</label>
+                      <Input type="number" value={form.billing_input_price} onChange={(e) => setForm((c) => ({ ...c, billing_input_price: e.target.value }))} placeholder="如 740000" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">输出价格（/百万 token）</label>
+                      <Input type="number" value={form.billing_output_price} onChange={(e) => setForm((c) => ({ ...c, billing_output_price: e.target.value }))} placeholder="如 5900000" />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">成本侧价格</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">输入成本（/百万 token）</label>
+                      <Input type="number" value={form.billing_input_cost} onChange={(e) => setForm((c) => ({ ...c, billing_input_cost: e.target.value }))} placeholder="如 612000" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">输出成本（/百万 token）</label>
+                      <Input type="number" value={form.billing_output_cost} onChange={(e) => setForm((c) => ({ ...c, billing_output_cost: e.target.value }))} placeholder="如 4900000" />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">缓存（留空按协议默认倍率）</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">缓存读取价格（/百万 token）</label>
+                      <Input type="number" value={form.billing_cache_read_price} onChange={(e) => setForm((c) => ({ ...c, billing_cache_read_price: e.target.value }))} placeholder="留空按协议默认" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">缓存读取成本（/百万 token）</label>
+                      <Input type="number" value={form.billing_cache_read_cost} onChange={(e) => setForm((c) => ({ ...c, billing_cache_read_cost: e.target.value }))} placeholder="留空按协议默认" />
+                    </div>
+                    <div className="flex items-center gap-2 md:col-span-2">
+                      <input
+                        id="input-from-response"
+                        type="checkbox"
+                        checked={form.billing_input_from_response}
+                        onChange={(e) => setForm((c) => ({ ...c, billing_input_from_response: e.target.checked }))}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <label htmlFor="input-from-response" className="cursor-pointer text-sm font-medium">
+                        从响应中获取实际输入 token 数（input_from_response）
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {form.billing_type === 'image' && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">基础价格（credits）</label>
+                      <Input type="number" value={form.billing_base_price} onChange={(e) => setForm((c) => ({ ...c, billing_base_price: e.target.value }))} placeholder="如 5000000" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">默认尺寸价格（credits）</label>
+                      <Input type="number" value={form.billing_default_size_price} onChange={(e) => setForm((c) => ({ ...c, billing_default_size_price: e.target.value }))} placeholder="如 5000000" />
+                    </div>
+                  </>
+                )}
+
+                {(form.billing_type === 'video' || form.billing_type === 'audio') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">价格（credits / 秒）</label>
+                    <Input type="number" value={form.billing_price_per_second} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_second: e.target.value }))} placeholder="如 10000" />
+                  </div>
+                )}
+
+                {form.billing_type === 'count' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">价格（credits / 次）</label>
+                    <Input type="number" value={form.billing_price_per_call} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_call: e.target.value }))} placeholder="如 1000" />
+                  </div>
+                )}
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">自定义计费脚本</label>
+                  <p className="text-xs text-muted-foreground">billing_type=custom 时生效，脚本需返回 credits 数值。</p>
+                  <Textarea
+                    value={form.billing_script}
+                    onChange={(event) => setForm((current) => ({ ...current, billing_script: event.target.value }))}
+                    rows={8}
+                    className="font-mono text-xs"
+                    placeholder="function calcBilling(request) { return 1000 }"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── 脚本 & 轮询 ── */}
+            <TabsContent value="scripts" className="mt-5 max-h-[62vh] overflow-y-auto pr-1">
+              <div className="grid gap-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">入参脚本</label>
+                  <p className="text-xs text-muted-foreground">mapRequest(input) → 将平台请求映射为上游格式。</p>
+                  <Textarea value={form.request_script} onChange={(event) => setForm((current) => ({ ...current, request_script: event.target.value }))} rows={7} className="font-mono text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">出参脚本</label>
+                  <p className="text-xs text-muted-foreground">mapResponse(input) → 映射上游响应，或提取 upstream_task_id（异步）。</p>
+                  <Textarea value={form.response_script} onChange={(event) => setForm((current) => ({ ...current, response_script: event.target.value }))} rows={7} className="font-mono text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">错误检测脚本</label>
+                  <p className="text-xs text-muted-foreground">checkError(response) → 返回非空字符串表示错误，null/false 表示正常。</p>
+                  <Textarea value={form.error_script} onChange={(event) => setForm((current) => ({ ...current, error_script: event.target.value }))} rows={5} className="font-mono text-xs" />
+                </div>
+
+                <div className="border-t pt-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">轮询配置（异步任务用）</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">轮询 URL</label>
+                  <Input value={form.query_url} onChange={(event) => setForm((current) => ({ ...current, query_url: event.target.value }))} placeholder="如 https://api.example.com/v1/tasks/{id}" />
+                </div>
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">轮询方法</label>
+                    <NativeSelect value={form.query_method} onChange={(event) => setForm((current) => ({ ...current, query_method: event.target.value }))}>
+                      <option value="GET">GET</option>
+                      <option value="POST">POST</option>
+                    </NativeSelect>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">轮询超时（ms）</label>
+                    <Input value={form.query_timeout_ms} onChange={(event) => setForm((current) => ({ ...current, query_timeout_ms: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">轮询脚本</label>
+                  <p className="text-xs text-muted-foreground">mapResponse(input) → 将轮询响应映射为标准格式。</p>
+                  <Textarea value={form.query_script} onChange={(event) => setForm((current) => ({ ...current, query_script: event.target.value }))} rows={7} className="font-mono text-xs" />
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
             <Button onClick={saveChannel} disabled={!form.name.trim() || !form.model.trim() || !form.base_url.trim()}>

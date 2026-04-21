@@ -36,8 +36,8 @@ export function UserLogsPage() {
     const params: Record<string, any> = { page, page_size: pageSize }
     if (filters.model) params.model = filters.model
     if (filters.status) params.status = filters.status
-    if (filters.startAt) params.start_at = new Date(filters.startAt).getTime()
-    if (filters.endAt) params.end_at = new Date(filters.endAt).getTime()
+    if (filters.startAt) params.start_at = filters.startAt.replace('T', ' ') + ':00'
+    if (filters.endAt) params.end_at = filters.endAt.replace('T', ' ') + ':00'
     
     const res = await userApi.listLogs(params)
     return {
@@ -251,6 +251,38 @@ export function UserLogsPage() {
                   <div className="text-sm font-semibold mb-2">您发送的请求</div>
                   <pre className="bg-zinc-950 text-zinc-50 p-4 rounded-md text-xs font-mono overflow-x-auto break-all whitespace-pre-wrap max-h-[300px]">
                     {JSON.stringify(currentLog.client_request, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {currentLog.upstream_headers && (
+                <div>
+                  <div className="text-sm font-semibold mb-2">上游请求头</div>
+                  <pre className="bg-zinc-950 text-zinc-50 p-4 rounded-md text-xs font-mono overflow-x-auto break-all whitespace-pre-wrap max-h-[200px]">
+                    {JSON.stringify(currentLog.upstream_headers, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {currentLog.upstream_request && (
+                <div>
+                  <div className="text-sm font-semibold mb-2">上游请求体</div>
+                  <pre className="bg-zinc-950 text-zinc-50 p-4 rounded-md text-xs font-mono overflow-x-auto break-all whitespace-pre-wrap max-h-[300px]">
+                    {JSON.stringify(currentLog.upstream_request, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {currentLog.upstream_response && (
+                <div>
+                  <div className="text-sm font-semibold mb-2">上游响应</div>
+                  <pre className="bg-zinc-950 text-zinc-50 p-4 rounded-md text-xs font-mono overflow-x-auto break-all whitespace-pre-wrap max-h-[300px]">
+                    {JSON.stringify(currentLog.upstream_response, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {currentLog.client_response && (
+                <div>
+                  <div className="text-sm font-semibold mb-2">返回给您的响应</div>
+                  <pre className="bg-zinc-950 text-zinc-50 p-4 rounded-md text-xs font-mono overflow-x-auto break-all whitespace-pre-wrap max-h-[300px]">
+                    {JSON.stringify(currentLog.client_response, null, 2)}
                   </pre>
                 </div>
               )}

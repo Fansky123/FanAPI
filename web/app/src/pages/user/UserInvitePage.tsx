@@ -213,7 +213,9 @@ export function UserInvitePage() {
               ) : (
                 data.withdrawals.map((row, index) => (
                   <TableRow key={row.id ?? index}>
-                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '-'}
+                    </TableCell>
                     <TableCell>{formatCredits(row.amount ?? 0)}</TableCell>
                     <TableCell>{row.payment_type ?? '-'}</TableCell>
                     <TableCell>{row.status ?? '-'}</TableCell>

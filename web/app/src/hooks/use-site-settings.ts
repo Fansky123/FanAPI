@@ -16,6 +16,11 @@ export type SiteSettings = {
   epayEnabled: boolean
   payApplyEnabled: boolean
   allowCustom: boolean
+  noticeTitle: string
+  noticeContent: string
+  contactInfo: string
+  qqGroupUrl: string
+  wechatCsUrl: string
 }
 
 const defaultSettings: SiteSettings = {
@@ -25,6 +30,11 @@ const defaultSettings: SiteSettings = {
   epayEnabled: false,
   payApplyEnabled: false,
   allowCustom: false,
+  noticeTitle: '',
+  noticeContent: '',
+  contactInfo: '',
+  qqGroupUrl: '',
+  wechatCsUrl: '',
 }
 
 export function useSiteSettings() {
@@ -43,10 +53,17 @@ export function useSiteSettings() {
         setSettings({
           siteName: record.site_name || 'FanAPI',
           logoUrl: record.logo_url || '',
-          plans: Array.isArray(record.plans) ? record.plans : [],
-          epayEnabled: !!record.epay_enabled,
-          payApplyEnabled: !!record.pay_apply_enabled,
-          allowCustom: !!record.allow_custom,
+          plans: (() => {
+            try { return JSON.parse(record.recharge_plans || '[]') } catch { return [] }
+          })(),
+          epayEnabled: record.epay_enabled === 'true',
+          payApplyEnabled: record.pay_apply_enabled === 'true',
+          allowCustom: record.recharge_allow_custom !== 'false',
+          noticeTitle: record.notice_title || '',
+          noticeContent: record.notice_content || '',
+          contactInfo: record.contact_info || '',
+          qqGroupUrl: record.qq_group_url || '',
+          wechatCsUrl: record.wechat_cs_url || '',
         })
       } catch {
         setSettings(defaultSettings)

@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,8 @@ import { authApi } from '@/lib/api/public'
 
 export function RegisterPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const inviteCode = searchParams.get('invite') ?? searchParams.get('code') ?? searchParams.get('ref') ?? ''
   const [form, setForm] = useState({
     username: '',
     email: '',
@@ -26,7 +28,7 @@ export function RegisterPage() {
     setError('')
 
     try {
-      await authApi.register(form)
+      await authApi.register({ ...form, ...(inviteCode ? { code: inviteCode } : {}) })
       navigate('/login')
     } catch (err) {
       setError(getApiErrorMessage(err))

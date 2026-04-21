@@ -49,6 +49,7 @@ const AgentLoginPage = lazy(() => import('@/pages/agent/AgentLoginPage').then((m
 const AgentDashboardPage = lazy(() => import('@/pages/agent/AgentDashboardPage').then((m) => ({ default: m.AgentDashboardPage })))
 
 const VendorLoginPage = lazy(() => import('@/pages/vendor/VendorLoginPage').then((m) => ({ default: m.VendorLoginPage })))
+const VendorRegisterPage = lazy(() => import('@/pages/vendor/VendorRegisterPage').then((m) => ({ default: m.VendorRegisterPage })))
 const VendorDashboardPage = lazy(() => import('@/pages/vendor/VendorDashboardPage').then((m) => ({ default: m.VendorDashboardPage })))
 const VendorKeysPage = lazy(() => import('@/pages/vendor/VendorKeysPage').then((m) => ({ default: m.VendorKeysPage })))
 
@@ -206,7 +207,10 @@ export const router = createBrowserRouter([
     children: [
       {
         element: renderLazy(<AuthLayout />),
-        children: [{ path: '/vendor/login', element: renderLazy(<VendorLoginPage />) }],
+        children: [
+          { path: '/vendor/login', element: renderLazy(<VendorLoginPage />) },
+          { path: '/vendor/register', element: renderLazy(<VendorRegisterPage />) },
+        ],
       },
     ],
   },

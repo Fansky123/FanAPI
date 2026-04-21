@@ -36,7 +36,7 @@ export function AdminVendorsPage() {
 
   const [mutError, setMutError] = useState('')
   const [editing, setEditing] = useState<AdminVendor | null>(null)
-  const [commission, setCommission] = useState('')
+  const [commissionPct, setCommissionPct] = useState('')
 
   const error = loadError || mutError
 
@@ -56,9 +56,10 @@ export function AdminVendorsPage() {
 
   function openEdit(row: AdminVendor) {
     setEditing(row)
-    setCommission(
-      row.commission_ratio !== undefined && row.commission_ratio !== null
-        ? String(row.commission_ratio)
+    const ratio = row.commission_ratio ?? row.fee_ratio
+    setCommissionPct(
+      ratio !== undefined && ratio !== null
+        ? String(parseFloat((ratio * 100).toFixed(2)))
         : ''
     )
     setMutError('')
@@ -68,9 +69,9 @@ export function AdminVendorsPage() {
     if (!editing?.id) return
     setMutError('')
     try {
-      await adminApi.updateVendor(editing.id, {
-        commission_ratio: commission === '' ? undefined : Number(commission),
-      })
+      const payload: { commission_ratio?: number; is_active?: boolean } = {}
+      if (commissionPct !== '') payload.commission_ratio = parseFloat(commissionPct) / 100
+      await adminApi.updateVendor(editing.id, payload)
       setEditing(null)
       reload()
     } catch (err) {
@@ -104,19 +105,20 @@ export function AdminVendorsPage() {
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>名称</TableHead>
-              <TableHead>邮箱</TableHead>
+              <TableHead>邮箱</TableHead>              <TableHead>注册码</TableHead>              <TableHead>余额</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>佣金/费率</TableHead>
+              <TableHead>注册时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           {loading ? (
-            <TableSkeleton cols={6} />
+            <TableSkeleton cols={9} />
           ) : (
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                     暂无号商数据
                   </TableCell>
                 </TableRow>
@@ -126,16 +128,27 @@ export function AdminVendorsPage() {
                     <TableCell>{row.id ?? '-'}</TableCell>
                     <TableCell>{row.username ?? row.name ?? '-'}</TableCell>
                     <TableCell>{row.email ?? '-'}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{row.invite_code ?? '-'}</TableCell>
+                    <TableCell>
+                      ¥{((row.balance ?? row.balance_credits ?? 0) / 1_000_000).toFixed(4)}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={(row.is_active ?? row.enabled ?? true) ? 'default' : 'secondary'}>
                         {(row.is_active ?? row.enabled ?? true) ? '启用' : '停用'}
                       </Badge>
                     </TableCell>
-                    <TableCell>{row.commission_ratio ?? row.fee_ratio ?? '-'}</TableCell>
+                    <TableCell>
+                      {(row.commission_ratio ?? row.fee_ratio) != null
+                        ? `${((row.commission_ratio ?? row.fee_ratio ?? 0) * 100).toFixed(2)}%`
+                        : '—（全局）'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '-'}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                          编辑比例
+                          编辑
                         </Button>
                         <Button size="sm" onClick={() => toggleActive(row)}>
                           {(row.is_active ?? row.enabled ?? true) ? '禁用' : '启用'}
@@ -158,13 +171,15 @@ export function AdminVendorsPage() {
               当前号商：{editing?.username ?? editing?.email ?? '-'}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <Label>手续费比例</Label>
-            <Input
-              value={commission}
-              onChange={(event) => setCommission(event.target.value)}
-              placeholder="例如：0.15"
-            />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>手续费比例（%）</Label>
+              <Input
+                value={commissionPct}
+                onChange={(event) => setCommissionPct(event.target.value)}
+                placeholder="例如：15（代表15%），留空使用全局默认"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>

@@ -14,8 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -36,10 +44,13 @@ import { adminApi, type AdminCard } from '@/lib/api/admin'
 import { useAsync } from '@/hooks/use-async'
 
 export function AdminCardsPage() {
+  const [statusFilter, setStatusFilter] = useState('')
+  const [queryParams, setQueryParams] = useState<Record<string, unknown>>({})
+
   const { data: rows, loading, error: loadError, reload } = useAsync(async () => {
-    const response = await adminApi.listCards()
+    const response = await adminApi.listCards(queryParams)
     return response.cards ?? []
-  }, [] as AdminCard[])
+  }, [] as AdminCard[], [queryParams])
 
   const [mutError, setMutError] = useState('')
   const [generateOpen, setGenerateOpen] = useState(false)
@@ -107,6 +118,24 @@ export function AdminCardsPage() {
         </Alert>
       ) : null}
       <Card>
+        <CardContent className="flex items-end gap-3 py-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">状态过滤</label>
+            <Select value={statusFilter || '_all'} onValueChange={(v) => setStatusFilter(v === '_all' ? '' : v)}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">全部</SelectItem>
+                <SelectItem value="unused">未使用</SelectItem>
+                <SelectItem value="used">已使用</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={() => setQueryParams(statusFilter ? { status: statusFilter } : {})}>查询</Button>
+          <Button variant="outline" onClick={() => { setStatusFilter(''); setQueryParams({}) }}>重置</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
         <Table>
           <TableHeader>
             <TableRow>
@@ -115,27 +144,41 @@ export function AdminCardsPage() {
               <TableHead>状态</TableHead>
               <TableHead>备注</TableHead>
               <TableHead>生成时间</TableHead>
+              <TableHead>使用时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           {loading ? (
-            <TableSkeleton cols={6} />
+            <TableSkeleton cols={7} />
           ) : (
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                     暂无卡密数据
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((row, index) => (
                   <TableRow key={row.id ?? index}>
-                    <TableCell className="font-mono text-xs">{row.code ?? '-'}</TableCell>
-                    <TableCell>{((row.credits ?? 0) / 1_000_000).toFixed(4)}</TableCell>
-                    <TableCell>{row.status ?? '-'}</TableCell>
-                    <TableCell>{row.note ?? '-'}</TableCell>
-                    <TableCell>{row.created_at ?? '-'}</TableCell>
+                    <TableCell
+                      className="font-mono text-xs cursor-pointer hover:text-primary"
+                      onClick={() => navigator.clipboard.writeText(row.code ?? '')}
+                      title="点击复制"
+                    >{row.code ?? '-'}</TableCell>
+                    <TableCell>¥{((row.credits ?? 0) / 1_000_000).toFixed(4)}</TableCell>
+                    <TableCell>
+                      <Badge variant={row.status === 'unused' ? 'default' : 'secondary'}>
+                        {row.status === 'unused' ? '未使用' : '已使用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{row.note ?? '-'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '-'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.used_at ? new Date(row.used_at).toLocaleString('zh-CN') : '—'}
+                    </TableCell>
                     <TableCell className="text-right">
                       {row.status === 'unused' ? (
                         <Button size="sm" variant="outline" onClick={() => setPendingDeleteCard(row)}>

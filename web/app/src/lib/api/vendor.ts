@@ -3,11 +3,15 @@ import { createHttpClient } from '@/lib/api/http'
 const http = createHttpClient('vendor')
 
 export type VendorProfile = {
+  id?: number
   name?: string
   username?: string
   email?: string
+  is_active?: boolean
   balance?: number
   commission_ratio?: number
+  invite_code?: string
+  created_at?: string
 }
 
 export type VendorKey = {
@@ -16,10 +20,7 @@ export type VendorKey = {
   channel_id?: number
   channel_name?: string
   masked_value?: string
-  key?: string
-  key_type?: string
   total_cost?: number
-  total_profit?: number
   my_earn?: number
   is_active?: boolean
   created_at?: string

@@ -50,22 +50,19 @@ export function UserBillingPage() {
   const [txPage, setTxPage] = useState(1)
   const [txTaskIdFilter, setTxTaskIdFilter] = useState('')
   const { data: txData, reload: txReload } = useAsync(async () => {
-    // We adjust the params since old API was /user/transactions?page=..&task_id=..
-    // We didn't add task_id into userApi, so let's mock it for the get. 
-    // Actually userApi.getTransactions doesn't take id. Let's cast to ignore
-    const res = await (userApi.getTransactions as any)(txPage, 20, txTaskIdFilter)
+    const res = await userApi.getTransactions(txPage, 20, txTaskIdFilter || undefined)
     return {
       items: Array.isArray(res) ? res : res.items ?? res.transactions ?? [],
       total: !Array.isArray(res) ? res.total ?? 0 : 0
     }
-  }, { items: [], total: 0 } as any, [txPage, txTaskIdFilter])
+  }, { items: [], total: 0 } as { items: unknown[]; total: number }, [txPage, txTaskIdFilter])
 
   // Orders State
   const [orderPage, setOrderPage] = useState(1)
   const { data: orderData, reload: orderReload } = useAsync(async () => {
     const res = await userApi.getPaymentOrders(orderPage, 20)
     return {
-      items: res.items || [],
+      items: res.orders || [],
       total: res.total || 0
     }
   }, { items: [], total: 0 } as any, [orderPage])
@@ -144,11 +141,12 @@ export function UserBillingPage() {
   const txSign = (type: string) => (['consume'].includes(type) ? '-' : '+')
   const txAmtColor = (type: string) => (['consume'].includes(type) ? 'text-red-500' : 'text-green-600')
 
-  const orderStatusLabel = (status: number) => {
+  const orderStatusLabel = (status: string) => {
     switch (status) {
-      case 0: return '待支付'
-      case 1: return '已完成'
-      default: return '未知'
+      case 'pending': return '待支付'
+      case 'paid': return '已完成'
+      case 'failed': return '失败'
+      default: return status ?? '未知'
     }
   }
 
@@ -371,7 +369,7 @@ export function UserBillingPage() {
                         {row.credits ? `+￥${(row.credits / 1e6).toFixed(2)}` : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={row.status === 1 ? 'default' : 'secondary'}>{orderStatusLabel(row.status)}</Badge>
+                        <Badge variant={row.status === 'paid' ? 'default' : 'secondary'}>{orderStatusLabel(row.status)}</Badge>
                       </TableCell>
                       <TableCell>{row.paid_at || row.created_at}</TableCell>
                     </TableRow>

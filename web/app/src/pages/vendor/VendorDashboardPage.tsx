@@ -70,7 +70,9 @@ export function VendorDashboardPage() {
                       ? (profile?.email ?? '-')
                       : label === '余额'
                         ? formatCredits(profile?.balance ?? 0)
-                        : (profile?.commission_ratio ?? '-')}
+                        : (profile?.commission_ratio != null
+                            ? `${((profile.commission_ratio) * 100).toFixed(2)}%`
+                            : '—（全局）')}
                 </p>
               )}
             </div>
@@ -87,9 +89,10 @@ export function VendorDashboardPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Key</TableHead>
-                <TableHead>类型</TableHead>
+                <TableHead>渠道</TableHead>
                 <TableHead>总成本</TableHead>
                 <TableHead>总收益</TableHead>
+                <TableHead>状态</TableHead>
               </TableRow>
             </TableHeader>
             {loading ? (
@@ -98,7 +101,7 @@ export function VendorDashboardPage() {
               <TableBody>
                 {keys.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                       暂无 Key 数据
                     </TableCell>
                   </TableRow>
@@ -107,11 +110,12 @@ export function VendorDashboardPage() {
                     <TableRow key={key.id ?? index}>
                       <TableCell>{key.id ?? '-'}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        {key.key ?? '-'}
+                        {key.masked_value ?? '-'}
                       </TableCell>
-                      <TableCell>{key.key_type ?? '-'}</TableCell>
+                      <TableCell>{key.channel_name ?? '-'}</TableCell>
                       <TableCell>{formatCredits(key.total_cost ?? 0)}</TableCell>
-                      <TableCell>{formatCredits(key.total_profit ?? 0)}</TableCell>
+                      <TableCell>{formatCredits(key.my_earn ?? 0)}</TableCell>
+                      <TableCell>{key.is_active === false ? '停用' : '启用'}</TableCell>
                     </TableRow>
                   ))
                 )}

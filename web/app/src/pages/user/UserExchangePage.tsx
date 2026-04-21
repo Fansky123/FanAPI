@@ -94,8 +94,12 @@ export function UserExchangePage() {
                 history.map((row, index) => (
                   <TableRow key={row.code ?? index}>
                     <TableCell className="font-mono text-xs">{row.code ?? '-'}</TableCell>
-                    <TableCell>{formatCredits(row.credits ?? row.amount ?? 0)}</TableCell>
-                    <TableCell>{row.created_at ?? row.redeemed_at ?? '-'}</TableCell>
+                    <TableCell>{formatCredits(row.credits ?? 0)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.used_at
+                        ? new Date(row.used_at).toLocaleString('zh-CN')
+                        : '-'}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

@@ -28,6 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -121,10 +122,11 @@ export function UserKeysPage() {
                 <TableHead>名称</TableHead>
                 <TableHead>Key</TableHead>
                 <TableHead>类型</TableHead>
+                <TableHead>状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
-            <TableSkeleton cols={4} rows={3} />
+            <TableSkeleton cols={5} rows={3} />
           </Table>
         </Card>
       ) : keys.length === 0 ? (
@@ -141,6 +143,7 @@ export function UserKeysPage() {
                 <TableHead>名称</TableHead>
                 <TableHead>Key</TableHead>
                 <TableHead>类型</TableHead>
+                <TableHead>状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -156,6 +159,11 @@ export function UserKeysPage() {
                         : (item.masked_key ?? '***')}
                   </TableCell>
                   <TableCell>{item.key_type ?? 'low_price'}</TableCell>
+                  <TableCell>
+                    <Badge variant={item.is_active === false ? 'secondary' : 'default'}>
+                      {item.is_active === false ? '停用' : '启用'}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       {item.viewable && (item.raw_key || item.key) ? (

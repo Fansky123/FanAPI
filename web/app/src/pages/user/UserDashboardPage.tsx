@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { userApi } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
+import { useSiteSettings } from '@/hooks/use-site-settings'
 
 export function UserDashboardPage() {
   const { data, loading, error, reload } = useAsync(async () => {
@@ -18,6 +19,8 @@ export function UserDashboardPage() {
       todayConsumed: stats.today_consumed ?? 0,
     }
   }, { balance: 0, totalConsumed: 0, todayConsumed: 0 })
+
+  const { settings } = useSiteSettings()
 
   return (
     <>
@@ -38,6 +41,16 @@ export function UserDashboardPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+      {settings.noticeTitle && (
+        <Alert>
+          <AlertDescription>
+            <strong>{settings.noticeTitle}</strong>
+            {settings.noticeContent && (
+              <div className="mt-1 whitespace-pre-wrap text-sm">{settings.noticeContent}</div>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="grid gap-4 xl:grid-cols-3">
         <StatCard
           title="剩余积分"

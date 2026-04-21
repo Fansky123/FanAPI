@@ -31,13 +31,14 @@ export function AdminLogsPage() {
   const [page, setPage] = useState(1)
   const pageSize = 20
   const [filters, setFilters] = useState({
-    model: '', user_id: '', status: '', corr_id: '', startAt: '', endAt: '',
+    model: '', user_id: '', channel_id: '', status: '', corr_id: '', startAt: '', endAt: '',
   })
 
   const { data, loading, error, reload } = useAsync(async () => {
     const params: Record<string, unknown> = { page, page_size: pageSize }
     if (filters.model) params.model = filters.model
     if (filters.user_id) params.user_id = filters.user_id
+    if (filters.channel_id) params.channel_id = filters.channel_id
     if (filters.status) params.status = filters.status
     if (filters.corr_id) params.corr_id = filters.corr_id
     if (filters.startAt) params.start_at = new Date(filters.startAt).getTime()
@@ -74,7 +75,7 @@ export function AdminLogsPage() {
 
   function handleSearch() { setPage(1); setTimeout(reload, 0) }
   function handleReset() {
-    setFilters({ model: '', user_id: '', status: '', corr_id: '', startAt: '', endAt: '' })
+    setFilters({ model: '', user_id: '', channel_id: '', status: '', corr_id: '', startAt: '', endAt: '' })
     setPage(1)
     setTimeout(reload, 0)
   }
@@ -105,6 +106,9 @@ export function AdminLogsPage() {
               onKeyDown={e => e.key === 'Enter' && handleSearch()} />
             <Input placeholder="用户 ID" value={filters.user_id}
               onChange={e => setFilters({ ...filters, user_id: e.target.value })} className="w-[100px]"
+              onKeyDown={e => e.key === 'Enter' && handleSearch()} />
+            <Input placeholder="渠道 ID" value={filters.channel_id}
+              onChange={e => setFilters({ ...filters, channel_id: e.target.value })} className="w-[100px]"
               onKeyDown={e => e.key === 'Enter' && handleSearch()} />
             <Input placeholder="Corr ID" value={filters.corr_id}
               onChange={e => setFilters({ ...filters, corr_id: e.target.value })} className="w-[220px] font-mono text-xs"
@@ -224,6 +228,36 @@ export function AdminLogsPage() {
                 <div>
                   <div className="font-semibold mb-2 text-red-600">错误信息</div>
                   <div className="bg-red-50 text-red-900 p-3 rounded-md text-sm whitespace-pre-wrap">{currentLog.error_msg}</div>
+                </div>
+              )}
+              {currentLog.client_request && (
+                <div>
+                  <div className="font-semibold mb-2">客户端请求</div>
+                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.client_request, null, 2)}</pre>
+                </div>
+              )}
+              {currentLog.upstream_headers && (
+                <div>
+                  <div className="font-semibold mb-2">上游请求头</div>
+                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-40 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_headers, null, 2)}</pre>
+                </div>
+              )}
+              {currentLog.upstream_request && (
+                <div>
+                  <div className="font-semibold mb-2">上游请求体</div>
+                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_request, null, 2)}</pre>
+                </div>
+              )}
+              {currentLog.upstream_response && (
+                <div>
+                  <div className="font-semibold mb-2">上游响应</div>
+                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_response, null, 2)}</pre>
+                </div>
+              )}
+              {currentLog.client_response && (
+                <div>
+                  <div className="font-semibold mb-2">客户端响应</div>
+                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.client_response, null, 2)}</pre>
                 </div>
               )}
             </div>

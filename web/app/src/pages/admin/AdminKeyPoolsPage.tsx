@@ -181,6 +181,18 @@ export function AdminKeyPoolsPage() {
     }
   }
 
+  async function clearKeyVendor(row: AdminPoolKey) {
+    if (!row.id) return
+    setMutError('')
+    try {
+      await adminApi.setPoolKeyVendor(row.id, null)
+      if (activePool) await openKeys(activePool)
+    } catch (err) {
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      setMutError(getApiErrorMessage(err))
+    }
+  }
+
   function updateDraftKey(id: number | undefined, patch: Partial<AdminPoolKey>) {
     if (!id) return
     setKeys((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)))
@@ -302,18 +314,19 @@ export function AdminKeyPoolsPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Key</TableHead>
+                <TableHead>号商</TableHead>
                 <TableHead>优先级</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             {keysLoading ? (
-              <TableSkeleton cols={5} rows={3} />
+              <TableSkeleton cols={6} rows={3} />
             ) : (
               <TableBody>
                 {keys.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
                       暂无 Key 数据
                     </TableCell>
                   </TableRow>
@@ -322,6 +335,21 @@ export function AdminKeyPoolsPage() {
                     <TableRow key={row.id ?? index}>
                       <TableCell>{row.id ?? '-'}</TableCell>
                       <TableCell className="font-mono text-xs">{row.value ?? '-'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {row.vendor_id != null
+                          ? <span className="font-medium text-foreground">号商 #{row.vendor_id}</span>
+                          : <span className="text-muted-foreground/50">直营</span>}
+                        {row.vendor_id != null && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="ml-1 h-5 px-1 text-xs text-muted-foreground"
+                            onClick={() => clearKeyVendor(row)}
+                          >
+                            解绑
+                          </Button>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Input
                           className="w-24"
