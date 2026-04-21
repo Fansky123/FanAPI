@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -91,9 +93,9 @@ export function AdminUsersPage() {
         description="已补上最小运营动作，后台现在可以直接充值、改密、调分组和切换客服角色。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <Table>
@@ -151,14 +153,14 @@ export function AdminUsersPage() {
               当前用户：{activeUser?.username ?? activeUser?.email ?? '-'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
+          <div className="flex flex-col gap-2">
+            <Label>
               {dialogMode === 'recharge'
                 ? '充值 credits'
                 : dialogMode === 'password'
                   ? '新密码'
                   : '分组名称'}
-            </label>
+            </Label>
             <Input
               value={value}
               type={dialogMode === 'password' ? 'password' : 'text'}

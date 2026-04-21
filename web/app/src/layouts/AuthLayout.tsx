@@ -11,13 +11,13 @@ export function AuthLayout({ adminMode = false }: { adminMode?: boolean }) {
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
         <div className="grid w-full gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="hidden flex-col justify-between rounded-3xl border border-border/60 bg-card/85 p-10 shadow-sm backdrop-blur lg:flex">
-            <div className="space-y-10">
+            <div className="flex flex-col gap-10">
               <AppLogo
                 siteName={siteName}
                 logoUrl={logoUrl}
                 label={adminMode ? '管理后台重构版' : '新一代控制台'}
               />
-              <div className="space-y-4">
+              <div className="flex flex-col gap-4">
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   Frontend rebuild
                 </p>

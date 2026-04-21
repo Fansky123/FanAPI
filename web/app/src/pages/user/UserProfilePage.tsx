@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiErrorMessage } from '@/lib/api/http'
 import { userApi, type UserProfileResponse } from '@/lib/api/user'
@@ -30,9 +31,9 @@ export function UserProfilePage() {
         description="这里优先聚合账号身份信息，后续会继续补邮箱绑定、密码修改和返佣相关能力。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <CardHeader>

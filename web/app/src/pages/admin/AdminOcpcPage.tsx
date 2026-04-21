@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +23,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -65,6 +78,7 @@ export function AdminOcpcPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
   const [interval, setInterval] = useState('30')
   const [uploadResult, setUploadResult] = useState('')
+  const [pendingDeletePlatform, setPendingDeletePlatform] = useState<AdminOcpcPlatform | undefined>()
 
   async function load() {
     try {
@@ -148,14 +162,20 @@ export function AdminOcpcPage() {
 
   async function deletePlatform(row: AdminOcpcPlatform) {
     if (!row.id) return
-    if (!window.confirm(`确认删除 OCPC 账户 ${row.name ?? row.id} 吗？`)) return
+    setPendingDeletePlatform(row)
+  }
+
+  async function executeDeletePlatform() {
+    if (!pendingDeletePlatform?.id) return
     try {
       setError('')
-      await adminApi.deleteOcpcPlatform(row.id)
+      await adminApi.deleteOcpcPlatform(pendingDeletePlatform.id)
       setSuccess('推广账户已删除')
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingDeletePlatform(undefined)
     }
   }
 
@@ -189,9 +209,9 @@ export function AdminOcpcPage() {
         actions={<Button onClick={openCreate}>新增账户</Button>}
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {success ? (
         <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -240,7 +260,7 @@ export function AdminOcpcPage() {
       </Card>
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4 p-6">
-          <label className="text-sm font-medium">自动上报</label>
+          <Label>自动上报</Label>
           <input type="checkbox" checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} />
           <Input className="w-32" value={interval} onChange={(event) => setInterval(event.target.value)} placeholder="间隔分钟" />
           <Button onClick={saveSchedule}>保存调度</Button>
@@ -259,10 +279,10 @@ export function AdminOcpcPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{form.id ? '编辑账户' : '新增账户'}</DialogTitle></DialogHeader>
           <div className="grid gap-4">
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.platform} onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}>
+            <NativeSelect value={form.platform} onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}>
               <option value="baidu">百度</option>
               <option value="360">360</option>
-            </select>
+            </NativeSelect>
             <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="名称" />
             {form.platform === 'baidu' ? (
               <>
@@ -282,6 +302,21 @@ export function AdminOcpcPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeletePlatform !== undefined} onOpenChange={() => setPendingDeletePlatform(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认删除 OCPC 账户 {pendingDeletePlatform?.name ?? pendingDeletePlatform?.id} 吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDeletePlatform}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

@@ -2,6 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { PlusIcon, SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,6 +25,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -130,6 +143,7 @@ export function AdminChannelsPage() {
   const [success, setSuccess] = useState('')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<ChannelForm>(emptyForm)
+  const [pendingDeleteChannel, setPendingDeleteChannel] = useState<AdminChannel | undefined>()
 
   async function load() {
     try {
@@ -261,14 +275,20 @@ export function AdminChannelsPage() {
 
   async function deleteChannel(row: AdminChannel) {
     if (!row.id) return
-    if (!window.confirm(`确认删除渠道“${row.name ?? row.model ?? row.id}”吗？`)) return
+    setPendingDeleteChannel(row)
+  }
+
+  async function executeDeleteChannel() {
+    if (!pendingDeleteChannel?.id) return
     try {
       setError('')
-      await adminApi.deleteChannel(row.id)
+      await adminApi.deleteChannel(pendingDeleteChannel.id)
       setSuccess('渠道已删除')
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingDeleteChannel(undefined)
     }
   }
 
@@ -286,9 +306,9 @@ export function AdminChannelsPage() {
         }
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {success ? (
         <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -358,153 +378,153 @@ export function AdminChannelsPage() {
             <DialogDescription>这套表单覆盖真实上游接入所需的核心字段。</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[75vh] gap-4 overflow-y-auto pr-2 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">路由名称</label>
+            <div className="flex flex-col gap-2">
+              <Label>路由名称</Label>
               <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">标准模型名</label>
+            <div className="flex flex-col gap-2">
+              <Label>标准模型名</Label>
               <Input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">接口类型</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>接口类型</Label>
+              <NativeSelect value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>
                 <option value="llm">llm</option>
                 <option value="image">image</option>
                 <option value="video">video</option>
                 <option value="audio">audio</option>
                 <option value="music">music</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">协议</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.protocol} onChange={(event) => setForm((current) => ({ ...current, protocol: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>协议</Label>
+              <NativeSelect value={form.protocol} onChange={(event) => setForm((current) => ({ ...current, protocol: event.target.value }))}>
                 <option value="openai">openai</option>
                 <option value="claude">claude</option>
                 <option value="gemini">gemini</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">上游 URL</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>上游 URL</Label>
               <Input value={form.base_url} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">请求方法</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.method} onChange={(event) => setForm((current) => ({ ...current, method: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>请求方法</Label>
+              <NativeSelect value={form.method} onChange={(event) => setForm((current) => ({ ...current, method: event.target.value }))}>
                 <option value="POST">POST</option>
                 <option value="GET">GET</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">超时（ms）</label>
+            <div className="flex flex-col gap-2">
+              <Label>超时（ms）</Label>
               <Input value={form.timeout_ms} onChange={(event) => setForm((current) => ({ ...current, timeout_ms: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">认证方式</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.auth_type} onChange={(event) => setForm((current) => ({ ...current, auth_type: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>认证方式</Label>
+              <NativeSelect value={form.auth_type} onChange={(event) => setForm((current) => ({ ...current, auth_type: event.target.value }))}>
                 <option value="bearer">bearer</option>
                 <option value="query_param">query_param</option>
                 <option value="basic">basic</option>
                 <option value="sigv4">sigv4</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">计费类型</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.billing_type} onChange={(event) => setForm((current) => ({ ...current, billing_type: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>计费类型</Label>
+              <NativeSelect value={form.billing_type} onChange={(event) => setForm((current) => ({ ...current, billing_type: event.target.value }))}>
                 <option value="token">token</option>
                 <option value="image">image</option>
                 <option value="video">video</option>
                 <option value="audio">audio</option>
                 <option value="count">count</option>
                 <option value="custom">custom</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Query Param 名</label>
+            <div className="flex flex-col gap-2">
+              <Label>Query Param 名</Label>
               <Input value={form.auth_param_name} onChange={(event) => setForm((current) => ({ ...current, auth_param_name: event.target.value }))} placeholder="如 key" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">AWS Region</label>
+            <div className="flex flex-col gap-2">
+              <Label>AWS Region</Label>
               <Input value={form.auth_region} onChange={(event) => setForm((current) => ({ ...current, auth_region: event.target.value }))} placeholder="us-east-1" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">AWS Service</label>
+            <div className="flex flex-col gap-2">
+              <Label>AWS Service</Label>
               <Input value={form.auth_service} onChange={(event) => setForm((current) => ({ ...current, auth_service: event.target.value }))} placeholder="execute-api" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">号池绑定</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.key_pool_id} onChange={(event) => setForm((current) => ({ ...current, key_pool_id: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>号池绑定</Label>
+              <NativeSelect value={form.key_pool_id} onChange={(event) => setForm((current) => ({ ...current, key_pool_id: event.target.value }))}>
                 <option value="">不启用</option>
                 {poolOptions.map((pool) => (
                   <option key={pool.id} value={String(pool.id)}>
                     #{pool.id} {pool.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">权重</label>
+            <div className="flex flex-col gap-2">
+              <Label>权重</Label>
               <Input value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">优先级</label>
+            <div className="flex flex-col gap-2">
+              <Label>优先级</Label>
               <Input value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">图标 URL</label>
+            <div className="flex flex-col gap-2">
+              <Label>图标 URL</Label>
               <Input value={form.icon_url} onChange={(event) => setForm((current) => ({ ...current, icon_url: event.target.value }))} />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">描述</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>描述</Label>
               <Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={2} />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">请求头（JSON）</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>请求头（JSON）</Label>
               <Textarea value={form.headers_text} onChange={(event) => setForm((current) => ({ ...current, headers_text: event.target.value }))} rows={4} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">计费配置（JSON）</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>计费配置（JSON）</Label>
               <Textarea value={form.billing_config_text} onChange={(event) => setForm((current) => ({ ...current, billing_config_text: event.target.value }))} rows={6} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">入参脚本</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>入参脚本</Label>
               <Textarea value={form.request_script} onChange={(event) => setForm((current) => ({ ...current, request_script: event.target.value }))} rows={6} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">出参脚本</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>出参脚本</Label>
               <Textarea value={form.response_script} onChange={(event) => setForm((current) => ({ ...current, response_script: event.target.value }))} rows={6} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">自定义计费脚本</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>自定义计费脚本</Label>
               <Textarea value={form.billing_script} onChange={(event) => setForm((current) => ({ ...current, billing_script: event.target.value }))} rows={5} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">轮询 URL</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>轮询 URL</Label>
               <Input value={form.query_url} onChange={(event) => setForm((current) => ({ ...current, query_url: event.target.value }))} placeholder="异步任务用，支持 {id}" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">轮询方法</label>
-              <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={form.query_method} onChange={(event) => setForm((current) => ({ ...current, query_method: event.target.value }))}>
+            <div className="flex flex-col gap-2">
+              <Label>轮询方法</Label>
+              <NativeSelect value={form.query_method} onChange={(event) => setForm((current) => ({ ...current, query_method: event.target.value }))}>
                 <option value="GET">GET</option>
                 <option value="POST">POST</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">轮询超时（ms）</label>
+            <div className="flex flex-col gap-2">
+              <Label>轮询超时（ms）</Label>
               <Input value={form.query_timeout_ms} onChange={(event) => setForm((current) => ({ ...current, query_timeout_ms: event.target.value }))} />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">轮询脚本</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>轮询脚本</Label>
               <Textarea value={form.query_script} onChange={(event) => setForm((current) => ({ ...current, query_script: event.target.value }))} rows={5} className="font-mono text-xs" />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">错误检测脚本</label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>错误检测脚本</Label>
               <Textarea value={form.error_script} onChange={(event) => setForm((current) => ({ ...current, error_script: event.target.value }))} rows={5} className="font-mono text-xs" />
             </div>
-            <label className="flex items-center gap-2 text-sm md:col-span-2">
+            <Label className="flex items-center gap-2 text-sm md:col-span-2">
               <input type="checkbox" checked={form.is_active} onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))} />
               渠道启用
-            </label>
+            </Label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -517,6 +537,21 @@ export function AdminChannelsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeleteChannel !== undefined} onOpenChange={() => setPendingDeleteChannel(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认删除渠道"{pendingDeleteChannel?.name ?? pendingDeleteChannel?.model ?? pendingDeleteChannel?.id}"吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDeleteChannel}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

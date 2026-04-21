@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiErrorMessage } from '@/lib/api/http'
 import { userApi, type UserStatsResponse } from '@/lib/api/user'
@@ -32,9 +33,9 @@ export function UserStatsPage() {
         description="用统一卡片和明细区块承接统计视图，替代旧版自绘图表的碎片化结构。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard title="累计消耗积分" value={formatCredits(stats.total_consumed ?? 0)} />
@@ -45,7 +46,7 @@ export function UserStatsPage() {
         <CardHeader>
           <CardTitle>最近 7 天积分消耗</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex flex-col gap-3">
           {(stats.daily_credits ?? []).length === 0 ? (
             <p className="text-sm text-muted-foreground">暂无统计数据。</p>
           ) : (

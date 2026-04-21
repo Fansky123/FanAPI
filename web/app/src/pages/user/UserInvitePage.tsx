@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -11,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
@@ -97,14 +99,14 @@ export function UserInvitePage() {
         description="支持查看邀请码、冻结返佣、解冻积分和提现申请。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader><CardTitle>邀请码</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="flex flex-col gap-2 text-sm">
             <div className="font-mono">{info.invite_code ?? '-'}</div>
             <Button size="sm" onClick={() => navigator.clipboard.writeText(info.invite_code ?? '')}>
               复制邀请码
@@ -117,7 +119,7 @@ export function UserInvitePage() {
         </Card>
         <Card>
           <CardHeader><CardTitle>冻结返佣</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="flex flex-col gap-3">
             <div className="text-2xl font-semibold">{formatCredits(info.frozen_balance ?? 0)}</div>
             <div className="flex gap-2">
               <Button size="sm" onClick={() => setConvertOpen(true)}>解冻</Button>
@@ -175,12 +177,12 @@ export function UserInvitePage() {
       <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>申请提现</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="提现积分数量" />
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={paymentType} onChange={(event) => setPaymentType(event.target.value)}>
+            <NativeSelect value={paymentType} onChange={(event) => setPaymentType(event.target.value)}>
               <option value="wechat">微信</option>
               <option value="alipay">支付宝</option>
-            </select>
+            </NativeSelect>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>取消</Button>

@@ -13,7 +13,7 @@ export function PageHeader({
 }) {
   return (
     <div className="flex flex-col gap-4 border-b border-border/80 pb-5 md:flex-row md:items-end md:justify-between">
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1">
         {eyebrow ? (
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}

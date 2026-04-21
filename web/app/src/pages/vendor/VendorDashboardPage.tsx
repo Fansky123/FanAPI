@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -40,9 +41,9 @@ export function VendorDashboardPage() {
     <>
       <PageHeader eyebrow="Vendor" title="Vendor 工作台" description="Vendor 端已接入资料与 key 数据，后续继续补提交流程和筛选器。" />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <Card>
         <CardHeader>

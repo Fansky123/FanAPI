@@ -3,6 +3,7 @@ import { BlocksIcon } from 'lucide-react'
 
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { getApiErrorMessage } from '@/lib/api/http'
@@ -33,9 +34,9 @@ export function UserModelsPage() {
         description="按统一卡片密度和文本层级展示可用模型，替代旧版视觉不一致的模型页。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {channels.length === 0 ? (
         <EmptyState
@@ -47,9 +48,9 @@ export function UserModelsPage() {
         <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {channels.map((channel, index) => (
             <Card key={channel.id ?? channel.routing_model ?? index}>
-              <CardContent className="space-y-4 p-6">
+              <CardContent className="flex flex-col gap-4 p-6">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
+                  <div className="flex flex-col gap-1">
                     <h2 className="text-base font-semibold">
                       {channel.name ?? channel.routing_model ?? '未命名模型'}
                     </h2>

@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +23,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -36,6 +49,7 @@ export function AdminKeyPoolsPage() {
   const [channelId, setChannelId] = useState('')
   const [keyValue, setKeyValue] = useState('')
   const [priority, setPriority] = useState('0')
+  const [pendingDeletePool, setPendingDeletePool] = useState<AdminKeyPool | undefined>()
 
   async function loadPage() {
     try {
@@ -113,14 +127,20 @@ export function AdminKeyPoolsPage() {
 
   async function deletePool(pool: AdminKeyPool) {
     if (!pool.id) return
-    if (!window.confirm(`确认删除号池 ${pool.name ?? pool.id} 吗？`)) return
+    setPendingDeletePool(pool)
+  }
+
+  async function executeDeletePool() {
+    if (!pendingDeletePool?.id) return
     try {
       setError('')
-      await adminApi.deleteKeyPool(pool.id)
+      await adminApi.deleteKeyPool(pendingDeletePool.id)
       setSuccess('号池已删除')
       await loadPage()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingDeletePool(undefined)
     }
   }
 
@@ -185,9 +205,9 @@ export function AdminKeyPoolsPage() {
         actions={<Button onClick={() => setCreateOpen(true)}>新建号池</Button>}
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {success ? (
         <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -247,9 +267,8 @@ export function AdminKeyPoolsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>新建号池</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <select
-              className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+          <div className="flex flex-col gap-4">
+            <NativeSelect
               value={channelId}
               onChange={(event) => setChannelId(event.target.value)}
             >
@@ -259,7 +278,7 @@ export function AdminKeyPoolsPage() {
                   {channelLabel(channel)}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="号池名称" />
           </div>
           <DialogFooter>
@@ -304,7 +323,7 @@ export function AdminKeyPoolsPage() {
                     />
                   </TableCell>
                   <TableCell>
-                    <label className="flex items-center gap-2 text-sm">
+                    <Label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={row.is_active !== false}
@@ -313,7 +332,7 @@ export function AdminKeyPoolsPage() {
                         }
                       />
                       {row.is_active === false ? '停用' : '启用'}
-                    </label>
+                    </Label>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -327,6 +346,21 @@ export function AdminKeyPoolsPage() {
           </Table>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeletePool !== undefined} onOpenChange={() => setPendingDeletePool(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认删除号池 {pendingDeletePool?.name ?? pendingDeletePool?.id} 吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDeletePool}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

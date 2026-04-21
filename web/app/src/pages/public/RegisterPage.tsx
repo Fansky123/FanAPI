@@ -2,9 +2,11 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { getApiErrorMessage } from '@/lib/api/http'
 import { authApi } from '@/lib/api/public'
 
@@ -35,7 +37,7 @@ export function RegisterPage() {
 
   return (
     <Card className="w-full max-w-xl border-border/70 bg-card/92 shadow-lg">
-      <CardHeader className="space-y-3">
+      <CardHeader className="flex flex-col gap-3">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           User sign up
         </p>
@@ -45,9 +47,9 @@ export function RegisterPage() {
         </p>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">用户名</label>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-2">
+            <Label>用户名</Label>
             <Input
               value={form.username}
               onChange={(event) =>
@@ -55,8 +57,8 @@ export function RegisterPage() {
               }
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">邮箱</label>
+          <div className="flex flex-col gap-2">
+            <Label>邮箱</Label>
             <Input
               type="email"
               value={form.email}
@@ -65,8 +67,8 @@ export function RegisterPage() {
               }
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">密码</label>
+          <div className="flex flex-col gap-2">
+            <Label>密码</Label>
             <Input
               type="password"
               value={form.password}
@@ -76,9 +78,9 @@ export function RegisterPage() {
             />
           </div>
           {error ? (
-            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : null}
           <Button className="w-full" type="submit" disabled={submitting}>
             {submitting ? '创建中...' : '创建账号'}

@@ -15,7 +15,7 @@ export function EmptyState({
     <Card className="border-dashed">
       <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
         {icon}
-        <div className="space-y-1">
+        <div className="flex flex-col gap-1">
           <h2 className="text-base font-medium">{title}</h2>
           <p className="max-w-md text-sm text-muted-foreground">{description}</p>
         </div>

@@ -3,6 +3,7 @@ import { BotIcon, CreditCardIcon, SparklesIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getApiErrorMessage } from '@/lib/api/http'
 import { userApi } from '@/lib/api/user'
@@ -50,9 +51,9 @@ export function UserDashboardPage() {
         description="这里优先呈现最关键的账户与消费信息，避免旧版首页的视觉噪音和信息堆叠。"
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       <div className="grid gap-4 xl:grid-cols-3">
         <StatCard
@@ -79,7 +80,7 @@ export function UserDashboardPage() {
           <CardHeader>
             <CardTitle>重构后的首页原则</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
             <p>1. 先展示关键数据，不先展示装饰内容。</p>
             <p>2. 信息层级固定，后续新增模块不能打破首页节奏。</p>
             <p>3. 样式统一继承设计系统，不再页面单独做卡片视觉。</p>
@@ -89,7 +90,7 @@ export function UserDashboardPage() {
           <CardHeader>
             <CardTitle>下一步建议</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
             <p>创建 API 密钥后，再查看模型列表与账单页。</p>
           </CardContent>
         </Card>

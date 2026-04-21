@@ -3,8 +3,19 @@ import { KeyRoundIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -33,6 +46,7 @@ export function UserKeysPage() {
   const [newKeyName, setNewKeyName] = useState('')
   const [newKeyType, setNewKeyType] = useState('low_price')
   const [submitting, setSubmitting] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | undefined>()
 
   async function load() {
     try {
@@ -70,12 +84,18 @@ export function UserKeysPage() {
 
   async function handleDelete(id: number | undefined) {
     if (!id) return
-    if (!window.confirm('确认永久删除该 API Key 吗？')) return
+    setPendingDeleteId(id)
+  }
+
+  async function executeDelete() {
+    if (!pendingDeleteId) return
     try {
-      await userApi.deleteApiKey(id)
+      await userApi.deleteApiKey(pendingDeleteId)
       await load()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    } finally {
+      setPendingDeleteId(undefined)
     }
   }
 
@@ -97,9 +117,9 @@ export function UserKeysPage() {
         }
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {keys.length === 0 ? (
         <EmptyState
@@ -162,25 +182,24 @@ export function UserKeysPage() {
               创建后会返回一次性明文，关闭后只能看到遮罩形式。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">名称</label>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>名称</Label>
               <Input
                 value={newKeyName}
                 onChange={(event) => setNewKeyName(event.target.value)}
                 placeholder="例如：我的项目"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">类型</label>
-              <select
-                className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none"
+            <div className="flex flex-col gap-2">
+              <Label>类型</Label>
+              <NativeSelect
                 value={newKeyType}
                 onChange={(event) => setNewKeyType(event.target.value)}
               >
                 <option value="low_price">低价密钥</option>
                 <option value="stable">稳定密钥</option>
-              </select>
+              </NativeSelect>
             </div>
           </div>
           <DialogFooter>
@@ -211,6 +230,19 @@ export function UserKeysPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeleteId !== undefined} onOpenChange={() => setPendingDeleteId(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>确认永久删除该 API Key 吗？此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDelete}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

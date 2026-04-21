@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -11,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -86,9 +88,9 @@ export function VendorKeysPage() {
         actions={<Button onClick={() => setOpen(true)}>上传新 Key</Button>}
       />
       {error ? (
-        <Card className="border-destructive/25 bg-destructive/5">
-          <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {success ? (
         <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -125,15 +127,15 @@ export function VendorKeysPage() {
           <DialogHeader>
             <DialogTitle>上传新 Key</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <select className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none" value={poolId} onChange={(event) => setPoolId(event.target.value)}>
+          <div className="flex flex-col gap-4">
+            <NativeSelect value={poolId} onChange={(event) => setPoolId(event.target.value)}>
               <option value="">选择号池</option>
               {pools.map((pool) => (
                 <option key={pool.id} value={String(pool.id)}>
                   {pool.channel_name}（{pool.name}）
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder="请输入 API Key" />
             {pools.length === 0 ? (
               <p className="text-sm text-muted-foreground">
