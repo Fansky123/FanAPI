@@ -79,6 +79,9 @@ export type UserLog = {
   created_at?: string
   updated_at?: string
   corr_id?: string
+  /** 从 billing_transactions 聚合的净扣费积分，后端字段名 credits_charged */
+  credits_charged?: number
+  /** @deprecated 旧字段别名，兼容旧代码 */
   cost_credits?: number
   status?: string
   is_stream?: boolean

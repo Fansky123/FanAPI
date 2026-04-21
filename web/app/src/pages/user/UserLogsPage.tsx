@@ -61,7 +61,7 @@ export function UserLogsPage() {
     setCurrentLog({ ...basicLog })
     try {
       const res = await userApi.getLog(basicLog.id!)
-      setCurrentLog({ ...res, cost_credits: basicLog.cost_credits }) // Merge list data
+      setCurrentLog({ ...res, credits_charged: basicLog.credits_charged ?? basicLog.cost_credits }) // Merge list data
     } catch (e) {
       console.error(e)
     } finally {
@@ -188,8 +188,8 @@ export function UserLogsPage() {
                       ) : <span className="text-muted-foreground/50">—</span>}
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.cost_credits ? (
-                        <span className="font-semibold text-red-500">-{formatCredits(row.cost_credits)}</span>
+                      {(row.credits_charged ?? row.cost_credits) ? (
+                        <span className="font-semibold text-red-500">-{formatCredits(row.credits_charged ?? row.cost_credits)}</span>
                       ) : <span className="text-muted-foreground/50">—</span>}
                     </TableCell>
                     <TableCell className="text-center">{renderStatus(row.status)}</TableCell>
@@ -232,7 +232,7 @@ export function UserLogsPage() {
                   <div className="text-muted-foreground mb-1">输出 Tokens {currentLog.usage?.estimated && <Badge variant="outline" className="ml-1 text-[10px] h-4 py-0">估算</Badge>}</div>
                   <div>{currentLog.usage?.completion_tokens ?? '—'}</div>
                 </div>
-                <div><div className="text-muted-foreground mb-1">消耗积分</div><div className={currentLog.cost_credits ? "text-red-500 font-medium" : ""}>{currentLog.cost_credits ? `-${formatCredits(currentLog.cost_credits)}` : '—'}</div></div>
+                <div><div className="text-muted-foreground mb-1">消耗积分</div><div className={(currentLog.credits_charged ?? currentLog.cost_credits) ? "text-red-500 font-medium" : ""}>{(currentLog.credits_charged ?? currentLog.cost_credits) ? `-${formatCredits(currentLog.credits_charged ?? currentLog.cost_credits)}` : '—'}</div></div>
                 <div><div className="text-muted-foreground mb-1">流式</div><div>{currentLog.is_stream ? '是' : '否'}</div></div>
                 
                 <div><div className="text-muted-foreground mb-1">请求时间</div><div>{currentLog.created_at ? new Date(currentLog.created_at).toLocaleString('zh-CN') : '-'}</div></div>

@@ -77,11 +77,21 @@ export type AdminTask = {
 
 export type AdminLog = {
   id?: number
+  user_id?: number
   model?: string
   created_at?: string
   corr_id?: string
-  cost_credits?: number
+  credits_charged?: number
   status?: string
+  is_stream?: boolean
+  error_msg?: string
+  upstream_status?: number
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    estimated?: boolean
+  }
 }
 
 export type AdminVendor = {
@@ -193,10 +203,9 @@ export const adminApi = {
       { params }
     ),
   listLogs: (params: Record<string, unknown> = {}) =>
-    http.get<{ items?: AdminLog[]; logs?: AdminLog[] } | AdminLog[]>(
-      '/admin/llm-logs',
-      { params }
-    ),
+    http.get<{ logs?: AdminLog[]; items?: AdminLog[]; total?: number }>('/admin/llm-logs', { params }),
+  getLog: (id: number) =>
+    http.get<AdminLog>(`/admin/llm-logs/${id}`),
   getSettings: () =>
     http.get<{ settings?: Record<string, string> } | Record<string, string>>(
       '/admin/settings'

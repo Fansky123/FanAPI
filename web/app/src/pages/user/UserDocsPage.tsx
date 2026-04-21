@@ -13,7 +13,7 @@ export function UserDocsPage() {
         <CardContent className="p-0">
           <iframe
             className="min-h-[75vh] w-full border-0"
-            src="/api/docs"
+            src="/docs"
             title="FanAPI Docs"
           />
         </CardContent>
