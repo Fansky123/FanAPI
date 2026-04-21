@@ -101,8 +101,8 @@ function RootRedirect() {
   if (mode === 'admin' && adminToken) return <Navigate replace to="/admin/dashboard" />
   if (mode === 'agent' && agentToken) return <Navigate replace to="/agent/dashboard" />
   if (mode === 'vendor' && vendorToken) return <Navigate replace to="/vendor/dashboard" />
-  if (userToken) return <Navigate replace to="/dashboard" />
-  return <Navigate replace to="/login" />
+  // Always go to /dashboard — public pages are visible without login
+  return <Navigate replace to="/dashboard" />
 }
 
 export const router = createBrowserRouter([
@@ -121,6 +121,17 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  // Public user routes — visible without login
+  {
+    element: renderLazy(<UserLayout />),
+    errorElement: renderLazy(<AppErrorPage />),
+    children: [
+      { path: '/dashboard', element: renderLazy(<UserDashboardPage />) },
+      { path: '/models', element: renderLazy(<UserModelsPage />) },
+      { path: '/docs', element: renderLazy(<UserDocsPage />) },
+    ],
+  },
+  // Auth-required user routes
   {
     element: <RequireRole role="user" redirectTo="/login" />,
     errorElement: renderLazy(<AppErrorPage />),
@@ -128,8 +139,6 @@ export const router = createBrowserRouter([
       {
         element: renderLazy(<UserLayout />),
         children: [
-          { path: '/dashboard', element: renderLazy(<UserDashboardPage />) },
-          { path: '/models', element: renderLazy(<UserModelsPage />) },
           { path: '/playground', element: renderLazy(<UserPlaygroundPage />) },
           { path: '/image-gen', element: renderLazy(<UserImageGenPage />) },
           { path: '/video-gen', element: renderLazy(<UserVideoGenPage />) },
@@ -137,7 +146,7 @@ export const router = createBrowserRouter([
           { path: '/tasks', element: renderLazy(<UserTasksPage />) },
           { path: '/llm-logs', element: renderLazy(<UserLogsPage />) },
           { path: '/billing', element: renderLazy(<UserBillingPage />) },
-          { path: '/docs', element: renderLazy(<UserDocsPage />) },
+          { path: '/recharge', element: <Navigate replace to="/billing" /> },
           { path: '/stats', element: renderLazy(<UserStatsPage />) },
           { path: '/exchange', element: renderLazy(<UserExchangePage />) },
           { path: '/invite', element: renderLazy(<UserInvitePage />) },

@@ -64,6 +64,7 @@ type NavItem = {
 type NavGroup = {
   label?: string
   items: NavItem[]
+  requiresAuth?: boolean
 }
 
 type ConsoleLayoutProps = {
@@ -97,8 +98,9 @@ export function ConsoleLayout({
   const isLoggedIn = !!getRoleToken(role)
   const displayName = identity?.label
 
-  // Build nav groups from either `groups` or flat `items`
-  const navGroups: NavGroup[] = groups ?? (subtitle ? [{ label: subtitle, items }] : [{ items }])
+  // Build nav groups from either `groups` or flat `items`, filter auth-gated when not logged in
+  const rawGroups: NavGroup[] = groups ?? (subtitle ? [{ label: subtitle, items }] : [{ items }])
+  const navGroups = rawGroups.filter((g) => !g.requiresAuth || isLoggedIn)
 
   // Find current page title from active nav item
   const allItems = navGroups.flatMap((g) => g.items)
@@ -148,25 +150,38 @@ export function ConsoleLayout({
         <SidebarFooter>
           {footer}
           <div className="flex flex-col gap-1 px-1 pb-2">
-            {isLoggedIn && displayName && (
-              <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground">
-                <Avatar className="size-6">
-                  <AvatarFallback className="text-xs">
-                    {displayName.slice(0, 1).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="truncate">{displayName}</span>
+            {isLoggedIn ? (
+              <>
+                {displayName && (
+                  <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground">
+                    <Avatar className="size-6">
+                      <AvatarFallback className="text-xs">
+                        {displayName.slice(0, 1).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="truncate">{displayName}</span>
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start gap-2 text-muted-foreground hover:text-foreground"
+                  onClick={logout}
+                >
+                  <LogOutIcon className="size-4" />
+                  退出登录
+                </Button>
+              </>
+            ) : role === 'user' ? (
+              <div className="flex flex-col gap-1 px-1">
+                <Button asChild size="sm" className="w-full">
+                  <Link to="/login">登录</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="w-full">
+                  <Link to="/register">注册</Link>
+                </Button>
               </div>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="justify-start gap-2 text-muted-foreground hover:text-foreground"
-              onClick={logout}
-            >
-              <LogOutIcon className="size-4" />
-              退出登录
-            </Button>
+            ) : null}
           </div>
         </SidebarFooter>
       </Sidebar>
@@ -177,16 +192,6 @@ export function ConsoleLayout({
             <span className="text-sm font-semibold">{pageTitle}</span>
           </div>
           <div className="flex items-center gap-2">
-            {!isLoggedIn && role === 'user' && (
-              <>
-                <Button asChild size="sm" variant="ghost">
-                  <Link to="/login">登录</Link>
-                </Button>
-                <Button asChild size="sm">
-                  <Link to="/register">免费注册</Link>
-                </Button>
-              </>
-            )}
             {isLoggedIn && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -239,6 +244,7 @@ export const userNavGroups: NavGroup[] = [
   },
   {
     label: '在线体验',
+    requiresAuth: true,
     items: [
       { label: '文本对话', href: '/playground', icon: MessageSquareIcon },
       { label: '图片生成', href: '/image-gen', icon: ImageIcon },
@@ -247,6 +253,7 @@ export const userNavGroups: NavGroup[] = [
   },
   {
     label: '账户管理',
+    requiresAuth: true,
     items: [
       { label: 'API 密钥', href: '/keys', icon: KeySquareIcon },
       { label: '积分充值', href: '/recharge', icon: ShoppingCartIcon },
