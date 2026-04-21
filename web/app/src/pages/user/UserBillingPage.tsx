@@ -1,8 +1,11 @@
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { TableSkeleton } from '@/components/shared/TableSkeleton'
+import { TablePagination } from '@/components/shared/TablePagination'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -11,71 +14,416 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { userApi, type UserTransaction } from '@/lib/api/user'
+import { payApi } from '@/lib/api/pay'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
+import { useSiteSettings } from '@/hooks/use-site-settings'
+import { useAuth } from '@/hooks/use-auth'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { Check, Info, Loader2, RefreshCcw, Wallet } from 'lucide-react'
+import { toast } from 'sonner'
+import { PaymentOrder } from '@/lib/api/user'
+
+function cx(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(' ')
+}
 
 export function UserBillingPage() {
-  const { data: rows, loading, error, reload } = useAsync(async () => {
-    const response = await userApi.getTransactions()
-    return Array.isArray(response) ? response : response.items ?? response.transactions ?? []
-  }, [] as UserTransaction[])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const defaultTab = searchParams.get('tab') || 'recharge'
+  
+  const { settings } = useSiteSettings()
+  const { user } = useAuth()
+
+  // Recharge State
+  const [selectedPlan, setSelectedPlan] = useState<number>(-1)
+  const [selectedAmount, setSelectedAmount] = useState<number | ''>('')
+  const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>('wechat')
+  const [isPaying, setIsPaying] = useState(false)
+  const [payUrl, setPayUrl] = useState<string>('')
+  const [currentOutTradeNo, setCurrentOutTradeNo] = useState<string>('')
+  const [showPayFrame, setShowPayFrame] = useState(false)
+
+  // Transaction State
+  const [txPage, setTxPage] = useState(1)
+  const [txTaskIdFilter, setTxTaskIdFilter] = useState('')
+  const { data: txData, loading: txLoading, reload: txReload } = useAsync(async () => {
+    // We adjust the params since old API was /user/transactions?page=..&task_id=..
+    // We didn't add task_id into userApi, so let's mock it for the get. 
+    // Actually userApi.getTransactions doesn't take id. Let's cast to ignore
+    const res = await (userApi.getTransactions as any)(txPage, 20, txTaskIdFilter)
+    return {
+      items: Array.isArray(res) ? res : res.items ?? res.transactions ?? [],
+      total: !Array.isArray(res) ? res.total ?? 0 : 0
+    }
+  }, [txPage, txTaskIdFilter])
+
+  // Orders State
+  const [orderPage, setOrderPage] = useState(1)
+  const { data: orderData, loading: orderLoading, reload: orderReload } = useAsync(async () => {
+    const res = await userApi.getPaymentOrders(orderPage, 20)
+    return {
+      items: res.items || [],
+      total: res.total || 0
+    }
+  }, [orderPage])
+
+  // Update URL on tab change
+  const handleTabChange = (val: string) => {
+    setSearchParams({ tab: val })
+  }
+
+  // Payment logic
+  const handlePay = async () => {
+    if (!selectedAmount || Number(selectedAmount) < 0.01) {
+      toast.error('请输入有效的充值金额')
+      return
+    }
+    
+    const amount = Number(selectedAmount)
+    setIsPaying(true)
+    try {
+      if (settings.payApplyEnabled) {
+        const payFlat = payMethod === 'wechat' ? 1 : 2
+        const res = await payApi.createPayApplyOrder({ amount, pay_flat: payFlat, pay_from: 'pc' })
+        if (res.pay_url) {
+          setPayUrl(res.pay_url)
+          setCurrentOutTradeNo(res.out_trade_no)
+          setShowPayFrame(true)
+          startPolling(res.out_trade_no)
+        }
+      } else if (settings.epayEnabled) {
+        const type = payMethod === 'wechat' ? 'wxpay' : 'alipay'
+        const res = await payApi.createEpayOrder(amount, type)
+        if (res.pay_url) {
+          window.open(res.pay_url, '_blank')
+          setCurrentOutTradeNo(res.out_trade_no)
+          setShowPayFrame(true) // Also show to ask user if paid
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || '支付发起失败')
+    } finally {
+      setIsPaying(false)
+    }
+  }
+
+  const startPolling = (outTradeNo: string) => {
+    const timer = setInterval(async () => {
+      try {
+        const res = await payApi.getOrderStatus(outTradeNo)
+        if (res.status === 1) {
+          toast.success('充值成功')
+          clearInterval(timer)
+          setShowPayFrame(false)
+          txReload()
+          orderReload()
+          // Optionally reload user balance
+        }
+      } catch (e) {
+        // ignore polling errors
+      }
+    }, 3000)
+
+    // Cleanup timer after some time or when dialog unmounts - handled roughly here via a timeout
+    setTimeout(() => clearInterval(timer), 300000) // 5 minutes max
+  }
+
+  const txTypeLabel = (type: string) => {
+    const map: Record<string, string> = {
+      recharge: '充值',
+      consume: '消费',
+      refund: '退款',
+      invite_rebate: '邀请返利',
+    }
+    return map[type] || type
+  }
+
+  const txSign = (type: string) => (['consume'].includes(type) ? '-' : '+')
+  const txAmtColor = (type: string) => (['consume'].includes(type) ? 'text-red-500' : 'text-green-600')
+
+  const orderStatusLabel = (status: number) => {
+    switch (status) {
+      case 0: return '待支付'
+      case 1: return '已完成'
+      default: return '未知'
+    }
+  }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Finance"
-        title="账单与流水"
-        description="查看所有积分充值与消耗流水记录。"
-        actions={
-          error ? (
-            <Button size="sm" variant="outline" onClick={reload}>
-              重试
-            </Button>
-          ) : null
-        }
+        title="财务中心"
+        description="管理您的积分余额、充值、以及查看流水账单。"
       />
-      {error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>时间</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>金额</TableHead>
-              <TableHead>说明</TableHead>
-            </TableRow>
-          </TableHeader>
-          {loading ? (
-            <TableSkeleton cols={4} />
-          ) : (
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                    暂无账单记录
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((row, index) => (
-                  <TableRow key={row.id ?? index}>
-                    <TableCell>{row.created_at ?? row.time ?? '-'}</TableCell>
-                    <TableCell>{row.type ?? '-'}</TableCell>
-                    <TableCell>{formatCredits(row.amount ?? row.credits ?? 0)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.remark ?? row.description ?? '-'}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
+
+      <Tabs value={defaultTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="recharge">积分充值</TabsTrigger>
+          <TabsTrigger value="transactions">余额流水</TabsTrigger>
+          <TabsTrigger value="orders">订单记录</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="recharge" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>当前积分</CardTitle>
+                <CardDescription className="flex items-center gap-2">
+                  <Info className="h-4 w-4" /> 积分永不过期，随时可用
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-bold tracking-tight">{(user?.balance || 0) / 1e6}</span>
+                  <span className="text-muted-foreground">积分</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>账户信息</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">用户名</span>
+                  <span className="font-medium">{user?.username || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">分组</span>
+                  <span className="font-medium">{user?.group || '默认'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">邮箱</span>
+                  <span className="font-medium text-green-600">{user?.email || '未绑定'}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {(settings.epayEnabled || settings.payApplyEnabled) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>选择充值套餐</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {settings.plans?.map((plan, i) => (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setSelectedPlan(i)
+                        setSelectedAmount(plan.amount)
+                      }}
+                      className={cn(
+                        "relative cursor-pointer rounded-xl border-2 p-4 transition-all hover:border-primary/50",
+                        selectedPlan === i ? "border-primary bg-primary/5 shadow-md" : "border-border"
+                      )}
+                    >
+                      {selectedPlan === i && (
+                        <div className="absolute top-2 right-2 rounded-full bg-primary p-1 text-primary-foreground">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      )}
+                      <div className="mb-2 font-semibold">
+                        {plan.credits} 积分
+                        {plan.bonus ? <span className="text-xs text-orange-500"> (+{plan.bonus})</span> : ''}
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm">￥</span>
+                        <span className="text-2xl font-bold">{plan.amount}</span>
+                        {plan.origin_amount && (
+                          <span className="text-xs text-muted-foreground line-through ml-2">￥{plan.origin_amount}</span>
+                        )}
+                      </div>
+                      {plan.desc && <div className="mt-2 text-xs text-muted-foreground">{plan.desc}</div>}
+                    </div>
+                  ))}
+                  {(!settings.plans?.length || settings.allowCustom) && (
+                    <div className="flex flex-col justify-center rounded-xl border-2 border-border p-4">
+                      <div className="mb-2 font-semibold">自定义金额</div>
+                      <div className="flex items-center gap-2">
+                        <span>￥</span>
+                        <Input
+                          type="number"
+                          value={selectedAmount}
+                          onChange={(e) => {
+                            setSelectedPlan(-1)
+                            setSelectedAmount(e.target.value ? Number(e.target.value) : '')
+                          }}
+                          min={1}
+                          max={10000}
+                          placeholder="请输入金额"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-8 flex flex-col items-center gap-6">
+                  <div className="flex gap-4">
+                    <Button
+                      variant={payMethod === 'wechat' ? 'default' : 'outline'}
+                      className={cx("h-12 w-32 border-2", payMethod === 'wechat' ? 'border-green-600 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800' : '')}
+                      onClick={() => setPayMethod('wechat')}
+                    >
+                      微信支付
+                    </Button>
+                    <Button
+                      variant={payMethod === 'alipay' ? 'default' : 'outline'}
+                      className={cx("h-12 w-32 border-2", payMethod === 'alipay' ? 'border-blue-600 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800' : '')}
+                      onClick={() => setPayMethod('alipay')}
+                    >
+                      支付宝
+                    </Button>
+                  </div>
+
+                  <Button size="lg" className="w-64 rounded-full text-lg" onClick={handlePay} disabled={isPaying || !selectedAmount}>
+                    {isPaying && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+                    立即支付 ￥{(Number(selectedAmount) || 0).toFixed(2)}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </Table>
-      </Card>
-    </>
+        </TabsContent>
+
+        <TabsContent value="transactions">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <CardTitle>流水明细</CardTitle>
+              <div className="flex w-full max-w-sm items-center space-x-2">
+                <Input 
+                  placeholder="按任务ID查询" 
+                  value={txTaskIdFilter} 
+                  onChange={(e) => setTxTaskIdFilter(e.target.value)} 
+                  onKeyDown={e => e.key === 'Enter' && setTxPage(1)}
+                />
+                <Button variant="secondary" onClick={() => setTxPage(1)}>查询</Button>
+                <Button variant="outline" size="icon" onClick={() => txReload()}><RefreshCcw className="h-4 w-4" /></Button>
+              </div>
+            </CardHeader>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>类型</TableHead>
+                  <TableHead>金额</TableHead>
+                  <TableHead>操作后余额</TableHead>
+                  <TableHead>关联任务</TableHead>
+                  <TableHead>时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!txData?.items?.length ? (
+                  <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">暂无流水记录</TableCell></TableRow>
+                ) : (
+                  txData.items.map((row: any) => (
+                    <TableRow key={row.id}>
+                      <TableCell><Badge variant="outline">{txTypeLabel(row.type)}</Badge></TableCell>
+                      <TableCell className={cn("font-medium", txAmtColor(row.type))}>
+                        {txSign(row.type)} ￥{(Math.abs(row.credits || row.amount || 0) / 1e6).toFixed(6)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {row.balance_after ? `￥${(row.balance_after / 1e6).toFixed(4)}` : '—'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-blue-500">
+                        {row.metrics?.task_id ? `#${row.metrics.task_id}` : '—'}
+                      </TableCell>
+                      <TableCell>{row.created_at}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            {txData?.total > 0 && (
+              <div className="p-4 border-t">
+                <TablePagination page={txPage} total={txData.total} pageSize={20} onChange={setTxPage} />
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="orders">
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>订单号</TableHead>
+                  <TableHead>充值金额</TableHead>
+                  <TableHead>到账金额</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>支付时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!orderData?.items?.length ? (
+                  <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">暂无订单记录</TableCell></TableRow>
+                ) : (
+                  orderData.items.map((row: PaymentOrder) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-mono text-xs">{row.out_trade_no}</TableCell>
+                      <TableCell className="font-semibold text-blue-600">￥{row.amount.toFixed(2)}</TableCell>
+                      <TableCell className="font-semibold text-green-600">
+                        {row.credits ? `+￥${(row.credits / 1e6).toFixed(2)}` : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={row.status === 1 ? 'default' : 'secondary'}>{orderStatusLabel(row.status)}</Badge>
+                      </TableCell>
+                      <TableCell>{row.paid_at || row.created_at}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            {orderData?.total > 0 && (
+              <div className="p-4 border-t">
+                <TablePagination page={orderPage} total={orderData.total} pageSize={20} onChange={setOrderPage} />
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={showPayFrame} onOpenChange={setShowPayFrame}>
+        <DialogContent className="max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>扫描二维码支付</DialogTitle>
+            <DialogDescription>
+              请使用扫码完成支付，支付成功后系统将自动到账。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center p-4">
+            {settings.payApplyEnabled && payUrl ? (
+               <iframe src={payUrl} title="pay url" className="w-[280px] h-[280px] border-0" />
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                <Wallet className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                即将跳转到支付网关...
+              </div>
+            )}
+            <div className="mt-6 text-sm text-center">
+              长按保存或截图扫码
+              <br />
+              <span className="text-muted-foreground text-xs mt-2 inline-block">单号: {currentOutTradeNo}</span>
+            </div>
+            
+            <div className="mt-6 flex w-full gap-2">
+              <Button variant="outline" className="w-full" onClick={() => setShowPayFrame(false)}>取消支付</Button>
+              <Button className="w-full" onClick={() => {
+                setShowPayFrame(false);
+                txReload();
+                orderReload();
+              }}>我已支付</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

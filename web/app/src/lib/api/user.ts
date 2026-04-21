@@ -143,3 +143,21 @@ export const userApi = {
       params,
     }),
 }
+
+export interface PaymentOrder {
+  id: number;
+  out_trade_no: string;
+  pay_type: string;
+  amount: number;
+  credits: number;
+  status: number;
+  created_at: string;
+  paid_at?: string;
+}
+
+export const getPaymentOrders = (page = 1, size = 20) =>
+  http.get<{ items: PaymentOrder[]; total: number }>('/user/payment-orders', {
+    params: { page, size },
+  })
+
+userApi.getPaymentOrders = getPaymentOrders;
