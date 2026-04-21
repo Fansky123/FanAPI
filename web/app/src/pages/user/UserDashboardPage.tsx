@@ -1,6 +1,5 @@
-import { BotIcon, CreditCardIcon, SparklesIcon } from 'lucide-react'
+import { CreditCardIcon, SparklesIcon, TrendingUpIcon } from 'lucide-react'
 
-import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -24,21 +23,12 @@ export function UserDashboardPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Overview"
-        title="用户数据看板"
-        description="账户余额与消费概览，以及平台快速操作入口。"
-        actions={
-          error ? (
-            <Button size="sm" variant="outline" onClick={reload}>
-              重试
-            </Button>
-          ) : null
-        }
-      />
       {error ? (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={reload}>重试</Button>
+          </AlertDescription>
         </Alert>
       ) : null}
       {settings.noticeTitle && (
@@ -55,22 +45,19 @@ export function UserDashboardPage() {
         <StatCard
           title="剩余积分"
           value={formatCredits(data.balance)}
-          icon={<CreditCardIcon className="size-4" />}
-          hint="可用余额"
+          icon={<CreditCardIcon />}
           loading={loading}
         />
         <StatCard
-          title="累计消耗"
+          title="累计消耗积分"
           value={formatCredits(data.totalConsumed)}
-          icon={<BotIcon className="size-4" />}
-          hint="历史总消耗"
+          icon={<TrendingUpIcon />}
           loading={loading}
         />
         <StatCard
-          title="今日消耗"
+          title="今日消耗积分"
           value={formatCredits(data.todayConsumed)}
-          icon={<SparklesIcon className="size-4" />}
-          hint="当天调用消耗"
+          icon={<SparklesIcon />}
           loading={loading}
         />
       </div>
@@ -82,8 +69,8 @@ export function UserDashboardPage() {
           <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
             <p>1. 前往「API 密钥」页面创建一个密钥。</p>
             <p>2. 进入「模型列表」查看可用渠道与路由键。</p>
-            <p>3. 使用「对话测试」或「图片生成」体验实际调用效果。</p>
-            <p>4. 在「账单流水」查看每次调用的积分扣减明细。</p>
+            <p>3. 使用「文本对话」或「图片生成」体验实际调用效果。</p>
+            <p>4. 在「我的订单」查看每次调用的积分扣减明细。</p>
           </CardContent>
         </Card>
         <Card>

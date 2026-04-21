@@ -153,8 +153,7 @@ export function UserBillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Finance"
-        title="财务中心"
+        title="我的订单"
         description="管理您的积分余额、充值、以及查看流水账单。"
       />
 

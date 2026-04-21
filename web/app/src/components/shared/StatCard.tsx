@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function StatCard({
   title,
   value,
   icon,
-  hint,
   loading,
 }: {
   title: string
@@ -17,18 +16,21 @@ export function StatCard({
   loading?: boolean
 }) {
   return (
-    <Card className="border-border/70">
-      <CardHeader className="flex flex-row items-start justify-between">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        {icon ? <div className="text-muted-foreground">{icon}</div> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1">
-        {loading ? (
-          <Skeleton className="h-8 w-32" />
-        ) : (
-          <p className="text-2xl font-semibold tracking-tight">{value}</p>
-        )}
-        {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+    <Card className="border-border/60">
+      <CardContent className="flex items-center justify-between pt-6">
+        <div className="flex flex-col gap-1">
+          {loading ? (
+            <Skeleton className="h-8 w-28" />
+          ) : (
+            <p className="text-2xl font-semibold tracking-tight">{value}</p>
+          )}
+          <p className="text-sm text-muted-foreground">{title}</p>
+        </div>
+        {icon ? (
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <span className="[&>svg]:size-5">{icon}</span>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )
