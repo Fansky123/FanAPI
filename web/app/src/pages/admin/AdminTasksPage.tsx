@@ -131,8 +131,7 @@ export function AdminTasksPage() {
   const upstreamURL = (req?: Record<string, unknown>) => req?._url as string | undefined
   const upstreamHeaders = (req?: Record<string, unknown>) => {
     if (!req) return undefined
-    const { _url, _headers, ..._ } = req
-    return _headers as Record<string, unknown> | undefined
+    return req._headers as Record<string, unknown> | undefined
   }
   const upstreamBody = (req?: Record<string, unknown>) => {
     if (!req) return undefined

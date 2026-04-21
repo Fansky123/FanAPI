@@ -20,8 +20,10 @@ export type VendorKey = {
   channel_id?: number
   channel_name?: string
   masked_value?: string
+  key?: string
   total_cost?: number
   my_earn?: number
+  total_profit?: number
   is_active?: boolean
   created_at?: string
 }
