@@ -90,8 +90,10 @@ func applyGroupPricing(cfg map[string]interface{}, group string) map[string]inte
 // CalcActualCost 根据请求 + SSE 响应中的实际用量计算真实总费用（仅用于 LLM token 类型结算）。
 //
 // 无论 input_from_response 如何，结算值始终包含输入 + 输出两部分：
-//   - input_from_response=false：输入 token 数从请求中计算，与 hold 保持一致
-//   - input_from_response=true：输入 token 数从响应 usage 字段读取（更精确）
+//   - input_from_response=false：优先从 metric_paths.input_tokens 配置路径获取请求侧 token 数；
+//     若路径不存在（GPT / Claude / Gemini 等标准 API 均无请求侧 token 字段），则自动降级到
+//     响应 usage.prompt_tokens（实际值），最后才使用字符估算兜底。
+//   - input_from_response=true：直接从响应 usage 字段读取实际输入 token 数。
 func CalcActualCost(ch *model.Channel, req, resp map[string]interface{}) (int64, error) {
 	return CalcActualCostForUser(ch, req, resp, "")
 }
@@ -173,11 +175,20 @@ func CalcActualCostForUser(ch *model.Channel, req, resp map[string]interface{}, 
 	}
 
 	if !getBool(cfg, "input_from_response") {
-		// 输入 token 数从请求中计算（与 hold 阶段保持一致），结算 = 输入 + 实际输出 + 缓存
+		// 输入 token 数优先从请求侧配置路径获取（如某些 API 在请求中预写 token 数）。
+		// 若请求中不存在该字段（GPT/Claude/Gemini 等标准 API 均如此），则降级到响应
+		// usage 中的实际 prompt_tokens，最后才使用字符估算兜底。
+		// 这确保 GPT 等渠道在结算阶段按实际 prompt_tokens 而非估算值计费，与
+		// input_from_response=true 效果相同，但保持对显式设置请求侧路径的渠道的兼容。
 		inputPath := getStr(cfg, "metric_paths.input_tokens", "request.input_tokens")
 		inputTokens, err := getInt64FromData(data, inputPath)
 		if err != nil {
-			inputTokens = estimateTokensFromMessages(req)
+			// 请求中不含精确 token 数时，尝试从响应 usage 读取实际值（更精确）
+			if respTokens, respErr := getInt64FromData(data, "response.usage.prompt_tokens"); respErr == nil && respTokens > 0 {
+				inputTokens = respTokens
+			} else {
+				inputTokens = estimateTokensFromMessages(req)
+			}
 		}
 		return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 	}
@@ -564,7 +575,12 @@ func CalcActualUpstreamCost(ch *model.Channel, req, resp map[string]interface{})
 		inputPath := getStr(cfg, "metric_paths.input_tokens", "request.input_tokens")
 		inputTokens, err := getInt64FromData(data, inputPath)
 		if err != nil {
-			inputTokens = estimateTokensFromMessages(req)
+			// 请求中不含精确 token 数时，尝试从响应 usage 读取实际值（与 CalcActualCostForUser 一致）
+			if respTokens, respErr := getInt64FromData(data, "response.usage.prompt_tokens"); respErr == nil && respTokens > 0 {
+				inputTokens = respTokens
+			} else {
+				inputTokens = estimateTokensFromMessages(req)
+			}
 		}
 		return calcInputCost(inputTokens) + outputCost + cacheCost, nil
 	}
