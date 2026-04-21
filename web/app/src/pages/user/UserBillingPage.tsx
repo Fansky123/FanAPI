@@ -111,7 +111,7 @@ export function UserBillingPage() {
     const timer = setInterval(async () => {
       try {
         const res = await payApi.getOrderStatus(outTradeNo)
-        if (res.status === 1) {
+        if (res.status === 'paid') {
           toast.success('充值成功')
           clearInterval(timer)
           setShowPayFrame(false)

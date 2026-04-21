@@ -57,8 +57,9 @@ func getSettingValue(key string) string {
 }
 
 type epayCreateReq struct {
-	Amount float64 `json:"amount" binding:"required,min=0.01"` // 充值金额（元），最低 0.01
-	Type   string  `json:"type" binding:"required"`            // alipay / wxpay
+	Amount  float64 `json:"amount" binding:"required,min=0.01"` // 充值金额（元），最低 0.01
+	Type    string  `json:"type"`                               // alipay / wxpay
+	PayType string  `json:"pay_type"`                           // 兼容旧前端字段
 }
 
 // CreateEpayOrder creates a payment order and returns the payment redirect URL.
@@ -67,6 +68,20 @@ func CreateEpayOrder(c *gin.Context) {
 	var req epayCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	payType := strings.TrimSpace(req.Type)
+	if payType == "" {
+		payType = strings.TrimSpace(req.PayType)
+	}
+	switch payType {
+	case "wechat", "wxpay":
+		payType = "wxpay"
+	case "alipay":
+		payType = "alipay"
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "支付类型无效，仅支持 alipay 或 wxpay"})
 		return
 	}
 
@@ -105,7 +120,7 @@ func CreateEpayOrder(c *gin.Context) {
 
 	params := map[string]string{
 		"pid":          epayPid,
-		"type":         req.Type,
+		"type":         payType,
 		"notify_url":   notifyURL,
 		"return_url":   returnURL,
 		"name":         siteName + " 余额充值",
