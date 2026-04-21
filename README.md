@@ -31,20 +31,6 @@
 | 动态脚本 | goja (JavaScript) |
 | 前端 | Vue 3 + Vite |
 
-## 新前端重构状态
-
-仓库已开始并行重构新前端：
-
-- 新前端目录：`web/app`
-- 技术栈：`React + Vite + Tailwind CSS + shadcn/ui`
-- 最高级设计规范：`DESIGN.md`
-
-当前策略：
-
-- 旧前端 `web/user` 暂时保留
-- 新前端 `web/app` 作为替换版本逐步补齐
-- 第一阶段优先覆盖用户端与管理后台
-
 ## 依赖服务
 
 - PostgreSQL（默认端口 5433）
@@ -73,27 +59,6 @@ bash scripts/start.sh
 - 用户端：`http://localhost:3000`
 - 管理后台：`http://localhost:3000/admin`
 - API 文档：`http://localhost:8080/docs`
-
-### 新前端单独启动
-
-```bash
-cd web/app
-pnpm install
-pnpm dev
-```
-
-前端默认运行在：
-
-- 新前端：`http://localhost:3000`
-
-常用命令：
-
-```bash
-cd web/app
-pnpm build
-pnpm lint
-pnpm test:e2e
-```
 
 ### 3. 默认账号
 

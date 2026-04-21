@@ -2,12 +2,8 @@
 node_modules/
 web/admin/node_modules/
 web/user/node_modules/
-web/app/node_modules/
 web/admin/dist/
 web/user/dist/
-web/app/dist/
-web/app/playwright-report/
-web/app/test-results/
 
 # Go build outputs
 /tmp/fanapi-server
@@ -22,8 +18,6 @@ docs/swagger.yaml
 .env
 .env.*
 config.local.yaml
-id_ed25519
-id_ed25519.pub
 
 # Logs
 *.log
@@ -31,11 +25,3 @@ id_ed25519.pub
 # OS
 .DS_Store
 Thumbs.db
-
-# Project-local agent tooling
-.augment/
-.claude/
-.crush/
-.goose/
-.kiro/
-.omx/
