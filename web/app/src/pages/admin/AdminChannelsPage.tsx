@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { PlusIcon, SaveIcon } from 'lucide-react'
+import { CopyIcon, PlusIcon, SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
@@ -286,6 +286,51 @@ export function AdminChannelsPage() {
     setMutError('')
   }
 
+  function openCopy(row: AdminChannel) {
+    setForm({
+      name: (row.name ?? '') + ' - 副本',
+      model: row.model ?? row.routing_model ?? '',
+      type: row.type ?? 'llm',
+      protocol: row.protocol ?? 'openai',
+      base_url: row.base_url ?? '',
+      method: row.method ?? 'POST',
+      query_url: row.query_url ?? '',
+      query_method: row.query_method ?? 'GET',
+      timeout_ms: String(row.timeout_ms ?? 60000),
+      query_timeout_ms: String(row.query_timeout_ms ?? 30000),
+      billing_type: row.billing_type ?? 'token',
+      headers_text: prettyJson(row.headers),
+      billing_input_price: getNum(row.billing_config ?? {}, 'input_price_per_1m_tokens'),
+      billing_output_price: getNum(row.billing_config ?? {}, 'output_price_per_1m_tokens'),
+      billing_input_cost: getNum(row.billing_config ?? {}, 'input_cost_per_1m_tokens'),
+      billing_output_cost: getNum(row.billing_config ?? {}, 'output_cost_per_1m_tokens'),
+      billing_cache_read_price: getNum(row.billing_config ?? {}, 'cache_read_price_per_1m_tokens'),
+      billing_cache_read_cost: getNum(row.billing_config ?? {}, 'cache_read_cost_per_1m_tokens'),
+      billing_input_from_response: Boolean(row.billing_config?.input_from_response),
+      billing_base_price: getNum(row.billing_config ?? {}, 'base_price'),
+      billing_default_size_price: getNum(row.billing_config ?? {}, 'default_size_price'),
+      billing_price_per_second: getNum(row.billing_config ?? {}, 'price_per_second'),
+      billing_price_per_call: getNum(row.billing_config ?? {}, 'price_per_call'),
+      billing_script: row.billing_script ?? '',
+      request_script: row.request_script ?? '',
+      response_script: row.response_script ?? '',
+      query_script: row.query_script ?? '',
+      error_script: row.error_script ?? '',
+      key_pool_id: row.key_pool_id ? String(row.key_pool_id) : '',
+      auth_type: row.auth_type ?? 'bearer',
+      auth_param_name: row.auth_param_name ?? '',
+      auth_region: row.auth_region ?? '',
+      auth_service: row.auth_service ?? '',
+      weight: String(row.weight ?? 1),
+      priority: String(row.priority ?? 0),
+      icon_url: row.icon_url ?? '',
+      description: row.description ?? '',
+      is_active: row.is_active ?? true,
+    })
+    setOpen(true)
+    setMutError('')
+  }
+
   async function saveChannel() {
     setMutError('')
     try {
@@ -431,6 +476,10 @@ export function AdminChannelsPage() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                        <Button size="sm" variant="outline" onClick={() => openCopy(row)}>
+                          <CopyIcon data-icon="inline-start" />
+                          复制
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
                           {row.is_active === false ? '启用' : '停用'}
                         </Button>
