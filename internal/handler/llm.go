@@ -394,6 +394,8 @@ func llmProxy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "读取请求体失败"})
 		return
 	}
+	// 保存原始请求体字节，供 passthrough_body 模式使用（在任何解析或修改之前）
+	c.Set("raw_body", bodyBytes)
 	var reqData map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &reqData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体 JSON 格式错误"})
@@ -493,7 +495,8 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	// 客户端格式 ≠ 渠道格式时，需要请求格式转换链：
 	//   客户端格式 → OpenAI（若客户端本身就是 OpenAI 则跳过） → 渠道格式（若渠道本身是 OpenAI 则跳过）
 	// 客户端格式 == 渠道格式时直接透传，不做任何转换。
-	if clientProto != proto && ch.RequestScript == "" {
+	// passthrough_body=true 时跳过所有转换，直接使用原始请求体字节。
+	if !ch.PassthroughBody && clientProto != proto && ch.RequestScript == "" {
 		working := reqData
 		// Step 1: 客户端格式 → OpenAI
 		if clientProto != protocolOpenAI {
@@ -537,8 +540,9 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// 2. request_script（JS）映射（有脚本时跳过自动协议转换，由脚本自行处理）
+	// passthrough_body=true 时也跳过脚本，确保请求体不被任何逻辑修改。
 	mappedReq := reqData
-	if ch.RequestScript != "" {
+	if !ch.PassthroughBody && ch.RequestScript != "" {
 		mapped, scriptErr := script.RunMapRequest(ch.RequestScript, reqData, poolKeyValue)
 		if scriptErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "入参映射错误: " + scriptErr.Error()})
@@ -548,14 +552,16 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	}
 
 	// 3a. Claude 渠道：补全必填字段（max_tokens 为 Claude API 强制要求，无论客户端格式如何）
-	if proto == protocolClaude {
+	// passthrough_body=true 时跳过，避免破坏原始请求体的完整性签名。
+	if !ch.PassthroughBody && proto == protocolClaude {
 		if _, ok := mappedReq["max_tokens"]; !ok {
 			mappedReq["max_tokens"] = 4096
 		}
 	}
 
 	// 3b. 流式注入 include_usage（OpenAI 协议专用）
-	if isStream && proto == protocolOpenAI {
+	// passthrough_body=true 时跳过，避免修改原始请求体。
+	if !ch.PassthroughBody && isStream && proto == protocolOpenAI {
 		mappedReq["stream"] = true
 		if _, hasOpts := mappedReq["stream_options"]; !hasOpts {
 			mappedReq["stream_options"] = map[string]interface{}{"include_usage": true}
@@ -1059,7 +1065,18 @@ func buildStreamClientResponse(lines []string, proto string) model.JSON {
 //   - "basic"      HTTP Basic Auth，KEY 格式为 "user:pass"
 //   - "sigv4"      AWS Signature V4，KEY 格式为 "ACCESS_KEY:SECRET_KEY"
 func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interface{}, poolKey *model.PoolKey, proto string, resolvedModel string, isStream bool) (map[string]string, *http.Response, error) {
-	body, _ := json.Marshal(reqData)
+	// passthrough_body=true：直接使用客户端原始请求体，不做任何序列化/修改
+	var body []byte
+	if ch.PassthroughBody {
+		if rb, ok := c.Get("raw_body"); ok {
+			if rawBytes, ok := rb.([]byte); ok {
+				body = rawBytes
+			}
+		}
+	}
+	if len(body) == 0 {
+		body, _ = json.Marshal(reqData)
+	}
 	timeout := time.Duration(ch.TimeoutMs) * time.Millisecond
 	httpClient := &http.Client{Timeout: timeout}
 
@@ -1091,6 +1108,27 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	}
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
+
+	// passthrough_headers=true：将客户端请求头原样转发给上游，
+	// 保留 User-Agent、Anthropic-Version、Anthropic-Beta 等身份标识头。
+	// 渠道 Headers（如 Authorization）在之后写入，可覆盖客户端头。
+	if ch.PassthroughHeaders {
+		// 跳过这些头：Authorization（由渠道 Headers 覆盖）、逐跳传输头、路由元数据头
+		passthroughSkip := map[string]bool{
+			"Authorization":    true,
+			"Host":             true,
+			"Content-Length":   true,
+			"Transfer-Encoding": true,
+			"Connection":       true,
+			"Upgrade":          true,
+			"Proxy-Connection": true,
+		}
+		for k, vals := range c.Request.Header {
+			if !passthroughSkip[k] {
+				upReq.Header[k] = vals
+			}
+		}
+	}
 
 	// 将渠道 Headers 里的占位符替换后写入请求
 	// 支持 {{pool_key}} / {{}} 注入号池 Key，以及其他动态占位符

@@ -68,6 +68,13 @@ type Channel struct {
 	// sigv4 认证所需：region 和 service（可选，默认 us-east-1 / execute-api）
 	AuthRegion  string `xorm:"default('') 'auth_region'" json:"auth_region"`
 	AuthService string `xorm:"default('') 'auth_service'" json:"auth_service"`
+	// 透传选项（用于需要原始请求完整性校验的平台，如 openclaudecode.cn）：
+	// passthrough_headers=true：将客户端请求头（除 Authorization、Host 等跳转头外）原样转发给上游，
+	//   保留 User-Agent、Anthropic-Version 等平台身份标识头。
+	// passthrough_body=true：跳过所有请求体变换（协议转换、max_tokens 注入、stream_options 注入、
+	//   request_script），将客户端原始请求体字节原样转发，防止破坏上游的请求体完整性签名校验。
+	PassthroughHeaders bool `xorm:"notnull default(false) 'passthrough_headers'" json:"passthrough_headers"`
+	PassthroughBody    bool `xorm:"notnull default(false) 'passthrough_body'" json:"passthrough_body"`
 	// 负载均衡
 	Weight   int  `xorm:"notnull default(1) 'weight'" json:"weight"`     // 加权随机权重，越大被选中概率越高
 	Priority int  `xorm:"notnull default(0) 'priority'" json:"priority"` // 优先级，越大越优先（同模型多渠道时）
