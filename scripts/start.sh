@@ -57,15 +57,15 @@ echo $! > /tmp/script.pid
 # ---------- 前端（需要 Node.js） ----------
 if command -v npm &>/dev/null; then
     echo ">>> 启动前端 (port 3000)..."
-    cd "$ROOT/web/user"
+    cd "$ROOT/web/app"
     [ ! -d node_modules ] && npm install --silent
-    npm run dev -- --host 0.0.0.0 &>/tmp/user-web.log &
-    echo $! > /tmp/user-web.pid
+    npm run dev -- --host 0.0.0.0 &>/tmp/app-web.log &
+    echo $! > /tmp/app-web.pid
 
     cd "$ROOT"
 else
     echo "    [跳过前端] 未找到 npm，请手动运行:"
-    echo "      cd web/user  && npm install && npm run dev"
+    echo "      cd web/app  && npm install && npm run dev"
     echo "      cd web/admin && npm install && npm run dev"
 fi
 
@@ -78,7 +78,7 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  API Server:    http://localhost:8080"
     echo "  API 文档:      http://localhost:8080/docs"
     if command -v npm &>/dev/null; then
-    echo "  前端:          http://localhost:3000 (或 3001，见 /tmp/user-web.log)"
+    echo "  前端:          http://localhost:3000 (或 3001，见 /tmp/app-web.log)"
     echo "  管理端:        http://localhost:3000/admin"
     fi
     echo ""
@@ -88,7 +88,7 @@ if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     echo "  server 日志:   tail -f /tmp/server.log"
     echo "  worker 日志:   tail -f /tmp/script.log"
     if command -v npm &>/dev/null; then
-    echo "  前端日志:      tail -f /tmp/user-web.log"
+    echo "  前端日志:      tail -f /tmp/app-web.log"
     fi
 else
     echo "启动失败，查看日志: cat /tmp/server.log"
