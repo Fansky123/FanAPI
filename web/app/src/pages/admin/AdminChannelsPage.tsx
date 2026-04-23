@@ -79,6 +79,8 @@ type ChannelForm = {
   auth_param_name: string
   auth_region: string
   auth_service: string
+  passthrough_headers: boolean
+  passthrough_body: boolean
   weight: string
   priority: string
   icon_url: string
@@ -122,6 +124,8 @@ const emptyForm: ChannelForm = {
   auth_param_name: '',
   auth_region: '',
   auth_service: '',
+  passthrough_headers: false,
+  passthrough_body: false,
   weight: '1',
   priority: '0',
   icon_url: '',
@@ -276,6 +280,8 @@ export function AdminChannelsPage() {
       auth_param_name: row.auth_param_name ?? '',
       auth_region: row.auth_region ?? '',
       auth_service: row.auth_service ?? '',
+      passthrough_headers: row.passthrough_headers ?? false,
+      passthrough_body: row.passthrough_body ?? false,
       weight: String(row.weight ?? 1),
       priority: String(row.priority ?? 0),
       icon_url: row.icon_url ?? '',
@@ -321,6 +327,8 @@ export function AdminChannelsPage() {
       auth_param_name: row.auth_param_name ?? '',
       auth_region: row.auth_region ?? '',
       auth_service: row.auth_service ?? '',
+      passthrough_headers: row.passthrough_headers ?? false,
+      passthrough_body: row.passthrough_body ?? false,
       weight: String(row.weight ?? 1),
       priority: String(row.priority ?? 0),
       icon_url: row.icon_url ?? '',
@@ -358,6 +366,8 @@ export function AdminChannelsPage() {
         auth_param_name: form.auth_param_name.trim(),
         auth_region: form.auth_region.trim(),
         auth_service: form.auth_service.trim(),
+        passthrough_headers: form.passthrough_headers,
+        passthrough_body: form.passthrough_body,
         weight: Number(form.weight || '1'),
         priority: Number(form.priority || '0'),
         icon_url: form.icon_url.trim(),
@@ -597,6 +607,31 @@ export function AdminChannelsPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">AWS Service</label>
                   <Input value={form.auth_service} onChange={(event) => setForm((current) => ({ ...current, auth_service: event.target.value }))} placeholder="execute-api（sigv4 认证用）" />
+                </div>
+
+                <div className="border-t pt-4 md:col-span-2" />
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="channel-passthrough-headers"
+                    type="checkbox"
+                    checked={form.passthrough_headers}
+                    onChange={(event) => setForm((current) => ({ ...current, passthrough_headers: event.target.checked }))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <label htmlFor="channel-passthrough-headers" className="cursor-pointer text-sm font-medium">透传请求头（passthrough_headers）</label>
+                  <span className="text-xs text-muted-foreground">将客户端 User-Agent、Anthropic-Version 等头原样转发给上游</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="channel-passthrough-body"
+                    type="checkbox"
+                    checked={form.passthrough_body}
+                    onChange={(event) => setForm((current) => ({ ...current, passthrough_body: event.target.checked }))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <label htmlFor="channel-passthrough-body" className="cursor-pointer text-sm font-medium">透传请求体（passthrough_body）</label>
+                  <span className="text-xs text-muted-foreground">跳过协议转换和脚本，原样转发原始请求体（适用于签名校验场景）</span>
                 </div>
 
                 <div className="border-t pt-4 md:col-span-2" />

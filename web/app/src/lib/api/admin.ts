@@ -56,6 +56,8 @@ export type AdminChannel = {
   auth_param_name?: string
   auth_region?: string
   auth_service?: string
+  passthrough_headers?: boolean
+  passthrough_body?: boolean
   weight?: number
   priority?: number
   icon_url?: string
