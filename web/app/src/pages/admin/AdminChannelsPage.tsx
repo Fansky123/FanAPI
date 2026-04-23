@@ -121,6 +121,7 @@ type PricingGroupForm = {
 
 const emptyJson = '{}'
 const sizeTierKeys = ['1k', '2k', '3k', '4k'] as const
+const creditsPrecision = 1_000_000
 const structuredBillingConfigKeys = new Set([
   'input_price_per_1m_tokens',
   'output_price_per_1m_tokens',
@@ -244,9 +245,48 @@ function parseJsonField(label: string, value: string) {
   }
 }
 
+function parseAmount(value: unknown) {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function formatCnyValue(value: number) {
+  return value.toFixed(6).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1')
+}
+
+function toCnyInput(value: unknown): string {
+  const amount = parseAmount(value)
+  if (amount === undefined) {
+    return ''
+  }
+  return formatCnyValue(amount / creditsPrecision)
+}
+
+function formatCnyDisplay(value: unknown): string {
+  const amount = parseAmount(value)
+  if (amount === undefined) {
+    return 'CNY 0'
+  }
+  return `CNY ${formatCnyValue(amount / creditsPrecision)}`
+}
+
+function fromCnyInput(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) {
+    return undefined
+  }
+  return Math.round(parsed * creditsPrecision)
+}
+
 function getNum(cfg: Record<string, unknown>, key: string): string {
-  const v = cfg[key]
-  return v !== undefined && v !== null ? String(v) : ''
+  return toCnyInput(cfg[key])
 }
 
 function getTierNum(cfg: Record<string, unknown>, key: 'size_prices' | 'size_costs', tier: (typeof sizeTierKeys)[number]): string {
@@ -255,7 +295,7 @@ function getTierNum(cfg: Record<string, unknown>, key: 'size_prices' | 'size_cos
     return ''
   }
   const value = (raw as Record<string, unknown>)[tier]
-  return value !== undefined && value !== null ? String(value) : ''
+  return toCnyInput(value)
 }
 
 function buildAdvancedBillingConfigText(cfg: Record<string, unknown>) {
@@ -269,7 +309,10 @@ function buildSizeMap(entries: Array<[string, string]>) {
   const mapped = Object.fromEntries(
     entries
       .filter(([, value]) => value.trim() !== '')
-      .map(([key, value]) => [key, Number(value)])
+      .flatMap(([key, value]) => {
+        const parsed = fromCnyInput(value)
+        return parsed === undefined ? [] : [[key, parsed]]
+      })
   )
   return Object.keys(mapped).length > 0 ? mapped : undefined
 }
@@ -316,10 +359,11 @@ function buildPricingGroups(groups: PricingGroupForm[], billingType: string): Re
     }
 
     const setNumber = (key: string, value: string) => {
-      if (value.trim() === '') {
+      const parsed = fromCnyInput(value)
+      if (parsed === undefined) {
         return
       }
-      override[key] = Number(value)
+      override[key] = parsed
     }
 
     switch (billingType) {
@@ -375,27 +419,27 @@ function formatBillingSummary(billingType: string | undefined, cfg: Record<strin
 
   switch (billingType) {
     case 'token':
-      return `输入 ${cfg[inputKey] ?? 0} / 输出 ${cfg[outputKey] ?? 0}`
+      return `输入 ${formatCnyDisplay(cfg[inputKey])} / 输出 ${formatCnyDisplay(cfg[outputKey])}`
     case 'image': {
       const sizePrices = cfg[sizeMapKey]
       if (sizePrices && typeof sizePrices === 'object' && !Array.isArray(sizePrices)) {
         const parts = sizeTierKeys
           .map((key) => {
             const value = (sizePrices as Record<string, unknown>)[key]
-            return value !== undefined && value !== null && value !== 0 ? `${key}:${value}` : null
+            return value !== undefined && value !== null && value !== 0 ? `${key}:${formatCnyDisplay(value)}` : null
           })
           .filter(Boolean)
         if (parts.length > 0) {
           return parts.join(' / ')
         }
       }
-      return `基础 ${cfg[defaultSizeKey] ?? cfg[baseKey] ?? 0}`
+      return `基础 ${formatCnyDisplay(cfg[defaultSizeKey] ?? cfg[baseKey] ?? 0)}`
     }
     case 'video':
     case 'audio':
-      return `${cfg[pricePerSecondKey] ?? 0} /秒`
+      return `${formatCnyDisplay(cfg[pricePerSecondKey] ?? 0)} /秒`
     case 'count':
-      return `${cfg[pricePerCallKey] ?? 0} /次`
+      return `${formatCnyDisplay(cfg[pricePerCallKey] ?? 0)} /次`
     default:
       return '—'
   }
@@ -434,10 +478,11 @@ function buildBillingConfig(form: ChannelForm): Record<string, unknown> {
   }
 
   const setNumber = (key: string, value: string) => {
-    if (value.trim() === '') {
+    const parsed = fromCnyInput(value)
+    if (parsed === undefined) {
       return
     }
-    cfg[key] = Number(value)
+    cfg[key] = parsed
   }
 
   switch (form.billing_type) {
@@ -828,7 +873,7 @@ export function AdminChannelsPage() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-[1224px]">
           <DialogHeader>
             <DialogTitle>{form.id ? '编辑渠道' : '新增渠道'}</DialogTitle>
             <DialogDescription>覆盖上游接入所需的核心字段。</DialogDescription>
@@ -1016,44 +1061,44 @@ export function AdminChannelsPage() {
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">用户侧价格</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">输入价格（/百万 token）</label>
-                      <Input type="number" value={form.billing_input_price} onChange={(e) => setForm((c) => ({ ...c, billing_input_price: e.target.value }))} placeholder="如 740000" />
+                      <label className="text-sm font-medium">输入价格（CNY / 百万 token）</label>
+                      <Input type="number" value={form.billing_input_price} onChange={(e) => setForm((c) => ({ ...c, billing_input_price: e.target.value }))} placeholder="如 0.74" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">输出价格（/百万 token）</label>
-                      <Input type="number" value={form.billing_output_price} onChange={(e) => setForm((c) => ({ ...c, billing_output_price: e.target.value }))} placeholder="如 5900000" />
+                      <label className="text-sm font-medium">输出价格（CNY / 百万 token）</label>
+                      <Input type="number" value={form.billing_output_price} onChange={(e) => setForm((c) => ({ ...c, billing_output_price: e.target.value }))} placeholder="如 5.9" />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">成本侧价格</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">输入成本（/百万 token）</label>
-                      <Input type="number" value={form.billing_input_cost} onChange={(e) => setForm((c) => ({ ...c, billing_input_cost: e.target.value }))} placeholder="如 612000" />
+                      <label className="text-sm font-medium">输入成本（CNY / 百万 token）</label>
+                      <Input type="number" value={form.billing_input_cost} onChange={(e) => setForm((c) => ({ ...c, billing_input_cost: e.target.value }))} placeholder="如 0.612" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">输出成本（/百万 token）</label>
-                      <Input type="number" value={form.billing_output_cost} onChange={(e) => setForm((c) => ({ ...c, billing_output_cost: e.target.value }))} placeholder="如 4900000" />
+                      <label className="text-sm font-medium">输出成本（CNY / 百万 token）</label>
+                      <Input type="number" value={form.billing_output_cost} onChange={(e) => setForm((c) => ({ ...c, billing_output_cost: e.target.value }))} placeholder="如 4.9" />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">缓存写入（留空按协议默认倍率）</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">缓存写入价格（/百万 token）</label>
+                      <label className="text-sm font-medium">缓存写入价格（CNY / 百万 token）</label>
                       <Input type="number" value={form.billing_cache_create_price} onChange={(e) => setForm((c) => ({ ...c, billing_cache_create_price: e.target.value }))} placeholder="留空按协议默认" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">缓存写入成本（/百万 token）</label>
+                      <label className="text-sm font-medium">缓存写入成本（CNY / 百万 token）</label>
                       <Input type="number" value={form.billing_cache_create_cost} onChange={(e) => setForm((c) => ({ ...c, billing_cache_create_cost: e.target.value }))} placeholder="留空按协议默认" />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">缓存（留空按协议默认倍率）</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">缓存读取价格（/百万 token）</label>
+                      <label className="text-sm font-medium">缓存读取价格（CNY / 百万 token）</label>
                       <Input type="number" value={form.billing_cache_read_price} onChange={(e) => setForm((c) => ({ ...c, billing_cache_read_price: e.target.value }))} placeholder="留空按协议默认" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">缓存读取成本（/百万 token）</label>
+                      <label className="text-sm font-medium">缓存读取成本（CNY / 百万 token）</label>
                       <Input type="number" value={form.billing_cache_read_cost} onChange={(e) => setForm((c) => ({ ...c, billing_cache_read_cost: e.target.value }))} placeholder="留空按协议默认" />
                     </div>
                     <div className="flex items-center gap-2 md:col-span-2">
@@ -1078,55 +1123,55 @@ export function AdminChannelsPage() {
                       <p className="text-xs text-muted-foreground">填写后按 1k/2k/3k/4k 档位优先计费；留空则使用基础价格 + resolution_tiers。</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">1k 售价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_price_1k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_1k: e.target.value }))} placeholder="如 3000000" />
+                      <label className="text-sm font-medium">1k 售价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_price_1k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_1k: e.target.value }))} placeholder="如 3" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">1k 进价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_cost_1k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_1k: e.target.value }))} placeholder="如 2500000" />
+                      <label className="text-sm font-medium">1k 进价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_cost_1k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_1k: e.target.value }))} placeholder="如 2.5" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">2k 售价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_price_2k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_2k: e.target.value }))} placeholder="如 5000000" />
+                      <label className="text-sm font-medium">2k 售价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_price_2k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_2k: e.target.value }))} placeholder="如 5" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">2k 进价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_cost_2k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_2k: e.target.value }))} placeholder="如 4200000" />
+                      <label className="text-sm font-medium">2k 进价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_cost_2k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_2k: e.target.value }))} placeholder="如 4.2" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">3k 售价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_price_3k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_3k: e.target.value }))} placeholder="如 7000000" />
+                      <label className="text-sm font-medium">3k 售价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_price_3k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_3k: e.target.value }))} placeholder="如 7" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">3k 进价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_cost_3k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_3k: e.target.value }))} placeholder="如 6200000" />
+                      <label className="text-sm font-medium">3k 进价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_cost_3k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_3k: e.target.value }))} placeholder="如 6.2" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">4k 售价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_price_4k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_4k: e.target.value }))} placeholder="如 9000000" />
+                      <label className="text-sm font-medium">4k 售价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_price_4k} onChange={(e) => setForm((c) => ({ ...c, billing_size_price_4k: e.target.value }))} placeholder="如 9" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">4k 进价（credits / 张）</label>
-                      <Input type="number" value={form.billing_size_cost_4k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_4k: e.target.value }))} placeholder="如 7800000" />
+                      <label className="text-sm font-medium">4k 进价（CNY / 张）</label>
+                      <Input type="number" value={form.billing_size_cost_4k} onChange={(e) => setForm((c) => ({ ...c, billing_size_cost_4k: e.target.value }))} placeholder="如 7.8" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">兜底尺寸售价（credits）</label>
+                      <label className="text-sm font-medium">兜底尺寸售价（CNY）</label>
                       <Input type="number" value={form.billing_default_size_price} onChange={(e) => setForm((c) => ({ ...c, billing_default_size_price: e.target.value }))} placeholder="size 不在表中时使用" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">兜底尺寸进价（credits）</label>
+                      <label className="text-sm font-medium">兜底尺寸进价（CNY）</label>
                       <Input type="number" value={form.billing_default_size_cost} onChange={(e) => setForm((c) => ({ ...c, billing_default_size_cost: e.target.value }))} placeholder="size 不在表中时使用" />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">基础价格（档位留空时生效）</p>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">基础价格（credits）</label>
-                      <Input type="number" value={form.billing_base_price} onChange={(e) => setForm((c) => ({ ...c, billing_base_price: e.target.value }))} placeholder="如 5000000" />
+                      <label className="text-sm font-medium">基础价格（CNY）</label>
+                      <Input type="number" value={form.billing_base_price} onChange={(e) => setForm((c) => ({ ...c, billing_base_price: e.target.value }))} placeholder="如 5" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">基础进价（credits）</label>
-                      <Input type="number" value={form.billing_base_cost} onChange={(e) => setForm((c) => ({ ...c, billing_base_cost: e.target.value }))} placeholder="如 4200000" />
+                      <label className="text-sm font-medium">基础进价（CNY）</label>
+                      <Input type="number" value={form.billing_base_cost} onChange={(e) => setForm((c) => ({ ...c, billing_base_cost: e.target.value }))} placeholder="如 4.2" />
                     </div>
                   </>
                 )}
@@ -1134,12 +1179,12 @@ export function AdminChannelsPage() {
                 {(form.billing_type === 'video' || form.billing_type === 'audio') && (
                   <>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">售价（credits / 秒）</label>
-                      <Input type="number" value={form.billing_price_per_second} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_second: e.target.value }))} placeholder="如 10000" />
+                      <label className="text-sm font-medium">售价（CNY / 秒）</label>
+                      <Input type="number" value={form.billing_price_per_second} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_second: e.target.value }))} placeholder="如 0.01" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">进价（credits / 秒）</label>
-                      <Input type="number" value={form.billing_cost_per_second} onChange={(e) => setForm((c) => ({ ...c, billing_cost_per_second: e.target.value }))} placeholder="如 8000" />
+                      <label className="text-sm font-medium">进价（CNY / 秒）</label>
+                      <Input type="number" value={form.billing_cost_per_second} onChange={(e) => setForm((c) => ({ ...c, billing_cost_per_second: e.target.value }))} placeholder="如 0.008" />
                     </div>
                   </>
                 )}
@@ -1147,12 +1192,12 @@ export function AdminChannelsPage() {
                 {form.billing_type === 'count' && (
                   <>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">售价（credits / 次）</label>
-                      <Input type="number" value={form.billing_price_per_call} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_call: e.target.value }))} placeholder="如 1000" />
+                      <label className="text-sm font-medium">售价（CNY / 次）</label>
+                      <Input type="number" value={form.billing_price_per_call} onChange={(e) => setForm((c) => ({ ...c, billing_price_per_call: e.target.value }))} placeholder="如 0.001" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">进价（credits / 次）</label>
-                      <Input type="number" value={form.billing_cost_per_call} onChange={(e) => setForm((c) => ({ ...c, billing_cost_per_call: e.target.value }))} placeholder="如 800" />
+                      <label className="text-sm font-medium">进价（CNY / 次）</label>
+                      <Input type="number" value={form.billing_cost_per_call} onChange={(e) => setForm((c) => ({ ...c, billing_cost_per_call: e.target.value }))} placeholder="如 0.0008" />
                     </div>
                   </>
                 )}
@@ -1202,21 +1247,21 @@ export function AdminChannelsPage() {
                               {form.billing_type === 'token' ? (
                                 <>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">输入售价（/百万 token）</label>
+                                    <label className="text-sm font-medium">输入售价（CNY / 百万 token）</label>
                                     <Input
                                       type="number"
                                       value={group.input_price_per_1m_tokens}
                                       onChange={(event) => updatePricingGroup(index, { input_price_per_1m_tokens: event.target.value })}
-                                      placeholder="如 8000000"
+                                      placeholder="如 8"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">输出售价（/百万 token）</label>
+                                    <label className="text-sm font-medium">输出售价（CNY / 百万 token）</label>
                                     <Input
                                       type="number"
                                       value={group.output_price_per_1m_tokens}
                                       onChange={(event) => updatePricingGroup(index, { output_price_per_1m_tokens: event.target.value })}
-                                      placeholder="如 32000000"
+                                      placeholder="如 32"
                                     />
                                   </div>
                                 </>
@@ -1225,57 +1270,57 @@ export function AdminChannelsPage() {
                               {form.billing_type === 'image' ? (
                                 <>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">基础售价（credits）</label>
+                                    <label className="text-sm font-medium">基础售价（CNY）</label>
                                     <Input
                                       type="number"
                                       value={group.base_price}
                                       onChange={(event) => updatePricingGroup(index, { base_price: event.target.value })}
-                                      placeholder="如 5000000"
+                                      placeholder="如 5"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">兜底尺寸售价（credits）</label>
+                                    <label className="text-sm font-medium">兜底尺寸售价（CNY）</label>
                                     <Input
                                       type="number"
                                       value={group.default_size_price}
                                       onChange={(event) => updatePricingGroup(index, { default_size_price: event.target.value })}
-                                      placeholder="如 5000000"
+                                      placeholder="如 5"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">1k 售价（credits / 张）</label>
+                                    <label className="text-sm font-medium">1k 售价（CNY / 张）</label>
                                     <Input
                                       type="number"
                                       value={group.size_price_1k}
                                       onChange={(event) => updatePricingGroup(index, { size_price_1k: event.target.value })}
-                                      placeholder="如 3000000"
+                                      placeholder="如 3"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">2k 售价（credits / 张）</label>
+                                    <label className="text-sm font-medium">2k 售价（CNY / 张）</label>
                                     <Input
                                       type="number"
                                       value={group.size_price_2k}
                                       onChange={(event) => updatePricingGroup(index, { size_price_2k: event.target.value })}
-                                      placeholder="如 5000000"
+                                      placeholder="如 5"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">3k 售价（credits / 张）</label>
+                                    <label className="text-sm font-medium">3k 售价（CNY / 张）</label>
                                     <Input
                                       type="number"
                                       value={group.size_price_3k}
                                       onChange={(event) => updatePricingGroup(index, { size_price_3k: event.target.value })}
-                                      placeholder="如 7000000"
+                                      placeholder="如 7"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <label className="text-sm font-medium">4k 售价（credits / 张）</label>
+                                    <label className="text-sm font-medium">4k 售价（CNY / 张）</label>
                                     <Input
                                       type="number"
                                       value={group.size_price_4k}
                                       onChange={(event) => updatePricingGroup(index, { size_price_4k: event.target.value })}
-                                      placeholder="如 9000000"
+                                      placeholder="如 9"
                                     />
                                   </div>
                                 </>
@@ -1283,24 +1328,24 @@ export function AdminChannelsPage() {
 
                               {(form.billing_type === 'video' || form.billing_type === 'audio') ? (
                                 <div className="space-y-2 md:col-span-2">
-                                  <label className="text-sm font-medium">售价（credits / 秒）</label>
+                                  <label className="text-sm font-medium">售价（CNY / 秒）</label>
                                   <Input
                                     type="number"
                                     value={group.price_per_second}
                                     onChange={(event) => updatePricingGroup(index, { price_per_second: event.target.value })}
-                                    placeholder="如 6000"
+                                    placeholder="如 0.006"
                                   />
                                 </div>
                               ) : null}
 
                               {form.billing_type === 'count' ? (
                                 <div className="space-y-2 md:col-span-2">
-                                  <label className="text-sm font-medium">售价（credits / 次）</label>
+                                  <label className="text-sm font-medium">售价（CNY / 次）</label>
                                   <Input
                                     type="number"
                                     value={group.price_per_call}
                                     onChange={(event) => updatePricingGroup(index, { price_per_call: event.target.value })}
-                                    placeholder="如 1000"
+                                    placeholder="如 0.001"
                                   />
                                 </div>
                               ) : null}

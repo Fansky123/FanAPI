@@ -215,7 +215,7 @@ export function UserLogsPage() {
       </Card>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent className="w-[min(96vw,960px)] sm:max-w-[960px] overflow-y-auto">
+        <SheetContent className="w-[min(96vw,1160px)] sm:max-w-[1160px] overflow-y-auto">
           <SheetHeader className="mb-6"><SheetTitle>日志详情</SheetTitle></SheetHeader>
           {detailLoading ? (
             <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>

@@ -308,7 +308,7 @@ export function UserTasksPage() {
 
       {/* 详情弹窗 */}
       <Dialog open={Boolean(detail)} onOpenChange={closeDetail}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[872px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>任务详情 #{detail?.id ?? detail?.task_id}</DialogTitle>
           </DialogHeader>
