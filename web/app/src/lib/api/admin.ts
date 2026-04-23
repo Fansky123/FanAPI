@@ -120,18 +120,25 @@ export type AdminTask = {
 export type AdminLog = {
   id?: number
   user_id?: number
+  channel_id?: number
+  api_key_id?: number
   model?: string
   created_at?: string
+  updated_at?: string
   corr_id?: string
   credits_charged?: number
   status?: string
   is_stream?: boolean
   error_msg?: string
   upstream_status?: number
+  upstream_method?: string
+  upstream_url?: string
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number
     total_tokens?: number
+    cache_creation_tokens?: number
+    cache_read_tokens?: number
     estimated?: boolean
   }
   client_request?: Record<string, unknown>

@@ -27,6 +27,46 @@ import { adminApi, type AdminLog } from '@/lib/api/admin'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
 
+function JsonBlock({
+  title,
+  value,
+  maxHeight = 'max-h-60',
+}: {
+  title: string
+  value: unknown
+  maxHeight?: string
+}) {
+  if (!value || (typeof value === 'object' && Object.keys(value as object).length === 0)) {
+    return null
+  }
+
+  return (
+    <div>
+      <div className="mb-2 font-semibold">{title}</div>
+      <pre className={`overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all ${maxHeight}`}>
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  )
+}
+
+function InfoItem({
+  label,
+  value,
+  className,
+}: {
+  label: string
+  value: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <div className="mb-1 text-muted-foreground">{label}</div>
+      <div>{value}</div>
+    </div>
+  )
+}
+
 export function AdminLogsPage() {
   const [page, setPage] = useState(1)
   const pageSize = 20
@@ -88,6 +128,27 @@ export function AdminLogsPage() {
     return <Badge variant="outline">{status ?? '-'}</Badge>
   }
 
+  function renderUsageSummary(row: AdminLog) {
+    if (!row.usage) {
+      return <span className="text-muted-foreground/50">—</span>
+    }
+
+    return (
+      <div className="flex flex-col gap-1 text-xs">
+        <span>
+          ↑{row.usage.prompt_tokens?.toLocaleString() ?? '-'} / ↓{row.usage.completion_tokens?.toLocaleString() ?? '-'}
+        </span>
+        {row.usage.cache_creation_tokens || row.usage.cache_read_tokens ? (
+          <span className="text-muted-foreground">
+            写缓存 {row.usage.cache_creation_tokens?.toLocaleString() ?? 0}
+            {' / '}
+            命缓存 {row.usage.cache_read_tokens?.toLocaleString() ?? 0}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -138,10 +199,11 @@ export function AdminLogsPage() {
               <TableHead className="w-[60px]">ID</TableHead>
               <TableHead>模型</TableHead>
               <TableHead>用户 ID</TableHead>
+              <TableHead>渠道 ID</TableHead>
               <TableHead>相关 ID</TableHead>
-              <TableHead className="text-right">输入</TableHead>
-              <TableHead className="text-right">输出</TableHead>
+              <TableHead>Token 用量</TableHead>
               <TableHead className="text-right">消耗积分</TableHead>
+              <TableHead className="text-center">上游状态</TableHead>
               <TableHead className="text-center">状态</TableHead>
               <TableHead>时间</TableHead>
               <TableHead className="text-center">操作</TableHead>
@@ -156,17 +218,18 @@ export function AdminLogsPage() {
                   <TableCell className="text-muted-foreground">{row.id ?? '-'}</TableCell>
                   <TableCell className="font-medium max-w-[180px] truncate" title={row.model}>{row.model ?? '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{row.user_id ?? '-'}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.channel_id ?? '-'}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground max-w-[220px] truncate" title={row.corr_id}>{row.corr_id ?? '-'}</TableCell>
-                  <TableCell className="text-right text-sm">
-                    {row.usage?.prompt_tokens != null ? row.usage.prompt_tokens.toLocaleString() : <span className="text-muted-foreground/50">—</span>}
-                  </TableCell>
-                  <TableCell className="text-right text-sm">
-                    {row.usage?.completion_tokens != null ? row.usage.completion_tokens.toLocaleString() : <span className="text-muted-foreground/50">—</span>}
+                  <TableCell>
+                    {renderUsageSummary(row)}
                   </TableCell>
                   <TableCell className="text-right">
                     {row.credits_charged ? (
                       <span className="font-semibold text-red-500">-{formatCredits(row.credits_charged)}</span>
                     ) : <span className="text-muted-foreground/50">—</span>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {row.upstream_status ?? <span className="text-muted-foreground/50">—</span>}
                   </TableCell>
                   <TableCell className="text-center">{renderStatus(row.status)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
@@ -202,64 +265,52 @@ export function AdminLogsPage() {
           ) : currentLog ? (
             <div className="space-y-6 text-sm">
               <div className="grid grid-cols-2 gap-4">
-                <div><div className="text-muted-foreground mb-1">ID</div><div className="font-mono">{currentLog.id}</div></div>
-                <div><div className="text-muted-foreground mb-1">状态</div>{renderStatus(currentLog.status)}</div>
-                <div className="col-span-2"><div className="text-muted-foreground mb-1">模型</div><div className="font-medium">{currentLog.model}</div></div>
-                <div><div className="text-muted-foreground mb-1">用户 ID</div><div>{currentLog.user_id ?? '—'}</div></div>
-                <div><div className="text-muted-foreground mb-1">流式</div><div>{currentLog.is_stream ? '是' : '否'}</div></div>
-                <div className="col-span-2"><div className="text-muted-foreground mb-1">Corr ID</div><div className="font-mono text-xs break-all">{currentLog.corr_id}</div></div>
-                <div><div className="text-muted-foreground mb-1">输入 Tokens</div><div>{currentLog.usage?.prompt_tokens ?? '—'}</div></div>
-                <div>
-                  <div className="text-muted-foreground mb-1">
-                    输出 Tokens{currentLog.usage?.estimated && <Badge variant="outline" className="ml-1 text-[10px] h-4 py-0">估算</Badge>}
-                  </div>
-                  <div>{currentLog.usage?.completion_tokens ?? '—'}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">消耗积分</div>
-                  <div className={currentLog.credits_charged ? 'text-red-500 font-medium' : ''}>
-                    {currentLog.credits_charged ? `-${formatCredits(currentLog.credits_charged)}` : '—'}
-                  </div>
-                </div>
-                <div><div className="text-muted-foreground mb-1">上游状态码</div><div>{currentLog.upstream_status ?? '—'}</div></div>
-                <div className="col-span-2"><div className="text-muted-foreground mb-1">请求时间</div><div>{currentLog.created_at ? new Date(currentLog.created_at).toLocaleString('zh-CN') : '—'}</div></div>
+                <InfoItem label="ID" value={<div className="font-mono">{currentLog.id ?? '—'}</div>} />
+                <InfoItem label="状态" value={renderStatus(currentLog.status)} />
+                <InfoItem label="模型" value={<div className="font-medium">{currentLog.model ?? '—'}</div>} className="col-span-2" />
+                <InfoItem label="用户 ID" value={currentLog.user_id ?? '—'} />
+                <InfoItem label="渠道 ID" value={currentLog.channel_id ?? '—'} />
+                <InfoItem label="API Key ID" value={currentLog.api_key_id ?? '—'} />
+                <InfoItem label="流式" value={currentLog.is_stream ? '是' : '否'} />
+                <InfoItem label="Corr ID" value={<div className="font-mono text-xs break-all">{currentLog.corr_id ?? '—'}</div>} className="col-span-2" />
+                <InfoItem label="上游 HTTP 状态" value={currentLog.upstream_status ?? '—'} />
+                <InfoItem label="上游请求方法" value={currentLog.upstream_method ?? 'POST'} />
+                <InfoItem label="上游 URL" value={<div className="break-all">{currentLog.upstream_url ?? '—'}</div>} className="col-span-2" />
+                <InfoItem label="输入 Tokens" value={currentLog.usage?.prompt_tokens ?? '—'} />
+                <InfoItem
+                  label="输出 Tokens"
+                  value={
+                    <div>
+                      {currentLog.usage?.completion_tokens ?? '—'}
+                      {currentLog.usage?.estimated ? <Badge variant="outline" className="ml-2">估算</Badge> : null}
+                    </div>
+                  }
+                />
+                <InfoItem label="缓存写入" value={currentLog.usage?.cache_creation_tokens?.toLocaleString() ?? '—'} />
+                <InfoItem label="缓存命中" value={currentLog.usage?.cache_read_tokens?.toLocaleString() ?? '—'} />
+                <InfoItem
+                  label="消耗积分"
+                  value={
+                    <div className={currentLog.credits_charged ? 'font-medium text-red-500' : ''}>
+                      {currentLog.credits_charged ? `-${formatCredits(currentLog.credits_charged)}` : '—'}
+                    </div>
+                  }
+                />
+                <InfoItem label="请求时间" value={currentLog.created_at ? new Date(currentLog.created_at).toLocaleString('zh-CN') : '—'} />
+                <InfoItem label="完成时间" value={currentLog.updated_at ? new Date(currentLog.updated_at).toLocaleString('zh-CN') : '—'} className="col-span-2" />
               </div>
               {currentLog.error_msg && (
                 <div>
                   <div className="font-semibold mb-2 text-red-600">错误信息</div>
-                  <div className="bg-red-50 text-red-900 p-3 rounded-md text-sm whitespace-pre-wrap">{currentLog.error_msg}</div>
+                  <div className="rounded-md bg-red-50 p-3 text-sm whitespace-pre-wrap text-red-900">{currentLog.error_msg}</div>
                 </div>
               )}
-              {currentLog.client_request && (
-                <div>
-                  <div className="font-semibold mb-2">客户端请求</div>
-                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.client_request, null, 2)}</pre>
-                </div>
-              )}
-              {currentLog.upstream_headers && (
-                <div>
-                  <div className="font-semibold mb-2">上游请求头</div>
-                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-40 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_headers, null, 2)}</pre>
-                </div>
-              )}
-              {currentLog.upstream_request && (
-                <div>
-                  <div className="font-semibold mb-2">上游请求体</div>
-                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_request, null, 2)}</pre>
-                </div>
-              )}
-              {currentLog.upstream_response && (
-                <div>
-                  <div className="font-semibold mb-2">上游响应</div>
-                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.upstream_response, null, 2)}</pre>
-                </div>
-              )}
-              {currentLog.client_response && (
-                <div>
-                  <div className="font-semibold mb-2">客户端响应</div>
-                  <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all">{JSON.stringify(currentLog.client_response, null, 2)}</pre>
-                </div>
-              )}
+              <JsonBlock title="Token 用量详情" value={currentLog.usage} maxHeight="max-h-40" />
+              <JsonBlock title="客户端请求" value={currentLog.client_request} />
+              <JsonBlock title="上游请求头" value={currentLog.upstream_headers} maxHeight="max-h-40" />
+              <JsonBlock title="上游请求体" value={currentLog.upstream_request} />
+              <JsonBlock title="上游响应" value={currentLog.upstream_response} />
+              <JsonBlock title="客户端响应" value={currentLog.client_response} />
             </div>
           ) : null}
         </SheetContent>

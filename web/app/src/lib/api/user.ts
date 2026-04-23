@@ -55,8 +55,10 @@ export type UserChannel = {
   type?: string
   category?: string
   protocol?: string
+  billing_type?: string
   icon_url?: string
   price_display?: string
+  group_price?: string
 }
 
 export type UserTask = {
@@ -176,7 +178,7 @@ export const userApi = {
   submitWithdraw: (amount: number, paymentType: string) =>
     http.post<Record<string, unknown>>('/user/withdraw', { amount, payment_type: paymentType }),
   listWithdrawHistory: (page = 1, size = 20) =>
-    http.get<{ records?: WithdrawRecord[]; list?: WithdrawRecord[] } | WithdrawRecord[]>('/user/withdraw/history', { params: { page, size } }),
+    http.get<{ records?: WithdrawRecord[]; list?: WithdrawRecord[]; total?: number } | WithdrawRecord[]>('/user/withdraw/history', { params: { page, size } }),
   listTasks: (params: Record<string, unknown> = {}) =>
     http.get<{ items?: UserTask[]; tasks?: UserTask[]; total?: number } | UserTask[]>('/v1/tasks', { params }),
   getTask: (id: number) =>

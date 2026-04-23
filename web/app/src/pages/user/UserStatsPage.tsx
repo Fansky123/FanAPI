@@ -17,6 +17,145 @@ import { userApi, type UserStatsResponse } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
 
+type MetricPoint = {
+  label: string
+  value: number
+}
+
+function TrendChart({
+  title,
+  points,
+  color,
+  formatValue,
+}: {
+  title: string
+  points: MetricPoint[]
+  color: string
+  formatValue: (value: number) => string
+}) {
+  const values = points.map((point) => point.value)
+  const max = Math.max(...values, 1)
+  const width = 100
+  const height = 44
+  const step = points.length > 1 ? width / (points.length - 1) : width
+  const path = points.map((point, index) => {
+    const x = index * step
+    const y = height - (point.value / max) * height
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+  }).join(' ')
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="h-48 rounded-xl border border-border/70 bg-muted/20 p-4">
+          <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible" preserveAspectRatio="none">
+            {Array.from({ length: 4 }).map((_, index) => {
+              const y = (height / 3) * index
+              return (
+                <line
+                  key={index}
+                  x1="0"
+                  y1={y}
+                  x2={width}
+                  y2={y}
+                  stroke="currentColor"
+                  className="text-border/70"
+                  strokeDasharray="2 2"
+                />
+              )
+            })}
+            <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            {points.map((point, index) => {
+              const x = index * step
+              const y = height - (point.value / max) * height
+              return <circle key={point.label} cx={x} cy={y} r="1.8" fill={color} />
+            })}
+          </svg>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {points.map((point) => (
+            <div key={point.label} className="rounded-lg border border-border/70 bg-background px-3 py-2">
+              <div className="text-xs text-muted-foreground">{point.label}</div>
+              <div className="mt-1 text-sm font-medium">{formatValue(point.value)}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function DualTrendChart({
+  title,
+  points,
+}: {
+  title: string
+  points: Array<{ label: string; success: number; failed: number }>
+}) {
+  const max = Math.max(...points.flatMap((point) => [point.success, point.failed]), 1)
+  const width = 100
+  const height = 44
+  const step = points.length > 1 ? width / (points.length - 1) : width
+
+  const buildPath = (selector: (point: { success: number; failed: number }) => number) => (
+    points.map((point, index) => {
+      const x = index * step
+      const value = selector(point)
+      const y = height - (value / max) * height
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+    }).join(' ')
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2"><span className="size-2 rounded-full bg-blue-500" />成功请求</div>
+          <div className="flex items-center gap-2"><span className="size-2 rounded-full bg-orange-500" />失败请求</div>
+        </div>
+        <div className="h-48 rounded-xl border border-border/70 bg-muted/20 p-4">
+          <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible" preserveAspectRatio="none">
+            {Array.from({ length: 4 }).map((_, index) => {
+              const y = (height / 3) * index
+              return (
+                <line
+                  key={index}
+                  x1="0"
+                  y1={y}
+                  x2={width}
+                  y2={y}
+                  stroke="currentColor"
+                  className="text-border/70"
+                  strokeDasharray="2 2"
+                />
+              )
+            })}
+            <path d={buildPath((point) => point.success)} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={buildPath((point) => point.failed)} fill="none" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {points.map((point) => (
+            <div key={point.label} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+              <div className="text-xs text-muted-foreground">{point.label}</div>
+              <div className="mt-1 flex items-center gap-3">
+                <span className="text-blue-600">成功 {point.success}</span>
+                <span className="text-orange-600">失败 {point.failed}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function buildDailyTable(stats: UserStatsResponse) {
   const days: string[] = []
   for (let i = 6; i >= 0; i--) {
@@ -44,6 +183,8 @@ export function UserStatsPage() {
 
   const daily = buildDailyTable(stats)
   const totalRequests = daily.reduce((s, r) => s + r.total, 0)
+  const creditsTrend = daily.map((row) => ({ label: row.label, value: row.credits / 1e6 }))
+  const requestTrend = daily.map((row) => ({ label: row.label, success: row.success, failed: row.failed }))
 
   return (
     <>
@@ -83,31 +224,28 @@ export function UserStatsPage() {
         />
       </div>
 
-      {/* 积分消耗列表 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>最近 7 天积分消耗</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {loading ? (
-            Array.from({ length: 7 }).map((_, index) => (
-              <Skeleton key={index} className="h-12 w-full" />
-            ))
-          ) : (stats.daily_credits ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无统计数据。</p>
-          ) : (
-            (stats.daily_credits ?? []).map((item, index: number) => (
-              <div
-                key={`${item.day ?? index}`}
-                className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm"
-              >
-                <span>{item.day ?? '-'}</span>
-                <span className="font-medium text-blue-600">{formatCredits(item.credits ?? 0)}</span>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      {loading ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+          <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
+        </div>
+      ) : (stats.daily_credits ?? []).length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            暂无最近 7 天统计数据。
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TrendChart
+            title="积分消耗趋势（最近 7 天）"
+            points={creditsTrend}
+            color="#2563eb"
+            formatValue={(value) => `${value.toFixed(2)} 积分`}
+          />
+          <DualTrendChart title="请求次数统计（最近 7 天）" points={requestTrend} />
+        </div>
+      )}
 
       {/* 每日明细表 */}
       <Card>

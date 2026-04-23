@@ -10,6 +10,7 @@ export type VendorProfile = {
   is_active?: boolean
   balance?: number
   commission_ratio?: number
+  key_count?: number
   invite_code?: string
   created_at?: string
 }

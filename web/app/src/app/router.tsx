@@ -205,7 +205,10 @@ export const router = createBrowserRouter([
       {
         path: '/agent',
         element: renderLazy(<AgentLayout />),
-        children: [{ path: 'dashboard', element: renderLazy(<AgentDashboardPage />) }],
+        children: [
+          { path: 'dashboard', element: renderLazy(<AgentDashboardPage />) },
+          { path: 'users', element: renderLazy(<AgentDashboardPage />) },
+        ],
       },
     ],
   },

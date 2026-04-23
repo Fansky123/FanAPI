@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -45,6 +46,7 @@ export function VendorKeysPage() {
   const [open, setOpen] = useState(false)
   const [poolId, setPoolId] = useState('')
   const [value, setValue] = useState('')
+  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const error = loadError || mutError
 
@@ -58,20 +60,32 @@ export function VendorKeysPage() {
       return
     }
     setMutError('')
+    setSubmitResult(null)
     try {
       const selected = pools.find((item) => String(item.id) === poolId)
-      await vendorApi.submitKey({
+      const response = await vendorApi.submitKey({
         pool_id: selected?.id,
         channel_id: selected?.channel_id,
         value: value.trim(),
       })
-      setOpen(false)
-      setPoolId('')
+      const resultMessage = typeof response?.message === 'string' ? response.message : 'Key 已成功提交到号池'
+      setSubmitResult({ ok: true, message: resultMessage })
       setValue('')
       reload()
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setMutError(getApiErrorMessage(err))
+      const message = getApiErrorMessage(err)
+      setMutError(message)
+      setSubmitResult({ ok: false, message })
+    }
+  }
+
+  function resetDialog(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (!nextOpen) {
+      setPoolId('')
+      setValue('')
+      setSubmitResult(null)
     }
   }
 
@@ -101,31 +115,41 @@ export function VendorKeysPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>渠道</TableHead>
               <TableHead>Key</TableHead>
               <TableHead>累计消耗</TableHead>
               <TableHead>我的收益</TableHead>
+              <TableHead>添加时间</TableHead>
               <TableHead>状态</TableHead>
             </TableRow>
           </TableHeader>
           {loading ? (
-            <TableSkeleton cols={5} />
+            <TableSkeleton cols={7} />
           ) : (
             <TableBody>
               {keys.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                     暂无 Key 数据
                   </TableCell>
                 </TableRow>
               ) : (
                 keys.map((row, index) => (
                   <TableRow key={row.id ?? index}>
+                    <TableCell>{row.id ?? '-'}</TableCell>
                     <TableCell>{row.channel_name ?? row.channel_id ?? '-'}</TableCell>
                     <TableCell className="font-mono text-xs">{row.masked_value ?? row.key ?? '-'}</TableCell>
                     <TableCell>{formatCredits(row.total_cost ?? 0)}</TableCell>
                     <TableCell>{formatCredits(row.my_earn ?? row.total_profit ?? 0)}</TableCell>
-                    <TableCell>{row.is_active === false ? '停用' : '启用'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={row.is_active === false ? 'secondary' : 'default'}>
+                        {row.is_active === false ? '禁用' : '启用'}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -134,7 +158,7 @@ export function VendorKeysPage() {
         </Table>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={resetDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>上传新 Key</DialogTitle>
@@ -154,9 +178,14 @@ export function VendorKeysPage() {
                 当前没有开放给号商上传的号池，请先让管理员在后台开启。
               </p>
             ) : null}
+            {submitResult ? (
+              <Alert variant={submitResult.ok ? 'default' : 'destructive'}>
+                <AlertDescription>{submitResult.message}</AlertDescription>
+              </Alert>
+            ) : null}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => resetDialog(false)}>取消</Button>
             <Button onClick={submit} disabled={!poolId || !value.trim()}>验证并提交</Button>
           </DialogFooter>
         </DialogContent>
