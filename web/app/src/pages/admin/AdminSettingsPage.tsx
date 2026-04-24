@@ -4,7 +4,7 @@ import { PlusIcon, SaveIcon, Trash2Icon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,6 +14,17 @@ import { useAsync } from '@/hooks/use-async'
 
 type SettingsMap = Record<string, string>
 type PlanRow = { credits: number; bonus: number; amount: number; origin_amount: number; desc: string }
+
+function totalPlanCredits(plan: PlanRow) {
+  return Number(plan.credits || 0) + Number(plan.bonus || 0)
+}
+
+function planDiscountLabel(plan: PlanRow) {
+  const originAmount = Number(plan.origin_amount || 0)
+  const amount = Number(plan.amount || 0)
+  if (originAmount <= 0 || originAmount <= amount) return '—'
+  return `${(((originAmount - amount) / originAmount) * 100).toFixed(1)}%`
+}
 
 function Tip({ children }: { children: React.ReactNode }) {
   return <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{children}</p>
@@ -361,8 +372,10 @@ export function AdminSettingsPage() {
                             <tr className="border-b">
                               <th className="px-3 py-2 text-left font-medium">积分数</th>
                               <th className="px-3 py-2 text-left font-medium">赠送积分</th>
+                              <th className="px-3 py-2 text-left font-medium">到账积分</th>
                               <th className="px-3 py-2 text-left font-medium">金额（元）</th>
                               <th className="px-3 py-2 text-left font-medium">原价（元）</th>
+                              <th className="px-3 py-2 text-left font-medium">折扣</th>
                               <th className="px-3 py-2 text-left font-medium">描述</th>
                               <th className="px-3 py-2 w-10"></th>
                             </tr>
@@ -376,11 +389,17 @@ export function AdminSettingsPage() {
                                 <td className="px-2 py-1.5">
                                   <Input type="number" value={row.bonus} min={0} onChange={(e) => updatePlan(i, 'bonus', Number(e.target.value))} className="h-8" />
                                 </td>
+                                <td className="px-3 py-1.5 text-sm font-medium text-emerald-600">
+                                  {totalPlanCredits(row).toLocaleString()}
+                                </td>
                                 <td className="px-2 py-1.5">
                                   <Input type="number" value={row.amount} min={0.01} step={0.01} onChange={(e) => updatePlan(i, 'amount', Number(e.target.value))} className="h-8" />
                                 </td>
                                 <td className="px-2 py-1.5">
                                   <Input type="number" value={row.origin_amount} min={0} step={0.01} onChange={(e) => updatePlan(i, 'origin_amount', Number(e.target.value))} className="h-8" />
+                                </td>
+                                <td className="px-3 py-1.5 text-sm text-muted-foreground">
+                                  {planDiscountLabel(row)}
                                 </td>
                                 <td className="px-2 py-1.5">
                                   <Input value={row.desc} onChange={(e) => updatePlan(i, 'desc', e.target.value)} placeholder="购买可获得xx积分" className="h-8" />
@@ -401,6 +420,27 @@ export function AdminSettingsPage() {
                       添加套餐
                     </Button>
                     <Tip>套餐顺序即展示顺序；不设置套餐则只显示自定义金额输入框</Tip>
+                    {planRows.length > 0 ? (
+                      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                        {planRows.map((row, i) => (
+                          <Card key={`plan-preview-${i}`}>
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base">套餐 {i + 1}</CardTitle>
+                              <CardDescription>用户端将按当前顺序展示</CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-2 text-sm">
+                              <div className="font-semibold text-blue-600">￥{Number(row.amount || 0).toFixed(2)}</div>
+                              <div>到账积分：<span className="font-medium text-emerald-600">{totalPlanCredits(row).toLocaleString()}</span></div>
+                              <div>基础积分：{Number(row.credits || 0).toLocaleString()}</div>
+                              <div>赠送积分：{Number(row.bonus || 0).toLocaleString()}</div>
+                              <div>原价：{Number(row.origin_amount || 0) > 0 ? `￥${Number(row.origin_amount).toFixed(2)}` : '—'}</div>
+                              <div>折扣：{planDiscountLabel(row)}</div>
+                              <div className="text-muted-foreground">{row.desc || '未填写描述，前台将只展示金额与积分。'}</div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </TabsContent>

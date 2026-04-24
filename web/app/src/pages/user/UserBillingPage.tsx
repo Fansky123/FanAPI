@@ -21,6 +21,7 @@ import { useAsync } from '@/hooks/use-async'
 import { useSiteSettings } from '@/hooks/use-site-settings'
 import { useAuth } from '@/hooks/use-auth'
 import { Badge } from '@/components/ui/badge'
+import { formatCredits } from '@/lib/formatters/credits'
 import { cn } from '@/lib/utils'
 import { Check, Info, Loader2, RefreshCcw, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,6 +37,10 @@ export function UserBillingPage() {
   
   const { settings } = useSiteSettings()
   const { user } = useAuth()
+  const { data: balanceCredits, reload: reloadBalance } = useAsync(async () => {
+    const res = await userApi.getBalance()
+    return res.balance_credits ?? 0
+  }, 0)
 
   // Recharge State
   const [selectedPlan, setSelectedPlan] = useState<number>(-1)
@@ -49,13 +54,19 @@ export function UserBillingPage() {
   // Transaction State
   const [txPage, setTxPage] = useState(1)
   const [txTaskIdFilter, setTxTaskIdFilter] = useState('')
+  const [txCorrIdFilter, setTxCorrIdFilter] = useState('')
   const { data: txData, reload: txReload } = useAsync(async () => {
-    const res = await userApi.getTransactions(txPage, 20, txTaskIdFilter || undefined)
+    const res = await userApi.getTransactions(
+      txPage,
+      20,
+      txTaskIdFilter || undefined,
+      txCorrIdFilter || undefined,
+    )
     return {
       items: Array.isArray(res) ? res : res.items ?? res.transactions ?? [],
       total: !Array.isArray(res) ? res.total ?? 0 : 0
     }
-  }, { items: [], total: 0 } as { items: unknown[]; total: number }, [txPage, txTaskIdFilter])
+  }, { items: [], total: 0 } as { items: unknown[]; total: number }, [txPage, txTaskIdFilter, txCorrIdFilter])
 
   // Orders State
   const [orderPage, setOrderPage] = useState(1)
@@ -70,6 +81,14 @@ export function UserBillingPage() {
   // Update URL on tab change
   const handleTabChange = (val: string) => {
     setSearchParams({ tab: val })
+  }
+
+  const handlePaymentSuccess = () => {
+    toast.success('充值成功')
+    setShowPayFrame(false)
+    txReload()
+    orderReload()
+    reloadBalance()
   }
 
   // Payment logic
@@ -112,12 +131,8 @@ export function UserBillingPage() {
       try {
         const res = await payApi.getOrderStatus(outTradeNo)
         if (res.status === 'paid') {
-          toast.success('充值成功')
           clearInterval(timer)
-          setShowPayFrame(false)
-          txReload()
-          orderReload()
-          // Optionally reload user balance
+          handlePaymentSuccess()
         }
       } catch (e) {
         // ignore polling errors
@@ -175,7 +190,7 @@ export function UserBillingPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold tracking-tight">{(user?.balance || 0) / 1e6}</span>
+                  <span className="text-4xl font-bold tracking-tight">{formatCredits(balanceCredits)}</span>
                   <span className="text-muted-foreground">积分</span>
                 </div>
               </CardContent>
@@ -293,12 +308,18 @@ export function UserBillingPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <CardTitle>流水明细</CardTitle>
-              <div className="flex w-full max-w-sm items-center space-x-2">
-                <Input 
-                  placeholder="按任务ID查询" 
-                  value={txTaskIdFilter} 
-                  onChange={(e) => setTxTaskIdFilter(e.target.value)} 
-                  onKeyDown={e => e.key === 'Enter' && setTxPage(1)}
+              <div className="flex w-full max-w-2xl items-center gap-2">
+                <Input
+                  placeholder="按任务 ID 查询"
+                  value={txTaskIdFilter}
+                  onChange={(e) => setTxTaskIdFilter(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && setTxPage(1)}
+                />
+                <Input
+                  placeholder="按 Corr ID 查询"
+                  value={txCorrIdFilter}
+                  onChange={(e) => setTxCorrIdFilter(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && setTxPage(1)}
                 />
                 <Button variant="secondary" onClick={() => setTxPage(1)}>查询</Button>
                 <Button variant="outline" size="icon" onClick={() => txReload()}><RefreshCcw className="h-4 w-4" /></Button>
@@ -308,7 +329,7 @@ export function UserBillingPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>类型</TableHead>
-                  <TableHead>金额</TableHead>
+                  <TableHead>积分变动</TableHead>
                   <TableHead>操作后余额</TableHead>
                   <TableHead>关联任务</TableHead>
                   <TableHead>时间</TableHead>
@@ -322,10 +343,10 @@ export function UserBillingPage() {
                     <TableRow key={row.id}>
                       <TableCell><Badge variant="outline">{txTypeLabel(row.type)}</Badge></TableCell>
                       <TableCell className={cn("font-medium", txAmtColor(row.type))}>
-                        {txSign(row.type)} ￥{(Math.abs(row.credits || row.amount || 0) / 1e6).toFixed(6)}
+                        {txSign(row.type)} {formatCredits(Math.abs(row.credits || row.amount || 0))} 积分
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {row.balance_after ? `￥${(row.balance_after / 1e6).toFixed(4)}` : '—'}
+                        {row.balance_after != null ? `${formatCredits(row.balance_after)} 积分` : '—'}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-blue-500">
                         {row.metrics?.task_id ? `#${row.metrics.task_id}` : '—'}
@@ -351,7 +372,7 @@ export function UserBillingPage() {
                 <TableRow>
                   <TableHead>订单号</TableHead>
                   <TableHead>充值金额</TableHead>
-                  <TableHead>到账金额</TableHead>
+                  <TableHead>到账积分</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>支付时间</TableHead>
                 </TableRow>
@@ -365,7 +386,7 @@ export function UserBillingPage() {
                       <TableCell className="font-mono text-xs">{row.out_trade_no}</TableCell>
                       <TableCell className="font-semibold text-blue-600">￥{row.amount.toFixed(2)}</TableCell>
                       <TableCell className="font-semibold text-green-600">
-                        {row.credits ? `+￥${(row.credits / 1e6).toFixed(2)}` : '—'}
+                        {row.credits ? `+${formatCredits(row.credits)} 积分` : '—'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={row.status === 'paid' ? 'default' : 'secondary'}>{orderStatusLabel(row.status)}</Badge>
@@ -414,6 +435,7 @@ export function UserBillingPage() {
                 setShowPayFrame(false);
                 txReload();
                 orderReload();
+                reloadBalance();
               }}>我已支付</Button>
             </div>
           </div>
