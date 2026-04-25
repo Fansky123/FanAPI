@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { MessageContent } from '@/components/shared/MessageContent'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -230,14 +231,14 @@ export function UserPlaygroundPage() {
                         : 'bg-muted text-foreground'
                     }`}
                   >
-                    {message.content}
+                    <MessageContent content={message.content} role={message.role} />
                   </div>
                 </div>
               ))}
               {streaming && streamingText ? (
                 <div className="flex justify-start">
                   <div className="max-w-[80%] rounded-2xl bg-muted px-4 py-3 text-sm leading-7">
-                    {streamingText}
+                    <MessageContent content={streamingText} role="assistant" />
                   </div>
                 </div>
               ) : null}

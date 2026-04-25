@@ -44,6 +44,7 @@ func effectiveProtocol(ch *model.Channel) string {
 // promptTokens / completTokens 从响应尾部的 usage 字段读取（最精确）。
 // outputChars 在流式传输过程中实时累计输出文本字节数，作为用户中断时的兜底估算依据
 // （约 4 字节 ≈ 1 token）。
+// imageCount 统计 delta content 中出现的 markdown 图片数量（![ 语法），用于多模态图片计费。
 type usageState struct {
 	protocol            string
 	promptTokens        int64
@@ -51,6 +52,7 @@ type usageState struct {
 	cacheCreationTokens int64  // Claude 写入缓存 token（1.25x）
 	cacheReadTokens     int64  // Claude/OpenAI/Gemini 命中缓存 token（折才价）
 	outputChars         int64  // 实时累计输出字符数（兜底估算）
+	imageCount          int64  // 多模态图片生成：响应中检测到的图片数量
 	lastEvent           string // Claude 专用：记录上一个 "event:" 行的值
 }
 
@@ -159,12 +161,16 @@ func (u *usageState) processLine(line string) {
 					}
 				}
 			}
-			// 实时累计输出字符（用户中断时兜底）
+			// 实时累计输出字符（用户中断时兜底）；同时统计 markdown 图片数量（多模态模型）
 			if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
 				if choice, ok := choices[0].(map[string]interface{}); ok {
 					if delta, ok := choice["delta"].(map[string]interface{}); ok {
 						if content, _ := delta["content"].(string); content != "" {
 							u.outputChars += int64(len(content))
+							// 统计 markdown 图片（![...](url) 格式）及 base64 内联图片
+							// 每个 ![ 或 data:image/ 出现一次视为一张图片
+							u.imageCount += int64(strings.Count(content, "!["))
+							u.imageCount += int64(strings.Count(content, "data:image/"))
 						}
 					}
 				}
@@ -190,21 +196,34 @@ func (u *usageState) normalized(req map[string]interface{}) map[string]interface
 		if u.cacheReadTokens > 0 {
 			result["cache_read_tokens"] = u.cacheReadTokens
 		}
+		if u.imageCount > 0 {
+			result["image_count"] = u.imageCount
+		}
 		return result
 	}
-	if u.outputChars == 0 {
+	if u.outputChars == 0 && u.imageCount == 0 {
 		// 完全没有数据（连接失败等），不作结算
 		return nil
+	}
+	if u.imageCount > 0 && u.outputChars == 0 {
+		// 仅有图片输出（纯图片生成模型，无 token usage），按图片计费路径结算
+		return map[string]interface{}{
+			"image_count": u.imageCount,
+		}
 	}
 	// 兜底估算：用于用户中断或上游未返回 usage 的场景
 	// 4 字节 ≈ 1 token，乘以 1.1 留出余量
 	estimatedOutput := int64(float64(u.outputChars)/4.0*1.1) + 1
 	estimatedInput := billing.EstimateTokensFromRequest(req)
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"prompt_tokens":     estimatedInput,
 		"completion_tokens": estimatedOutput,
 		"estimated":         true, // 标记为估算值，便于排查
 	}
+	if u.imageCount > 0 {
+		result["image_count"] = u.imageCount
+	}
+	return result
 }
 
 // LLMProxy 处理 POST /v1/chat/completions（OpenAI 标准格式）。
@@ -912,9 +931,61 @@ func llmSettle(c *gin.Context, ch *model.Channel, reqData, usageData map[string]
 	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, reqData)
 
 	// 非 token 计费（image/video/audio/count/custom）：预扣即精确值，上游成功即结算完毕，不依赖 usageData。
+	// 例外：billing_type=image 且响应中检测到实际图片数量（image_count），按实际图片数调差。
 	if ch.BillingType != "token" {
-		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status").
-			Update(&model.LLMLog{Status: "ok"})
+		if ch.BillingType == "image" && usageData != nil {
+			var imgCount int64
+			switch v := usageData["image_count"].(type) {
+			case int64:
+				imgCount = v
+			case float64:
+				imgCount = int64(v)
+			}
+			if imgCount > 0 {
+				// 预扣时使用的图片数量（来自请求 n 字段，默认 1）
+				preCount := int64(1)
+				switch v := reqData["n"].(type) {
+				case float64:
+					if v > 0 {
+						preCount = int64(v)
+					}
+				case int64:
+					if v > 0 {
+						preCount = v
+					}
+				}
+				if imgCount != preCount {
+					// 计算单张图片的价格：将 reqData 中 n 改为 1 后调用 CalcForUser
+					singleReq := make(map[string]interface{}, len(reqData)+1)
+					for k, v := range reqData {
+						singleReq[k] = v
+					}
+					singleReq["n"] = float64(1)
+					costPerImage, _, _ := billing.CalcForUser(ch, singleReq, userGroup)
+					delta := imgCount - preCount
+					if delta > 0 {
+						_ = billing.Charge(ctx, userID, costPerImage*delta)
+						_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "settle",
+							costPerImage*delta, 0, model.JSON{
+								"reason":      "image_count_adjust",
+								"image_count": imgCount,
+								"pre_count":   preCount,
+							})
+					} else {
+						refundAmt := costPerImage * (-delta)
+						_ = billing.Refund(ctx, userID, refundAmt)
+						_ = service.WriteTx(ctx, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, "refund",
+							refundAmt, 0, model.JSON{
+								"reason":      "image_count_adjust",
+								"image_count": imgCount,
+								"pre_count":   preCount,
+							})
+					}
+				}
+			}
+		}
+		_, _ = db.Engine.Where("corr_id = ?", corrID).Cols("status", "usage").
+			Update(&model.LLMLog{Status: "ok", Usage: model.JSON(usageData)})
 		return
 	}
 
@@ -1131,13 +1202,13 @@ func sendLLMRequest(c *gin.Context, ch *model.Channel, reqData map[string]interf
 	if ch.PassthroughHeaders {
 		// 跳过这些头：Authorization（由渠道 Headers 覆盖）、逐跳传输头、路由元数据头
 		passthroughSkip := map[string]bool{
-			"Authorization":    true,
-			"Host":             true,
-			"Content-Length":   true,
+			"Authorization":     true,
+			"Host":              true,
+			"Content-Length":    true,
 			"Transfer-Encoding": true,
-			"Connection":       true,
-			"Upgrade":          true,
-			"Proxy-Connection": true,
+			"Connection":        true,
+			"Upgrade":           true,
+			"Proxy-Connection":  true,
 		}
 		for k, vals := range c.Request.Header {
 			if !passthroughSkip[k] {
