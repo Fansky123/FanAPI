@@ -16,11 +16,9 @@ import {
 import { toast } from 'sonner'
 
 import { StatCard } from '@/components/shared/StatCard'
-import { TrendChart, DualTrendChart } from '@/components/shared/TrendChart'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { userApi, type UserStatsResponse } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
@@ -67,8 +65,6 @@ export function UserDashboardPage() {
       () => toast.error('复制失败，请手动复制'),
     )
   }
-
-  const trends = buildTrends(data.stats)
 
   return (
     <>
@@ -152,23 +148,6 @@ export function UserDashboardPage() {
         </AlertDescription>
       </Alert>
 
-      {/* {loading ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
-          <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
-        </div>
-      ) : trends.creditsTrend.length > 0 ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          <TrendChart
-            title="积分消耗趋势（最近 7 天）"
-            points={trends.creditsTrend}
-            color="#2563eb"
-            formatValue={(value) => `${value.toFixed(2)} 积分`}
-          />
-          <DualTrendChart title="请求次数统计（最近 7 天）" points={trends.requestTrend} />
-        </div>
-      ) : null} */}
-
       {(settings.contactInfo || settings.qqGroupUrl || settings.wechatCsUrl) && (
         <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
           {settings.contactInfo && (
@@ -208,25 +187,4 @@ export function UserDashboardPage() {
       )}
     </>
   )
-}
-
-function buildTrends(stats: UserStatsResponse) {
-  const days: string[] = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    days.push(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
-  }
-  const dailyCredits = stats.daily_credits ?? []
-  const dailyRequests = stats.daily_requests ?? []
-  const creditsTrend = days.map((label) => {
-    const entry = dailyCredits.find((row) => row.day === label)
-    return { label, value: (entry?.credits ?? 0) / 1e6 }
-  })
-  const requestTrend = days.map((label) => {
-    const entry = dailyRequests.find((row) => row.day === label)
-    return { label, success: entry?.success ?? 0, failed: entry?.failed ?? 0 }
-  })
-  const hasAny = creditsTrend.some((p) => p.value > 0) || requestTrend.some((p) => p.success + p.failed > 0)
-  return hasAny ? { creditsTrend, requestTrend } : { creditsTrend: [], requestTrend: [] }
 }
