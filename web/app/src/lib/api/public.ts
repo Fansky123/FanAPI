@@ -21,7 +21,7 @@ export const publicApi = {
 export const authApi = {
   login: (payload: { username: string; password: string }) =>
     http.post<LoginResponse>('/auth/login', payload),
-  register: (payload: { username: string; email?: string; password: string; code?: string }) =>
+  register: (payload: { username: string; email?: string; password: string; invite_code?: string }) =>
     http.post<Record<string, unknown>>('/auth/register', payload),
   forgotPassword: (email: string) =>
     http.post<Record<string, unknown>>('/auth/forgot-password', { email }),

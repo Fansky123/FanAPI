@@ -27,7 +27,7 @@ export function RegisterPage() {
     setError('')
 
     try {
-      await authApi.register({ ...form, ...(inviteCode ? { code: inviteCode } : {}) })
+      await authApi.register({ ...form, ...(inviteCode ? { invite_code: inviteCode } : {}) })
       navigate('/login')
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -42,10 +42,10 @@ export function RegisterPage() {
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           User sign up
         </p>
-        <CardTitle className="text-3xl tracking-tight">创建用户账号</CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <CardTitle className="text-3xl tracking-tight">创建账号</CardTitle>
+        {/* <p className="text-sm text-muted-foreground">
           第一阶段保持兼容现有后端注册逻辑，界面按新规范重构。
-        </p>
+        </p> */}
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>

@@ -82,7 +82,7 @@ export function UserDashboardPage() {
           </CardContent>
         </Card>
       </div>
-      {(settings.contactInfo || settings.qqGroupUrl || settings.wechatCsUrl || settings.qrCodeUrl) && (
+      {(settings.contactInfo || settings.qqGroupUrl || settings.wechatCsUrl) && (
         <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
           {settings.contactInfo && (
             <Card>
@@ -96,7 +96,7 @@ export function UserDashboardPage() {
               </CardContent>
             </Card>
           )}
-          {(settings.qqGroupUrl || settings.wechatCsUrl || settings.qrCodeUrl) && (
+          {(settings.qqGroupUrl || settings.wechatCsUrl) && (
             <Card>
               <CardHeader>
                 <CardTitle>扫码联系</CardTitle>
@@ -104,20 +104,14 @@ export function UserDashboardPage() {
               <CardContent className="flex flex-wrap gap-4">
                 {settings.qqGroupUrl && (
                   <div className="flex flex-col items-center gap-1">
-                    <img src={settings.qqGroupUrl} alt="QQ 交流群" className="h-28 w-28 rounded-lg border object-contain p-1" />
+                    <img src={settings.qqGroupUrl} alt="QQ 交流群" className="h-48 w-48 rounded-lg border object-contain p-1" />
                     <span className="text-xs text-muted-foreground">QQ 交流群</span>
                   </div>
                 )}
                 {settings.wechatCsUrl && (
                   <div className="flex flex-col items-center gap-1">
-                    <img src={settings.wechatCsUrl} alt="微信客服" className="h-28 w-28 rounded-lg border object-contain p-1" />
+                    <img src={settings.wechatCsUrl} alt="微信客服" className="h-48 w-48 rounded-lg border object-contain p-1" />
                     <span className="text-xs text-muted-foreground">微信客服</span>
-                  </div>
-                )}
-                {settings.qrCodeUrl && (
-                  <div className="flex flex-col items-center gap-1">
-                    <img src={settings.qrCodeUrl} alt="二维码" className="h-28 w-28 rounded-lg border object-contain p-1" />
-                    <span className="text-xs text-muted-foreground">二维码</span>
                   </div>
                 )}
               </CardContent>
