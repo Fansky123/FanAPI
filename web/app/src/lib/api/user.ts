@@ -191,7 +191,7 @@ export const userApi = {
     http.get<UserLog>(`/v1/llm-logs/${id}`),
   getPaymentOrders: (page = 1, size = 20) =>
     http.get<{ orders: PaymentOrder[]; total: number }>('/user/payment-orders', { params: { page, size } }),
-  changePassword: (payload: { old_password: string; new_password: string }) =>
+  changePassword: (payload: { new_password: string }) =>
     http.put<Record<string, unknown>>('/user/password', payload),
   bindEmail: (payload: { email: string; code: string }) =>
     http.post<Record<string, unknown>>('/user/bind-email', payload),
