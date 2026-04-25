@@ -13,13 +13,14 @@ RUN if [ -f /etc/apt/sources.list ]; then \
     fi && \
     apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates tzdata git nodejs npm && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    npm config set registry https://registry.npmmirror.com
 
 
 
 ENV TZ=Asia/Shanghai \
 	GOPROXY=https://goproxy.cn,direct \
-	GOSUMDB=sum.golang.google.cn
+	GOSUMDB=off
 
 # 安装 air 热重载工具 + swag 文档生成工具
 RUN go install github.com/air-verse/air@latest && \
