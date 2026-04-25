@@ -152,7 +152,7 @@ export function UserDashboardPage() {
         </AlertDescription>
       </Alert>
 
-      {loading ? (
+      {/* {loading ? (
         <div className="grid gap-4 xl:grid-cols-2">
           <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
           <Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card>
@@ -167,7 +167,7 @@ export function UserDashboardPage() {
           />
           <DualTrendChart title="请求次数统计（最近 7 天）" points={trends.requestTrend} />
         </div>
-      ) : null}
+      ) : null} */}
 
       {(settings.contactInfo || settings.qqGroupUrl || settings.wechatCsUrl) && (
         <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
