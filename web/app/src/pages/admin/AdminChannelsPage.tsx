@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CopyIcon, PlusIcon, SaveIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
@@ -638,6 +639,8 @@ export function AdminChannelsPage() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<ChannelForm>(emptyForm)
   const [pendingDeleteChannel, setPendingDeleteChannel] = useState<AdminChannel | undefined>()
+  const [uploadingIcon, setUploadingIcon] = useState(false)
+  const iconUploadRef = useRef<HTMLInputElement>(null)
 
   const error = loadError || mutError
 
@@ -690,6 +693,30 @@ export function AdminChannelsPage() {
       ...current,
       pricing_groups: current.pricing_groups.filter((_, groupIndex) => groupIndex !== index),
     }))
+  }
+
+  async function uploadChannelIcon(file: File | undefined) {
+    if (!file) {
+      return
+    }
+    setMutError('')
+    setUploadingIcon(true)
+    try {
+      const response = await adminApi.uploadImage(file, 'channel-icon')
+      const url = response.url ?? ''
+      if (!url) {
+        throw new Error('上传失败，未返回图片地址')
+      }
+      setForm((current) => ({ ...current, icon_url: url }))
+      toast.success('渠道图标上传成功')
+    } catch (err) {
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      const msg = getApiErrorMessage(err)
+      setMutError(msg)
+      toast.error(msg)
+    } finally {
+      setUploadingIcon(false)
+    }
   }
 
   async function saveChannel() {
@@ -935,7 +962,27 @@ export function AdminChannelsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">图标 URL</label>
-                  <Input value={form.icon_url} onChange={(event) => setForm((current) => ({ ...current, icon_url: event.target.value }))} placeholder="https://…/icon.png" />
+                  <div className="flex gap-2">
+                    <Input value={form.icon_url} onChange={(event) => setForm((current) => ({ ...current, icon_url: event.target.value }))} placeholder="https://…/icon.png" />
+                    <input
+                      ref={iconUploadRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        void uploadChannelIcon(event.target.files?.[0])
+                        event.target.value = ''
+                      }}
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => iconUploadRef.current?.click()} disabled={uploadingIcon}>
+                      {uploadingIcon ? '上传中...' : '上传'}
+                    </Button>
+                  </div>
+                  {form.icon_url ? (
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border bg-muted/20 p-1">
+                      <img src={form.icon_url} alt="渠道图标预览" className="max-h-full max-w-full rounded-md object-contain" />
+                    </div>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">描述</label>

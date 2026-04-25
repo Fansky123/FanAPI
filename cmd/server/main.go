@@ -83,6 +83,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	r.Static("/uploads", "uploads")
 
 	// 健康检查（无需认证）
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
@@ -138,6 +139,7 @@ func main() {
 	authed := r.Group("/")
 	authed.Use(middleware.Auth(&cfg.Server))
 	{
+		authed.POST("/upload/image", handler.UploadImage)
 		user := authed.Group("/user")
 		{
 			user.GET("/profile", authH.GetProfile)
@@ -150,6 +152,7 @@ func main() {
 			user.DELETE("/apikeys/:id", authH.DeleteAPIKey)
 			user.PUT("/password", authH.ChangePassword)
 			user.POST("/bind-email", authH.BindEmail)
+			user.POST("/reference-images", handler.UploadReferenceImage)
 			user.POST("/cards/redeem", handler.RedeemCard)
 			user.GET("/cards/redeem-history", handler.GetRedeemHistory)
 			user.GET("/payment-orders", handler.GetUserPaymentOrders)

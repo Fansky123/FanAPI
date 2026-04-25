@@ -1,4 +1,5 @@
 import { createHttpClient } from '@/lib/api/http'
+import { uploadAuthedImage, type UploadImageCategory } from '@/lib/api/upload'
 
 const http = createHttpClient('admin')
 
@@ -338,4 +339,6 @@ export const adminApi = {
     http.post<Record<string, unknown>>(`/admin/withdrawals/${id}/approve`, { remark }),
   rejectWithdrawal: (id: number, remark = '') =>
     http.post<Record<string, unknown>>(`/admin/withdrawals/${id}/reject`, { remark }),
+  uploadImage: (file: File, category: UploadImageCategory) =>
+    uploadAuthedImage('admin', file, category),
 }

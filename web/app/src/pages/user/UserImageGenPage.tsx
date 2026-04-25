@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -22,6 +23,8 @@ export function UserImageGenPage() {
   const [taskId, setTaskId] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [running, setRunning] = useState(false)
+  const [uploadingReference, setUploadingReference] = useState(false)
+  const referenceUploadRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function load() {
@@ -55,6 +58,46 @@ export function UserImageGenPage() {
     return channels.find((item) => item.id === selectedChannelId) ?? channels[0]
   }
 
+  function referenceUrls() {
+    return referenceImages
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+
+  async function uploadReferenceFiles(fileList: FileList | null) {
+    const files = Array.from(fileList ?? [])
+    if (files.length === 0) {
+      return
+    }
+
+    setUploadingReference(true)
+    setError('')
+    try {
+      const uploadedUrls: string[] = []
+      for (const file of files) {
+        const response = await userApi.uploadImage(file, 'reference')
+        if (response.url) {
+          uploadedUrls.push(response.url)
+        }
+      }
+      if (uploadedUrls.length === 0) {
+        throw new Error('上传失败，未返回图片地址')
+      }
+      setReferenceImages((current) => {
+        const merged = [...current.split('\n').map((line) => line.trim()).filter(Boolean), ...uploadedUrls]
+        return merged.join('\n')
+      })
+      toast.success(`已上传 ${uploadedUrls.length} 张参考图`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '参考图上传失败'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setUploadingReference(false)
+    }
+  }
+
   async function generate() {
     if (!prompt.trim()) return
     const apiKey = currentApiKey()
@@ -74,10 +117,7 @@ export function UserImageGenPage() {
       const endpoint = currentChannel()?.id
         ? `/v1/image?channel_id=${currentChannel()?.id}`
         : '/v1/image'
-      const refUrls = referenceImages
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
+      const refUrls = referenceUrls()
       const body: Record<string, unknown> = {
         model: currentChannel()?.routing_model || currentChannel()?.name,
         prompt,
@@ -180,13 +220,47 @@ export function UserImageGenPage() {
               </NativeSelect>
             </div>
             <div className="grid gap-1.5">
-              <Label>参考图 URL <span className="text-muted-foreground font-normal">(选填，每行一条)</span></Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>参考图 URL <span className="text-muted-foreground font-normal">(选填，每行一条)</span></Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={referenceUploadRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      void uploadReferenceFiles(event.target.files)
+                      event.target.value = ''
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => referenceUploadRef.current?.click()}
+                    disabled={uploadingReference}
+                  >
+                    {uploadingReference ? '上传中...' : '本地上传'}
+                  </Button>
+                </div>
+              </div>
               <Textarea
                 rows={3}
                 value={referenceImages}
                 onChange={(event) => setReferenceImages(event.target.value)}
                 placeholder={'https://example.com/ref1.png\nhttps://example.com/ref2.png'}
               />
+              {referenceUrls().length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {referenceUrls().map((url) => (
+                    <div key={url} className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                      <img src={url} alt="reference" className="h-36 w-full object-cover" />
+                      <div className="truncate px-3 py-2 text-xs text-muted-foreground">{url}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <Button onClick={generate} disabled={running || !prompt.trim() || !currentApiKey() || channels.length === 0}>
               {running ? '生成中...' : '生成图片'}

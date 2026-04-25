@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { copyToClipboard } from '@/lib/clipboard'
 import { userApi, type UserTask } from '@/lib/api/user'
 import { useAsync } from '@/hooks/use-async'
 
@@ -66,7 +67,9 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
           size="sm"
           variant="ghost"
           className="h-6 px-2 text-xs"
-          onClick={() => navigator.clipboard.writeText(JSON.stringify(value, null, 2))}
+          onClick={() => {
+            void copyToClipboard(JSON.stringify(value, null, 2), { successMessage: '内容已复制' })
+          }}
         >
           复制
         </Button>

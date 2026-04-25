@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { copyToClipboard } from '@/lib/clipboard'
 import { userApi, type InviteInfo, type WithdrawRecord } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
@@ -112,29 +113,30 @@ export function UserInvitePage() {
     }
   }
 
-  function readLocalFile(file: File, onDone: (base64: string) => void) {
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const result = event.target?.result
-      if (typeof result === 'string') {
-        onDone(result)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  function pickQr(kind: 'wechat' | 'alipay', file: File | undefined) {
+  async function pickQr(kind: 'wechat' | 'alipay', file: File | undefined) {
     if (!file) {
       return
     }
 
-    readLocalFile(file, (base64) => {
-      if (kind === 'wechat') {
-        setWechatQrEdit(base64)
-        return
+    setMutError('')
+    try {
+      const response = await userApi.uploadImage(file, 'payment-qr')
+      const url = response.url ?? ''
+      if (!url) {
+        throw new Error('上传失败，未返回图片地址')
       }
-      setAlipayQrEdit(base64)
-    })
+      if (kind === 'wechat') {
+        setWechatQrEdit(url)
+      } else {
+        setAlipayQrEdit(url)
+      }
+      toast.success(`${kind === 'wechat' ? '微信' : '支付宝'}收款码上传成功`)
+    } catch (err) {
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      const msg = getApiErrorMessage(err)
+      setMutError(msg)
+      toast.error(msg)
+    }
   }
 
   async function convert() {
@@ -201,7 +203,9 @@ export function UserInvitePage() {
               <Button
                 size="sm"
                 disabled={loading || !info.invite_code}
-                onClick={() => navigator.clipboard.writeText(info.invite_code ?? '')}
+                onClick={() => {
+                  void copyToClipboard(info.invite_code ?? '', { successMessage: '邀请码已复制' })
+                }}
               >
                 复制邀请码
               </Button>
@@ -209,7 +213,9 @@ export function UserInvitePage() {
                 size="sm"
                 variant="outline"
                 disabled={loading || !inviteLink}
-                onClick={() => navigator.clipboard.writeText(inviteLink)}
+                onClick={() => {
+                  void copyToClipboard(inviteLink, { successMessage: '邀请链接已复制' })
+                }}
               >
                 复制邀请链接
               </Button>
@@ -266,7 +272,7 @@ export function UserInvitePage() {
                   accept="image/*"
                   className="hidden"
                   onChange={(event) => {
-                    pickQr('wechat', event.target.files?.[0])
+                    void pickQr('wechat', event.target.files?.[0])
                     event.target.value = ''
                   }}
                 />
@@ -283,7 +289,7 @@ export function UserInvitePage() {
             <Textarea
               value={wechatQrEdit}
               onChange={(event) => setWechatQrEdit(event.target.value)}
-              placeholder="微信收款码（URL 或 base64）"
+              placeholder="微信收款码 URL"
             />
             <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3">
               {wechatQrEdit ? (
@@ -309,7 +315,7 @@ export function UserInvitePage() {
                   accept="image/*"
                   className="hidden"
                   onChange={(event) => {
-                    pickQr('alipay', event.target.files?.[0])
+                    void pickQr('alipay', event.target.files?.[0])
                     event.target.value = ''
                   }}
                 />
@@ -326,7 +332,7 @@ export function UserInvitePage() {
             <Textarea
               value={alipayQrEdit}
               onChange={(event) => setAlipayQrEdit(event.target.value)}
-              placeholder="支付宝收款码（URL 或 base64）"
+              placeholder="支付宝收款码 URL"
             />
             <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3">
               {alipayQrEdit ? (

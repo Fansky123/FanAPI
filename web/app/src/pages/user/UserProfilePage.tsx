@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { copyToClipboard } from '@/lib/clipboard'
 import { authApi } from '@/lib/api/public'
 import { userApi, type UserProfileResponse } from '@/lib/api/user'
 import { useAsync } from '@/hooks/use-async'
@@ -32,8 +33,16 @@ export function UserProfilePage() {
 
   async function changePassword() {
     setPwdError('')
-    if (pwdForm.new_password.length < 8) { setPwdError('新密码不少于 8 位'); return }
-    if (pwdForm.new_password !== pwdForm.confirm) { setPwdError('两次密码不一致'); return }
+    if (pwdForm.new_password.length < 8) {
+      setPwdError('新密码不少于 8 位')
+      toast.error('新密码不少于 8 位')
+      return
+    }
+    if (pwdForm.new_password !== pwdForm.confirm) {
+      setPwdError('两次密码不一致')
+      toast.error('两次密码不一致')
+      return
+    }
     setPwdLoading(true)
     try {
       await userApi.changePassword({ new_password: pwdForm.new_password })
@@ -60,10 +69,15 @@ export function UserProfilePage() {
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
 
   async function sendCode() {
-    if (!emailInput) { setEmailError('请填写邮箱'); return }
+    if (!emailInput) {
+      setEmailError('请填写邮箱')
+      toast.error('请填写邮箱')
+      return
+    }
     setEmailError('')
     try {
       await authApi.sendCode(emailInput)
+      toast.success('验证码已发送，请注意查收邮箱')
       setCountdown(60)
       timerRef.current = setInterval(() => {
         setCountdown((c) => {
@@ -73,12 +87,18 @@ export function UserProfilePage() {
       }, 1000)
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setEmailError(getApiErrorMessage(err))
+      const msg = getApiErrorMessage(err)
+      setEmailError(msg)
+      toast.error(msg)
     }
   }
 
   async function bindEmail() {
-    if (!emailInput || !codeInput) { setEmailError('请填写邮箱和验证码'); return }
+    if (!emailInput || !codeInput) {
+      setEmailError('请填写邮箱和验证码')
+      toast.error('请填写邮箱和验证码')
+      return
+    }
     setEmailError('')
     setEmailLoading(true)
     try {
@@ -145,7 +165,16 @@ export function UserProfilePage() {
                   </div>
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <User className="h-3.5 w-3.5" />
-                    <span>UID #{profile?.id ?? '-'}</span>
+                    <button
+                      type="button"
+                      className="transition hover:text-foreground"
+                      onClick={() => {
+                        void copyToClipboard(String(profile?.id ?? ''), { successMessage: '用户 ID 已复制' })
+                      }}
+                      disabled={!profile?.id}
+                    >
+                      UID #{profile?.id ?? '-'}
+                    </button>
                   </div>
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Mail className="h-3.5 w-3.5" />

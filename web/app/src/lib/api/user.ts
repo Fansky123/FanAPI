@@ -1,4 +1,5 @@
 import { createHttpClient } from '@/lib/api/http'
+import { uploadAuthedImage, type UploadImageCategory } from '@/lib/api/upload'
 
 const http = createHttpClient('user')
 
@@ -195,4 +196,9 @@ export const userApi = {
     http.put<Record<string, unknown>>('/user/password', payload),
   bindEmail: (payload: { email: string; code: string }) =>
     http.post<Record<string, unknown>>('/user/bind-email', payload),
+  uploadReferenceImage: (file: File) => {
+    return uploadAuthedImage('user', file, 'reference')
+  },
+  uploadImage: (file: File, category: UploadImageCategory) =>
+    uploadAuthedImage('user', file, category),
 }

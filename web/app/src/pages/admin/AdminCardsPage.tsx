@@ -41,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { copyToClipboard } from '@/lib/clipboard'
 import { adminApi, type AdminCard } from '@/lib/api/admin'
 import { useAsync } from '@/hooks/use-async'
 
@@ -165,7 +166,9 @@ export function AdminCardsPage() {
                   <TableRow key={row.id ?? index}>
                     <TableCell
                       className="font-mono text-xs cursor-pointer hover:text-primary"
-                      onClick={() => navigator.clipboard.writeText(row.code ?? '')}
+                      onClick={() => {
+                        void copyToClipboard(row.code ?? '', { successMessage: '兑换码已复制' })
+                      }}
                       title="点击复制"
                     >{row.code ?? '-'}</TableCell>
                     <TableCell>¥{((row.credits ?? 0) / 1_000_000).toFixed(4)}</TableCell>
@@ -224,13 +227,14 @@ export function AdminCardsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setResultOpen(false)}>关闭</Button>
             <Button
-              onClick={() =>
-                navigator.clipboard.writeText(
+              onClick={() => {
+                void copyToClipboard(
                   generatedCards
                     .map((card) => `${card.code} ${(card.credits ?? 0) / 1_000_000}元`)
-                    .join('\n')
+                    .join('\n'),
+                  { successMessage: '卡密列表已复制' }
                 )
-              }
+              }}
             >
               <RefreshCwIcon data-icon="inline-start" />
               复制全部

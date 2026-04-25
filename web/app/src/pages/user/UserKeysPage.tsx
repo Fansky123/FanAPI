@@ -37,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { copyToClipboard } from '@/lib/clipboard'
 import { userApi, type ApiKeyRecord } from '@/lib/api/user'
 import { useAsync } from '@/hooks/use-async'
 
@@ -93,7 +94,10 @@ export function UserKeysPage() {
   }
 
   function copyText(text: string) {
-    navigator.clipboard.writeText(text).catch(() => undefined)
+    void copyToClipboard(text, {
+      successMessage: '密钥已复制',
+      emptyMessage: '没有可复制的密钥',
+    })
   }
 
   return (

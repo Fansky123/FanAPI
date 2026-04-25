@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { PlusIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -94,10 +95,25 @@ export function AdminSettingsPage() {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  function readFile(file: File, onResult: (base64: string) => void) {
-    const reader = new FileReader()
-    reader.onload = (e) => { if (e.target?.result) onResult(e.target.result as string) }
-    reader.readAsDataURL(file)
+  async function uploadSettingImage(key: 'qq_group_url' | 'wechat_cs_url' | 'qrcode_url', file: File | undefined) {
+    if (!file) {
+      return
+    }
+    setMutError('')
+    try {
+      const response = await adminApi.uploadImage(file, 'site-setting')
+      const url = response.url ?? ''
+      if (!url) {
+        throw new Error('上传失败，未返回图片地址')
+      }
+      set(key, url)
+      toast.success('图片上传成功')
+    } catch (err) {
+      const { getApiErrorMessage } = await import('@/lib/api/http')
+      const msg = getApiErrorMessage(err)
+      setMutError(msg)
+      toast.error(msg)
+    }
   }
 
   function addPlan() {
@@ -336,30 +352,30 @@ export function AdminSettingsPage() {
                   </FieldRow>
                   <FieldRow label="QQ 交流群二维码">
                     <div className="flex gap-2">
-                      <Input value={form.qq_group_url ?? ''} onChange={(e) => set('qq_group_url', e.target.value)} placeholder="图片 URL 或粘贴 base64" className="flex-1" />
+                      <Input value={form.qq_group_url ?? ''} onChange={(e) => set('qq_group_url', e.target.value)} placeholder="图片 URL" className="flex-1" />
                       <Button type="button" variant="outline" size="sm" onClick={() => qqRef.current?.click()}>上传</Button>
                     </div>
-                    <input ref={qqRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, (b64) => set('qq_group_url', b64)); e.target.value = '' }} />
+                    <input ref={qqRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void uploadSettingImage('qq_group_url', e.target.files?.[0]); e.target.value = '' }} />
                     {form.qq_group_url ? <img src={form.qq_group_url} alt="QQ群二维码" className="mt-2 h-28 w-28 rounded-xl border object-contain p-1" /> : null}
                     <Tip>填写后用户页面头部将显示「QQ交流群」按钮，留空不显示</Tip>
                   </FieldRow>
                   <FieldRow label="微信客服二维码">
                     <div className="flex gap-2">
-                      <Input value={form.wechat_cs_url ?? ''} onChange={(e) => set('wechat_cs_url', e.target.value)} placeholder="图片 URL 或粘贴 base64" className="flex-1" />
+                      <Input value={form.wechat_cs_url ?? ''} onChange={(e) => set('wechat_cs_url', e.target.value)} placeholder="图片 URL" className="flex-1" />
                       <Button type="button" variant="outline" size="sm" onClick={() => wechatRef.current?.click()}>上传</Button>
                     </div>
-                    <input ref={wechatRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, (b64) => set('wechat_cs_url', b64)); e.target.value = '' }} />
+                    <input ref={wechatRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void uploadSettingImage('wechat_cs_url', e.target.files?.[0]); e.target.value = '' }} />
                     {form.wechat_cs_url ? <img src={form.wechat_cs_url} alt="微信客服" className="mt-2 h-28 w-28 rounded-xl border object-contain p-1" /> : null}
                     <Tip>填写后用户页面头部将显示「微信客服」按钮，留空不显示</Tip>
                   </FieldRow>
                   <FieldRow label="二维码图片">
                     <div className="flex gap-2">
-                      <Input value={form.qrcode_url ?? ''} onChange={(e) => set('qrcode_url', e.target.value)} placeholder="图片 URL 或粘贴 base64" className="flex-1" />
+                      <Input value={form.qrcode_url ?? ''} onChange={(e) => set('qrcode_url', e.target.value)} placeholder="图片 URL" className="flex-1" />
                       <Button type="button" variant="outline" size="sm" onClick={() => qrRef.current?.click()}>上传</Button>
                     </div>
-                    <input ref={qrRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, (b64) => set('qrcode_url', b64)); e.target.value = '' }} />
+                    <input ref={qrRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void uploadSettingImage('qrcode_url', e.target.files?.[0]); e.target.value = '' }} />
                     {form.qrcode_url ? <img src={form.qrcode_url} alt="二维码" className="mt-2 h-28 w-28 rounded-xl border object-contain p-1" /> : null}
-                    <Tip>支持图片 URL 或本地上传（自动转 base64）；留空则不显示</Tip>
+                    <Tip>支持图片 URL 或本地上传后自动转线上 URL；留空则不显示</Tip>
                   </FieldRow>
                 </div>
               </TabsContent>

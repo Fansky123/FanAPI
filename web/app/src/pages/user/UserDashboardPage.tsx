@@ -13,12 +13,11 @@ import {
   SparklesIcon,
   TrendingUpIcon,
 } from 'lucide-react'
-import { toast } from 'sonner'
-
 import { StatCard } from '@/components/shared/StatCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { copyToClipboard } from '@/lib/clipboard'
 import { userApi, type UserStatsResponse } from '@/lib/api/user'
 import { formatCredits } from '@/lib/formatters/credits'
 import { useAsync } from '@/hooks/use-async'
@@ -56,14 +55,13 @@ export function UserDashboardPage() {
 
   function copyApiBase() {
     if (!apiBase) return
-    navigator.clipboard.writeText(apiBase).then(
-      () => {
+    void copyToClipboard(apiBase, {
+      successMessage: '已复制 API 网关地址',
+      onSuccess: () => {
         setCopied(true)
-        toast.success('已复制 API 网关地址')
         window.setTimeout(() => setCopied(false), 2000)
       },
-      () => toast.error('复制失败，请手动复制'),
-    )
+    })
   }
 
   return (

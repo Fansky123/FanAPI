@@ -34,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { copyToClipboard } from '@/lib/clipboard'
 import { agentApi, type AgentUser } from '@/lib/api/agent'
 import { useAsync } from '@/hooks/use-async'
 
@@ -81,14 +82,7 @@ export function AgentDashboardPage() {
 
   function copyLink() {
     if (!inviteLink) return
-    navigator.clipboard.writeText(inviteLink).catch(() => {
-      const el = document.createElement('input')
-      el.value = inviteLink
-      document.body.appendChild(el)
-      el.select()
-      document.execCommand('copy')
-      document.body.removeChild(el)
-    })
+    void copyToClipboard(inviteLink, { successMessage: '邀请链接已复制' })
   }
 
   function openRecharge(user: AgentUser) {

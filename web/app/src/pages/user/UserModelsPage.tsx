@@ -16,10 +16,10 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { copyToClipboard } from '@/lib/clipboard'
 import { useAsync } from '@/hooks/use-async'
 import { userApi, type UserChannel } from '@/lib/api/user'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 
 type DocMode = 'channel' | 'balance' | 'task'
 type LangTab = 'curl' | 'python' | 'php' | 'go' | 'java'
@@ -51,9 +51,7 @@ const billingTypeLabels: Record<string, string> = {
 }
 
 function copyText(text: string, label = '已复制') {
-  navigator.clipboard.writeText(text).then(() => {
-    toast.success(label)
-  })
+  void copyToClipboard(text, { successMessage: label })
 }
 
 function buildChannelRequestBody(channel: UserChannel, sunoMode: SunoMode) {
