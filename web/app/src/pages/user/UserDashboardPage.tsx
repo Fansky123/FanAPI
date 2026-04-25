@@ -70,7 +70,7 @@ export function UserDashboardPage() {
             <p>1. 前往「API 密钥」页面创建一个密钥。</p>
             <p>2. 进入「模型列表」查看可用渠道与路由键。</p>
             <p>3. 使用「文本对话」或「图片生成」体验实际调用效果。</p>
-            <p>4. 在「我的订单」查看每次调用的积分扣减明细。</p>
+            <p>4. 在「积分充值」查看每次调用的积分扣减明细。</p>
           </CardContent>
         </Card>
         <Card>
@@ -82,6 +82,49 @@ export function UserDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      {(settings.contactInfo || settings.qqGroupUrl || settings.wechatCsUrl || settings.qrCodeUrl) && (
+        <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
+          {settings.contactInfo && (
+            <Card>
+              <CardHeader>
+                <CardTitle>联系方式</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+                {settings.contactInfo.split('\n').filter(Boolean).map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {(settings.qqGroupUrl || settings.wechatCsUrl || settings.qrCodeUrl) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>扫码联系</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-4">
+                {settings.qqGroupUrl && (
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={settings.qqGroupUrl} alt="QQ 交流群" className="h-28 w-28 rounded-lg border object-contain p-1" />
+                    <span className="text-xs text-muted-foreground">QQ 交流群</span>
+                  </div>
+                )}
+                {settings.wechatCsUrl && (
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={settings.wechatCsUrl} alt="微信客服" className="h-28 w-28 rounded-lg border object-contain p-1" />
+                    <span className="text-xs text-muted-foreground">微信客服</span>
+                  </div>
+                )}
+                {settings.qrCodeUrl && (
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={settings.qrCodeUrl} alt="二维码" className="h-28 w-28 rounded-lg border object-contain p-1" />
+                    <span className="text-xs text-muted-foreground">二维码</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </>
   )
 }

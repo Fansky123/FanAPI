@@ -16,7 +16,6 @@ export function RegisterPage() {
   const inviteCode = searchParams.get('invite') ?? searchParams.get('code') ?? searchParams.get('ref') ?? ''
   const [form, setForm] = useState({
     username: '',
-    email: '',
     password: '',
   })
   const [submitting, setSubmitting] = useState(false)
@@ -56,16 +55,6 @@ export function RegisterPage() {
               value={form.username}
               onChange={(event) =>
                 setForm((current) => ({ ...current, username: event.target.value }))
-              }
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>邮箱</Label>
-            <Input
-              type="email"
-              value={form.email}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, email: event.target.value }))
               }
             />
           </div>

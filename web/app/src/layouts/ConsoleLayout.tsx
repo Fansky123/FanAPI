@@ -14,7 +14,6 @@ import {
   MessageSquareIcon,
   MegaphoneIcon,
   NetworkIcon,
-  ReceiptTextIcon,
   SettingsIcon,
   ShareIcon,
   ShoppingCartIcon,
@@ -257,9 +256,8 @@ export const userNavGroups: NavGroup[] = [
     requiresAuth: true,
     items: [
       { label: 'API 密钥', href: '/keys', icon: KeySquareIcon },
-      { label: '积分充值', href: '/recharge', icon: ShoppingCartIcon },
+      { label: '积分充值', href: '/billing', icon: ShoppingCartIcon },
       { label: '兑换中心', href: '/exchange', icon: TicketIcon },
-      { label: '我的订单', href: '/billing', icon: ReceiptTextIcon },
       { label: '个人中心', href: '/profile', icon: UserRoundIcon },
       { label: '邀请中心', href: '/invite', icon: ShareIcon },
     ],

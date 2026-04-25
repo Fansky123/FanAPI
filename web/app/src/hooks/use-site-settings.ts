@@ -21,6 +21,7 @@ export type SiteSettings = {
   contactInfo: string
   qqGroupUrl: string
   wechatCsUrl: string
+  qrCodeUrl: string
 }
 
 const defaultSettings: SiteSettings = {
@@ -35,6 +36,7 @@ const defaultSettings: SiteSettings = {
   contactInfo: '',
   qqGroupUrl: '',
   wechatCsUrl: '',
+  qrCodeUrl: '',
 }
 
 export function useSiteSettings() {
@@ -64,6 +66,7 @@ export function useSiteSettings() {
           contactInfo: record.contact_info || '',
           qqGroupUrl: record.qq_group_url || '',
           wechatCsUrl: record.wechat_cs_url || '',
+          qrCodeUrl: record.qrcode_url || '',
         })
       } catch {
         setSettings(defaultSettings)
