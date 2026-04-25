@@ -78,7 +78,9 @@ export function UserDashboardPage() {
             <CardTitle>余额不足？</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
+            <p>前往「积分充值」使用支付宝充值。</p>
             <p>前往「兑换中心」使用卡密充值，或通过邀请好友获取返佣积分。</p>
+            <p>企业用户请联系商务获取专属充值方案。</p>
           </CardContent>
         </Card>
       </div>

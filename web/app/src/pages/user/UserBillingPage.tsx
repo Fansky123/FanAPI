@@ -146,15 +146,20 @@ export function UserBillingPage() {
   const txTypeLabel = (type: string) => {
     const map: Record<string, string> = {
       recharge: '充值',
-      consume: '消费',
+      hold: '预扣',
+      settle: '结算',
+      charge: '扣费',
       refund: '退款',
+      consume: '消费',
       invite_rebate: '邀请返利',
     }
     return map[type] || type
   }
 
-  const txSign = (type: string) => (['consume'].includes(type) ? '-' : '+')
-  const txAmtColor = (type: string) => (['consume'].includes(type) ? 'text-red-500' : 'text-green-600')
+  // 扣款类型：hold / settle / charge / consume；收入类型：recharge / refund / invite_rebate
+  const isDebit = (type: string) => ['hold', 'settle', 'charge', 'consume'].includes(type)
+  const txSign = (type: string) => (isDebit(type) ? '-' : '+')
+  const txAmtColor = (type: string) => (isDebit(type) ? 'text-red-500' : 'text-green-600')
 
   const orderStatusLabel = (status: string) => {
     switch (status) {
