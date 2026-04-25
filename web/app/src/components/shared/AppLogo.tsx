@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BotIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -13,11 +14,25 @@ export function AppLogo({
   label: string
   className?: string
 }) {
+  const [erroredUrl, setErroredUrl] = useState<string | undefined>(undefined)
+  const initial = (siteName || label || '?').slice(0, 1).toUpperCase()
+  const errored = Boolean(logoUrl) && erroredUrl === logoUrl
+  const showImage = Boolean(logoUrl) && !errored
+
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      {logoUrl ? (
+      {showImage ? (
         <div className="flex size-10 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
-          <img className="size-full object-contain" src={logoUrl} alt={`${siteName} logo`} />
+          <img
+            className="size-full object-contain"
+            src={logoUrl}
+            alt={`${siteName} logo`}
+            onError={() => setErroredUrl(logoUrl)}
+          />
+        </div>
+      ) : logoUrl && errored ? (
+        <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-sm">
+          {initial}
         </div>
       ) : (
         <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">

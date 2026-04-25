@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { KeyRound, Mail, User, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -27,22 +28,22 @@ export function UserProfilePage() {
   // 修改密码
   const [pwdForm, setPwdForm] = useState({ new_password: '', confirm: '' })
   const [pwdError, setPwdError] = useState('')
-  const [pwdSuccess, setPwdSuccess] = useState('')
   const [pwdLoading, setPwdLoading] = useState(false)
 
   async function changePassword() {
     setPwdError('')
-    setPwdSuccess('')
     if (pwdForm.new_password.length < 8) { setPwdError('新密码不少于 8 位'); return }
     if (pwdForm.new_password !== pwdForm.confirm) { setPwdError('两次密码不一致'); return }
     setPwdLoading(true)
     try {
       await userApi.changePassword({ new_password: pwdForm.new_password })
-      setPwdSuccess('密码已修改成功')
+      toast.success('密码修改成功')
       setPwdForm({ new_password: '', confirm: '' })
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setPwdError(getApiErrorMessage(err))
+      const msg = getApiErrorMessage(err)
+      setPwdError(msg)
+      toast.error(msg)
     } finally {
       setPwdLoading(false)
     }
@@ -52,7 +53,6 @@ export function UserProfilePage() {
   const [emailInput, setEmailInput] = useState('')
   const [codeInput, setCodeInput] = useState('')
   const [emailError, setEmailError] = useState('')
-  const [emailSuccess, setEmailSuccess] = useState('')
   const [emailLoading, setEmailLoading] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -83,13 +83,15 @@ export function UserProfilePage() {
     setEmailLoading(true)
     try {
       await userApi.bindEmail({ email: emailInput, code: codeInput })
-      setEmailSuccess('邮箱绑定成功')
+      toast.success('邮箱绑定成功')
       setEmailInput('')
       setCodeInput('')
       reload()
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setEmailError(getApiErrorMessage(err))
+      const msg = getApiErrorMessage(err)
+      setEmailError(msg)
+      toast.error(msg)
     } finally {
       setEmailLoading(false)
     }
@@ -180,7 +182,6 @@ export function UserProfilePage() {
           <Separator />
           <CardContent className="space-y-4 pt-4">
             {pwdError ? <Alert variant="destructive"><AlertDescription>{pwdError}</AlertDescription></Alert> : null}
-            {pwdSuccess ? <Alert><AlertDescription className="text-emerald-600">{pwdSuccess}</AlertDescription></Alert> : null}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">新密码</label>
               <Input
@@ -216,7 +217,6 @@ export function UserProfilePage() {
           <Separator />
           <CardContent className="space-y-4 pt-4">
             {emailError ? <Alert variant="destructive"><AlertDescription>{emailError}</AlertDescription></Alert> : null}
-            {emailSuccess ? <Alert><AlertDescription className="text-emerald-600">{emailSuccess}</AlertDescription></Alert> : null}
             {profile?.email ? (
               <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm dark:bg-emerald-950/30">
                 <span className="text-emerald-600">✓</span>

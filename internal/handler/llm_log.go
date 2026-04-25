@@ -93,34 +93,43 @@ func AdminListLLMLogs(c *gin.Context) {
 		return
 	}
 
-	// 聚合每条日志对应的净扣费积分
+	// 聚合每条日志对应的净扣费积分与上游成本
 	creditsMap := map[string]int64{}
+	costMap := map[string]int64{}
 	if len(logs) > 0 {
 		type txRow struct {
 			CorrID  string `xorm:"corr_id"`
 			Credits int64  `xorm:"credits"`
+			Cost    int64  `xorm:"cost"`
 		}
 		inList := "'" + logs[0].CorrID + "'"
 		for _, l := range logs[1:] {
 			inList += ",'" + l.CorrID + "'"
 		}
 		sqlStr := `SELECT corr_id,
-			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN credits WHEN type='refund' THEN -credits ELSE 0 END),0) AS credits
+			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN credits WHEN type='refund' THEN -credits ELSE 0 END),0) AS credits,
+			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN cost    WHEN type='refund' THEN -cost    ELSE 0 END),0) AS cost
 			FROM billing_transactions WHERE corr_id IN (` + inList + `) GROUP BY corr_id`
 		var rows []txRow
 		_ = db.Engine.SQL(sqlStr).Find(&rows)
 		for _, r := range rows {
 			creditsMap[r.CorrID] = r.Credits
+			costMap[r.CorrID] = r.Cost
 		}
 	}
 
 	type logWithCredits struct {
 		model.LLMLog
 		CreditsCharged int64 `json:"credits_charged"`
+		CostCharged    int64 `json:"cost_charged"`
 	}
 	result := make([]logWithCredits, len(logs))
 	for i, l := range logs {
-		result[i] = logWithCredits{LLMLog: l, CreditsCharged: creditsMap[l.CorrID]}
+		result[i] = logWithCredits{
+			LLMLog:         l,
+			CreditsCharged: creditsMap[l.CorrID],
+			CostCharged:    costMap[l.CorrID],
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

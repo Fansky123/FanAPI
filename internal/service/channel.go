@@ -104,13 +104,26 @@ func PatchChannelActive(ctx context.Context, id int64, isActive bool) error {
 }
 
 // UpdateChannel 更新渠道并删除缓存。
+// 改名/改模型场景下，旧 name/model 对应的缓存键也必须失效，否则将残留 stale
+// 数据直至 TTL 过期（最多 channelCacheTTL）。
 func UpdateChannel(ctx context.Context, ch *model.Channel) error {
+	// 先读旧记录，用于失效旧 name/model 缓存键
+	var old model.Channel
+	_, _ = db.Engine.ID(ch.ID).Cols("name", "model").Get(&old)
+
 	_, err := db.Engine.Where("id = ?", ch.ID).AllCols().Update(ch)
 	if err == nil {
 		InvalidateChannelCache(ctx, ch.ID)
 		cache.Client.Del(ctx, fmt.Sprintf("channel:name:%s", ch.Name))
 		// 删除模型路由列表缓存
 		cache.Client.Del(ctx, fmt.Sprintf("channel:model:%s", ch.Model))
+		// 改名 / 改模型时，旧键也要失效
+		if old.Name != "" && old.Name != ch.Name {
+			cache.Client.Del(ctx, fmt.Sprintf("channel:name:%s", old.Name))
+		}
+		if old.Model != "" && old.Model != ch.Model {
+			cache.Client.Del(ctx, fmt.Sprintf("channel:model:%s", old.Model))
+		}
 	}
 	return err
 }

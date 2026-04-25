@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CopyIcon, SaveIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
@@ -118,11 +119,14 @@ export function AgentDashboardPage() {
     setMutError('')
     try {
       await agentApi.updateWechatQR(qrInput.trim())
+      toast.success('微信收款码已保存')
       setQrOpen(false)
       reload()
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setMutError(getApiErrorMessage(err))
+      const msg = getApiErrorMessage(err)
+      setMutError(msg)
+      toast.error(msg)
     } finally {
       setSavingQR(false)
     }

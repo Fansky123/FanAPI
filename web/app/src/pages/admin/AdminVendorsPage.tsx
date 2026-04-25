@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { SaveIcon } from 'lucide-react'
+import { BriefcaseBusinessIcon, SaveIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -117,11 +118,12 @@ export function AdminVendorsPage() {
           ) : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
-                    暂无号商数据
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={9}
+                  Icon={BriefcaseBusinessIcon}
+                  title="还没有号商"
+                  description="号商完成自助注册后会显示在这里，可在此处启停或调整佣金。"
+                />
               ) : (
                 rows.map((row, index) => (
                   <TableRow key={row.id ?? index}>

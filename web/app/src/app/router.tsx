@@ -22,6 +22,7 @@ const UserKeysPage = lazy(() => import('@/pages/user/UserKeysPage').then((m) => 
 const UserPlaygroundPage = lazy(() => import('@/pages/user/UserPlaygroundPage').then((m) => ({ default: m.UserPlaygroundPage })))
 const UserImageGenPage = lazy(() => import('@/pages/user/UserImageGenPage').then((m) => ({ default: m.UserImageGenPage })))
 const UserVideoGenPage = lazy(() => import('@/pages/user/UserVideoGenPage').then((m) => ({ default: m.UserVideoGenPage })))
+const UserMusicGenPage = lazy(() => import('@/pages/user/UserMusicGenPage').then((m) => ({ default: m.UserMusicGenPage })))
 const UserTasksPage = lazy(() => import('@/pages/user/UserTasksPage').then((m) => ({ default: m.UserTasksPage })))
 const UserLogsPage = lazy(() => import('@/pages/user/UserLogsPage').then((m) => ({ default: m.UserLogsPage })))
 const UserBillingPage = lazy(() => import('@/pages/user/UserBillingPage').then((m) => ({ default: m.UserBillingPage })))
@@ -141,6 +142,7 @@ export const router = createBrowserRouter([
           { path: '/playground', element: renderLazy(<UserPlaygroundPage />) },
           { path: '/image-gen', element: renderLazy(<UserImageGenPage />) },
           { path: '/video-gen', element: renderLazy(<UserVideoGenPage />) },
+          { path: '/music-gen', element: renderLazy(<UserMusicGenPage />) },
           { path: '/keys', element: renderLazy(<UserKeysPage />) },
           { path: '/tasks', element: renderLazy(<UserTasksPage />) },
           { path: '/llm-logs', element: renderLazy(<UserLogsPage />) },

@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { WalletCardsIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -144,11 +146,12 @@ export function AdminBillingPage() {
           ) : (
             <TableBody>
               {data.transactions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
-                    暂无账单记录
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={9}
+                  Icon={WalletCardsIcon}
+                  title="还没有账单记录"
+                  description="平台累计的所有积分流水会汇总在此处。"
+                />
               ) : (
                 data.transactions.map((row, index) => {
                   const credits = row.credits ?? row.amount ?? 0

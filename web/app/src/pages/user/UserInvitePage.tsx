@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TablePagination } from '@/components/shared/TablePagination'
@@ -145,7 +146,10 @@ export function UserInvitePage() {
   }
 
   async function saveQr() {
-    await withMut(async () => { await userApi.savePaymentQR({ wechat_qr: wechatQrEdit, alipay_qr: alipayQrEdit }) })
+    await withMut(async () => {
+      await userApi.savePaymentQR({ wechat_qr: wechatQrEdit, alipay_qr: alipayQrEdit })
+      toast.success('收款码已保存')
+    })
   }
 
   async function submitWithdraw() {

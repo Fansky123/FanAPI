@@ -791,7 +791,8 @@ export function AdminChannelsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Card>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -870,6 +871,7 @@ export function AdminChannelsPage() {
             </TableBody>
           )}
         </Table>
+        </div>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>

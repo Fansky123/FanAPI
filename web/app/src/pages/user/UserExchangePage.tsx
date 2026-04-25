@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { TicketIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -35,12 +38,16 @@ export function UserExchangePage() {
     setSubmitting(true)
     setMutError('')
     try {
-      await userApi.redeemCard(code.trim())
+      const res = await userApi.redeemCard(code.trim()) as { credits?: number; message?: string }
+      const credits = typeof res?.credits === 'number' ? res.credits : null
+      toast.success(credits ? `兑换成功，获得 ${formatCredits(credits)} 积分` : '兑换成功')
       setCode('')
       reload()
     } catch (err) {
       const { getApiErrorMessage } = await import('@/lib/api/http')
-      setMutError(getApiErrorMessage(err))
+      const msg = getApiErrorMessage(err)
+      setMutError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -85,11 +92,12 @@ export function UserExchangePage() {
           ) : (
             <TableBody>
               {history.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
-                    暂无兑换记录
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={3}
+                  Icon={TicketIcon}
+                  title="还没有兑换记录"
+                  description="使用上方输入框兑换卡密后，记录会显示在这里。"
+                />
               ) : (
                 history.map((row, index) => (
                   <TableRow key={row.code ?? index}>

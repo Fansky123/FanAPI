@@ -268,18 +268,29 @@ export function AdminOcpcPage() {
       </Card>
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4 p-6">
-          <Label>自动上报</Label>
-          <input
-            type="checkbox"
-            checked={effectiveScheduleEnabled}
-            onChange={(event) => setScheduleEnabled(event.target.checked)}
-          />
-          <Input
-            className="w-32"
-            value={effectiveInterval}
-            onChange={(event) => setInterval(event.target.value)}
-            placeholder="间隔分钟"
-          />
+          <Label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={effectiveScheduleEnabled}
+              onChange={(event) => setScheduleEnabled(event.target.checked)}
+            />
+            自动上报
+          </Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">调度间隔</Label>
+            <NativeSelect
+              className="w-40"
+              value={effectiveInterval}
+              onChange={(event) => setInterval(event.target.value)}
+            >
+              <option value="10">每 10 分钟</option>
+              <option value="15">每 15 分钟</option>
+              <option value="30">每 30 分钟</option>
+              <option value="60">每 1 小时</option>
+              <option value="120">每 2 小时</option>
+              <option value="360">每 6 小时</option>
+            </NativeSelect>
+          </div>
           <Button onClick={saveSchedule}>保存调度</Button>
           <Button variant="outline" onClick={triggerUpload}>立即上报</Button>
         </CardContent>
@@ -293,46 +304,120 @@ export function AdminOcpcPage() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{form.id ? '编辑账户' : '新增账户'}</DialogTitle></DialogHeader>
           <div className="grid gap-4">
-            <NativeSelect
-              value={form.platform}
-              onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}
-            >
-              <option value="baidu">百度</option>
-              <option value="360">360</option>
-            </NativeSelect>
-            <Input
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="名称"
-            />
+            <div className="grid gap-1.5">
+              <Label>平台</Label>
+              <NativeSelect
+                value={form.platform}
+                onChange={(event) => setForm((current) => ({ ...current, platform: event.target.value }))}
+              >
+                <option value="baidu">百度</option>
+                <option value="360">360</option>
+              </NativeSelect>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>名称</Label>
+              <Input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="账户备注名"
+              />
+            </div>
             {form.platform === 'baidu' ? (
               <>
-                <Input
-                  value={form.baidu_token}
-                  onChange={(event) => setForm((current) => ({ ...current, baidu_token: event.target.value }))}
-                  placeholder="百度 Token"
-                />
-                <Input
-                  value={form.baidu_page_url}
-                  onChange={(event) => setForm((current) => ({ ...current, baidu_page_url: event.target.value }))}
-                  placeholder="落地页 URL"
-                />
+                <div className="grid gap-1.5">
+                  <Label>百度 Token</Label>
+                  <Input
+                    value={form.baidu_token}
+                    onChange={(event) => setForm((current) => ({ ...current, baidu_token: event.target.value }))}
+                    placeholder="百度统计 / 转化 API Token"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>落地页 URL</Label>
+                  <Input
+                    value={form.baidu_page_url}
+                    onChange={(event) => setForm((current) => ({ ...current, baidu_page_url: event.target.value }))}
+                    placeholder="https://example.com/landing"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>注册转化类型</Label>
+                  <NativeSelect
+                    value={form.baidu_reg_type}
+                    onChange={(event) => setForm((current) => ({ ...current, baidu_reg_type: event.target.value }))}
+                  >
+                    <option value="68">68 - 注册</option>
+                    <option value="25">25 - 表单提交</option>
+                    <option value="3">3 - 咨询</option>
+                  </NativeSelect>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>订单转化类型</Label>
+                  <NativeSelect
+                    value={form.baidu_order_type}
+                    onChange={(event) => setForm((current) => ({ ...current, baidu_order_type: event.target.value }))}
+                  >
+                    <option value="10">10 - 付费</option>
+                    <option value="5">5 - 购买</option>
+                    <option value="6">6 - 下单</option>
+                  </NativeSelect>
+                </div>
               </>
             ) : (
               <>
-                <Input
-                  value={form.e360_key}
-                  onChange={(event) => setForm((current) => ({ ...current, e360_key: event.target.value }))}
-                  placeholder="360 Key"
-                />
-                <Input
-                  value={form.e360_secret}
-                  onChange={(event) => setForm((current) => ({ ...current, e360_secret: event.target.value }))}
-                  placeholder="360 Secret"
-                />
+                <div className="grid gap-1.5">
+                  <Label>360 Key</Label>
+                  <Input
+                    value={form.e360_key}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_key: event.target.value }))}
+                    placeholder="360 推广 API Key"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>360 Secret</Label>
+                  <Input
+                    value={form.e360_secret}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_secret: event.target.value }))}
+                    placeholder="360 推广 API Secret"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>jzqs（站点 ID）</Label>
+                  <Input
+                    value={form.e360_jzqs}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_jzqs: event.target.value }))}
+                    placeholder="360 推广站点 ID"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>搜索类型</Label>
+                  <NativeSelect
+                    value={form.e360_so_type}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_so_type: event.target.value }))}
+                  >
+                    <option value="1">PC 搜索</option>
+                    <option value="2">移动搜索</option>
+                  </NativeSelect>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>注册事件 ID</Label>
+                  <Input
+                    value={form.e360_reg_event}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_reg_event: event.target.value }))}
+                    placeholder="360 注册转化事件 ID"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>订单事件 ID</Label>
+                  <Input
+                    value={form.e360_order_event}
+                    onChange={(event) => setForm((current) => ({ ...current, e360_order_event: event.target.value }))}
+                    placeholder="360 订单转化事件 ID"
+                  />
+                </div>
               </>
             )}
           </div>

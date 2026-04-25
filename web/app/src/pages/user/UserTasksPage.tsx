@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { ListIcon } from 'lucide-react'
 
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -215,14 +218,12 @@ export function UserTasksPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">开始时间</label>
-            <Input type="datetime-local" className="w-48" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">结束时间</label>
-            <Input type="datetime-local" className="w-48" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-          </div>
+          <DateRangeFilter
+            startAt={startAt}
+            endAt={endAt}
+            label="时间范围"
+            onChange={({ startAt: s, endAt: e }) => { setStartAt(s); setEndAt(e) }}
+          />
           <Button onClick={doSearch}>查询</Button>
           <Button variant="outline" onClick={resetFilters}>重置</Button>
         </CardContent>
@@ -246,11 +247,12 @@ export function UserTasksPage() {
           ) : (
             <TableBody>
               {data.tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    暂无任务记录
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={7}
+                  Icon={ListIcon}
+                  title="还没有任务记录"
+                  description="发起图片/视频/音乐生成或异步调用后，任务会显示在这里。"
+                />
               ) : (
                 data.tasks.map((row, index) => {
                   const taskId = row.id ?? row.task_id
@@ -313,7 +315,11 @@ export function UserTasksPage() {
             <DialogTitle>任务详情 #{detail?.id ?? detail?.task_id}</DialogTitle>
           </DialogHeader>
           {detailLoading ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+            <div className="space-y-3 py-2">
+              <div className="h-24 w-full animate-pulse rounded-lg border bg-muted/40" />
+              <div className="h-32 w-full animate-pulse rounded-lg border bg-muted/40" />
+              <div className="h-16 w-full animate-pulse rounded-lg border bg-muted/40" />
+            </div>
           ) : detail ? (() => {
             const st = resolveStatus(detail)
             const errMsg = detail.error_msg ?? detail.msg

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { adminApi } from '@/lib/api/admin'
@@ -156,7 +157,15 @@ export function AdminSettingsPage() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="py-20 text-center text-sm text-muted-foreground">加载中...</div>
+            <div className="space-y-4 p-6">
+              <Skeleton className="h-10 w-full" />
+              <div className="grid gap-3">
+                <Skeleton className="h-9 w-1/3" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-9 w-1/2" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            </div>
           ) : (
             <Tabs defaultValue="basic">
               <TabsList className="w-full rounded-none border-b bg-transparent justify-start gap-0 p-0">

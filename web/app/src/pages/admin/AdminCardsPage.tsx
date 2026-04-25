@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { RefreshCwIcon } from 'lucide-react'
+import { CreditCardIcon, RefreshCwIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -153,11 +154,12 @@ export function AdminCardsPage() {
           ) : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    暂无卡密数据
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={7}
+                  Icon={CreditCardIcon}
+                  title="还没有卡密"
+                  description="使用上方「批量生成」创建卡密后会显示在这里。"
+                />
               ) : (
                 rows.map((row, index) => (
                   <TableRow key={row.id ?? index}>

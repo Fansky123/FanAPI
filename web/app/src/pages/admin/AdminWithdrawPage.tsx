@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { WalletIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -189,11 +191,12 @@ export function AdminWithdrawPage() {
           ) : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                    暂无提现申请
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={8}
+                  Icon={WalletIcon}
+                  title="还没有提现申请"
+                  description="号商提交提现后会在这里出现，请审核后再处理。"
+                />
               ) : (
                 rows.map((row, index) => (
                   <TableRow key={row.id ?? index}>

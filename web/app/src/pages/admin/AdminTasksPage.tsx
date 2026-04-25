@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { ListIcon } from 'lucide-react'
 
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -208,14 +211,12 @@ export function AdminTasksPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">开始时间</label>
-            <Input type="datetime-local" className="w-48" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">结束时间</label>
-            <Input type="datetime-local" className="w-48" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-          </div>
+          <DateRangeFilter
+            startAt={startAt}
+            endAt={endAt}
+            label="时间范围"
+            onChange={({ startAt: s, endAt: e }) => { setStartAt(s); setEndAt(e) }}
+          />
           <Button onClick={doSearch}>查询</Button>
           <Button variant="outline" onClick={resetFilters}>重置</Button>
         </CardContent>
@@ -242,11 +243,12 @@ export function AdminTasksPage() {
           ) : (
             <TableBody>
               {data.tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
-                    暂无任务记录
-                  </TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={10}
+                  Icon={ListIcon}
+                  title="还没有任务记录"
+                  description="平台用户发起异步任务后会汇总在此处。"
+                />
               ) : (
                 data.tasks.map((row, index) => (
                   <TableRow key={row.id ?? index}>
@@ -301,7 +303,11 @@ export function AdminTasksPage() {
             <DialogTitle>任务详情 #{detail?.id}</DialogTitle>
           </DialogHeader>
           {detailLoading ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+            <div className="space-y-3 py-2">
+              <div className="h-24 w-full animate-pulse rounded-lg border bg-muted/40" />
+              <div className="h-32 w-full animate-pulse rounded-lg border bg-muted/40" />
+              <div className="h-16 w-full animate-pulse rounded-lg border bg-muted/40" />
+            </div>
           ) : detail ? (
             <div className="space-y-1">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border p-4 text-sm">

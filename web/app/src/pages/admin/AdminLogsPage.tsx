@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { FileClockIcon, Search, Loader2 } from 'lucide-react'
 
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -105,7 +107,7 @@ export function AdminLogsPage() {
     setCurrentLog({ ...basicLog })
     try {
       const res = await adminApi.getLog(basicLog.id!)
-      setCurrentLog({ ...res, credits_charged: basicLog.credits_charged })
+      setCurrentLog({ ...res, credits_charged: basicLog.credits_charged, cost_charged: basicLog.cost_charged })
     } catch (e) {
       console.error(e)
     } finally {
@@ -181,11 +183,11 @@ export function AdminLogsPage() {
               <option value="refunded">已退款 (refunded)</option>
               <option value="pending">进行中 (pending)</option>
             </NativeSelect>
-            <Input type="datetime-local" value={filters.startAt}
-              onChange={e => setFilters({ ...filters, startAt: e.target.value })} className="w-[190px]" />
-            <span className="text-muted-foreground text-sm">至</span>
-            <Input type="datetime-local" value={filters.endAt}
-              onChange={e => setFilters({ ...filters, endAt: e.target.value })} className="w-[190px]" />
+            <DateRangeFilter
+              startAt={filters.startAt}
+              endAt={filters.endAt}
+              onChange={({ startAt, endAt }) => setFilters({ ...filters, startAt, endAt })}
+            />
             <Button onClick={handleSearch}><Search className="mr-2 h-4 w-4" />查询</Button>
             <Button variant="outline" onClick={handleReset}>重置</Button>
           </div>
@@ -203,16 +205,17 @@ export function AdminLogsPage() {
               <TableHead>相关 ID</TableHead>
               <TableHead>Token 用量</TableHead>
               <TableHead className="text-right">消耗积分</TableHead>
+              <TableHead className="text-right">上游成本</TableHead>
               <TableHead className="text-center">上游状态</TableHead>
               <TableHead className="text-center">状态</TableHead>
               <TableHead>时间</TableHead>
               <TableHead className="text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
-          {loading ? <TableSkeleton cols={10} rows={10} /> : (
+          {loading ? <TableSkeleton cols={11} rows={10} /> : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="py-10 text-center text-muted-foreground">暂无日志记录</TableCell></TableRow>
+                <TableEmpty cols={11} Icon={FileClockIcon} title="还没有调用日志" description="所有 LLM 调用记录会在此处汇总。" />
               ) : rows.map((row, idx) => (
                 <TableRow key={row.id ?? idx}>
                   <TableCell className="text-muted-foreground">{row.id ?? '-'}</TableCell>
@@ -226,6 +229,11 @@ export function AdminLogsPage() {
                   <TableCell className="text-right">
                     {row.credits_charged ? (
                       <span className="font-semibold text-red-500">-{formatCredits(row.credits_charged)}</span>
+                    ) : <span className="text-muted-foreground/50">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.cost_charged ? (
+                      <span className="text-amber-600 dark:text-amber-400">-{formatCredits(row.cost_charged)}</span>
                     ) : <span className="text-muted-foreground/50">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
@@ -294,6 +302,28 @@ export function AdminLogsPage() {
                     <div className={currentLog.credits_charged ? 'font-medium text-red-500' : ''}>
                       {currentLog.credits_charged ? `-${formatCredits(currentLog.credits_charged)}` : '—'}
                     </div>
+                  }
+                />
+                <InfoItem
+                  label="上游成本"
+                  value={
+                    <div className={currentLog.cost_charged ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>
+                      {currentLog.cost_charged ? `-${formatCredits(currentLog.cost_charged)}` : '—'}
+                    </div>
+                  }
+                />
+                <InfoItem
+                  label="毛利"
+                  value={
+                    (() => {
+                      const c = currentLog.credits_charged ?? 0
+                      const u = currentLog.cost_charged ?? 0
+                      const profit = c - u
+                      if (!c && !u) return <span className="text-muted-foreground">—</span>
+                      const sign = profit >= 0 ? '+' : '−'
+                      const cls = profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
+                      return <div className={`font-medium ${cls}`}>{sign}{formatCredits(Math.abs(profit))}</div>
+                    })()
                   }
                 />
                 <InfoItem label="请求时间" value={currentLog.created_at ? new Date(currentLog.created_at).toLocaleString('zh-CN') : '—'} />

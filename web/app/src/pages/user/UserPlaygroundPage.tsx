@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -22,6 +23,11 @@ export function UserPlaygroundPage() {
   const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>()
   const [error, setError] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [maxTokens, setMaxTokens] = useState<string>('')
+  const [temperature, setTemperature] = useState(0.7)
+  const [topP, setTopP] = useState(1)
+  const [useTemp, setUseTemp] = useState(false)
+  const [useTopP, setUseTopP] = useState(false)
   const [inputText, setInputText] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
@@ -84,7 +90,7 @@ export function UserPlaygroundPage() {
     setStreaming(true)
     setStreamingText('')
 
-    const body = {
+    const body: Record<string, unknown> = {
       model:
         currentChannel()?.routing_model ||
         currentChannel()?.name ||
@@ -97,6 +103,12 @@ export function UserPlaygroundPage() {
       ],
       stream: true,
     }
+    const parsedMaxTokens = Number(maxTokens)
+    if (Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0) {
+      body.max_tokens = parsedMaxTokens
+    }
+    if (useTemp) body.temperature = temperature
+    if (useTopP) body.top_p = topP
 
     try {
       const channel = currentChannel()
@@ -208,6 +220,66 @@ export function UserPlaygroundPage() {
                 onChange={(event) => setSystemPrompt(event.target.value)}
                 placeholder="例如：你是一个专业的 AI 助手"
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Max Tokens <span className="text-muted-foreground font-normal">(选填)</span></Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={128000}
+                value={maxTokens}
+                onChange={(event) => setMaxTokens(event.target.value)}
+                placeholder="不填则不限制"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="flex items-center justify-between">
+                <span>Temperature <span className="text-muted-foreground font-normal">(选填)</span></span>
+                <input
+                  type="checkbox"
+                  checked={useTemp}
+                  onChange={(event) => setUseTemp(event.target.checked)}
+                />
+              </Label>
+              {useTemp ? (
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.01}
+                    value={temperature}
+                    onChange={(event) => setTemperature(Number(event.target.value))}
+                    className="flex-1 accent-primary"
+                  />
+                  <span className="w-12 text-right font-mono text-xs tabular-nums">{temperature.toFixed(2)}</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="flex items-center justify-between">
+                <span>Top P <span className="text-muted-foreground font-normal">(选填)</span></span>
+                <input
+                  type="checkbox"
+                  checked={useTopP}
+                  onChange={(event) => setUseTopP(event.target.checked)}
+                />
+              </Label>
+              {useTopP ? (
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={topP}
+                    onChange={(event) => setTopP(Number(event.target.value))}
+                    className="flex-1 accent-primary"
+                  />
+                  <span className="w-12 text-right font-mono text-xs tabular-nums">{topP.toFixed(2)}</span>
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>

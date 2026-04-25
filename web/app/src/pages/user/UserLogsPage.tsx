@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { FileClockIcon, Search, Loader2 } from 'lucide-react'
 
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { TableEmpty } from '@/components/shared/TableEmpty'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -125,18 +127,10 @@ export function UserLogsPage() {
               <option value="refunded">已退款 (refunded)</option>
               <option value="pending">进行中 (pending)</option>
             </NativeSelect>
-            <Input 
-              type="datetime-local" 
-              value={filters.startAt} 
-              onChange={e => setFilters({...filters, startAt: e.target.value})}
-              className="w-[200px]"
-            />
-            <span className="text-muted-foreground text-sm">至</span>
-            <Input 
-              type="datetime-local" 
-              value={filters.endAt} 
-              onChange={e => setFilters({...filters, endAt: e.target.value})}
-              className="w-[200px]"
+            <DateRangeFilter
+              startAt={filters.startAt}
+              endAt={filters.endAt}
+              onChange={({ startAt, endAt }) => setFilters({ ...filters, startAt, endAt })}
             />
             <Button onClick={handleSearch}><Search className="mr-2 h-4 w-4" />查询</Button>
             <Button variant="outline" onClick={handleReset}>重置</Button>
@@ -162,9 +156,12 @@ export function UserLogsPage() {
           ) : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">暂无调用日志</TableCell>
-                </TableRow>
+                <TableEmpty
+                  cols={7}
+                  Icon={FileClockIcon}
+                  title="还没有调用日志"
+                  description="使用 API 密钥发起 LLM 请求后，调用记录会展示在这里。"
+                />
               ) : (
                 rows.map((row, index) => (
                   <TableRow key={row.id ?? index}>

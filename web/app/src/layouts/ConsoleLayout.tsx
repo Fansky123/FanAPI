@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BlocksIcon,
@@ -6,11 +7,13 @@ import {
   BriefcaseBusinessIcon,
   CreditCardIcon,
   FileClockIcon,
+  HeadphonesIcon,
   ImageIcon,
   KeySquareIcon,
   LayoutDashboardIcon,
   ListIcon,
   LogOutIcon,
+  MessageCircleIcon,
   MessageSquareIcon,
   MegaphoneIcon,
   NetworkIcon,
@@ -21,6 +24,7 @@ import {
   TrendingUpIcon,
   UserRoundIcon,
   UsersIcon,
+  UsersRoundIcon,
   VideoIcon,
   WalletCardsIcon,
   WalletIcon,
@@ -29,6 +33,14 @@ import {
 import { AppLogo } from '@/components/shared/AppLogo'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +65,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useSiteSettings } from '@/hooks/use-site-settings'
 import { clearRoleToken, getRoleToken } from '@/lib/auth/storage'
+import { userApi } from '@/lib/api/user'
 
 type NavItem = {
   label: string
@@ -81,6 +94,64 @@ type ConsoleLayoutProps = {
   footer?: ReactNode
 }
 
+function HeaderBalanceChip() {
+  const navigate = useNavigate()
+  const [balance, setBalance] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    userApi.getBalance()
+      .then((res) => { if (!cancelled) setBalance(res.balance_credits ?? 0) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  if (balance == null) return null
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="hidden gap-1.5 rounded-full pl-2 pr-3 sm:inline-flex"
+      onClick={() => navigate('/billing')}
+      title="点击充值"
+    >
+      <WalletIcon className="size-4 text-muted-foreground" />
+      <span className="font-mono text-xs tabular-nums">¥{(balance / 1e6).toFixed(4)}</span>
+    </Button>
+  )
+}
+
+function ContactPopover({
+  imageUrl,
+  label,
+  description,
+  Icon,
+}: {
+  imageUrl: string
+  label: string
+  description: string
+  Icon: ComponentType<{ className?: string }>
+}) {
+  if (!imageUrl) return null
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="hidden gap-1.5 px-2 text-muted-foreground hover:text-foreground md:inline-flex">
+          <Icon className="size-4" />
+          <span className="text-xs">{label}</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-[260px]">
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-center pb-2">
+          <img src={imageUrl} alt={label} className="h-48 w-48 rounded-lg border object-contain p-1" />
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ConsoleLayout({
   role,
   items = [],
@@ -92,7 +163,8 @@ export function ConsoleLayout({
 }: ConsoleLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { settings: { siteName, logoUrl } } = useSiteSettings()
+  const { settings } = useSiteSettings()
+  const { siteName, logoUrl, qqGroupUrl, wechatCsUrl, headerHtml, footerHtml } = settings
 
   const isLoggedIn = !!getRoleToken(role)
   const displayName = identity?.label
@@ -191,7 +263,20 @@ export function ConsoleLayout({
             <SidebarTrigger />
             <span className="text-sm font-semibold">{pageTitle}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <ContactPopover
+              imageUrl={qqGroupUrl}
+              label="QQ 交流群"
+              description="扫码加入 QQ 交流群"
+              Icon={UsersRoundIcon}
+            />
+            <ContactPopover
+              imageUrl={wechatCsUrl}
+              label="微信客服"
+              description="扫码添加微信客服"
+              Icon={MessageCircleIcon}
+            />
+            {isLoggedIn && role === 'user' && <HeaderBalanceChip />}
             {isLoggedIn && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -203,7 +288,7 @@ export function ConsoleLayout({
                           : role.slice(0, 1).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="max-w-28 truncate text-sm">
+                    <span className="hidden max-w-28 truncate text-sm sm:inline">
                       {displayName ??
                         (role === 'admin' ? '管理员' :
                          role === 'agent' ? 'Agent' :
@@ -221,11 +306,23 @@ export function ConsoleLayout({
             )}
           </div>
         </header>
+        {headerHtml ? (
+          <div
+            className="border-b border-border/60 bg-card px-4 py-2 text-sm md:px-6"
+            dangerouslySetInnerHTML={{ __html: headerHtml }}
+          />
+        ) : null}
         <main className={isFullBleedPage ? 'flex-1 px-0 py-0' : 'flex-1 px-4 py-6 md:px-6'}>
           <div className={isFullBleedPage ? 'flex w-full flex-col' : 'mx-auto flex w-full max-w-7xl flex-col gap-6'}>
             <Outlet />
           </div>
         </main>
+        {footerHtml ? (
+          <footer
+            className="border-t border-border/60 bg-background px-4 py-3 text-xs text-muted-foreground md:px-6"
+            dangerouslySetInnerHTML={{ __html: footerHtml }}
+          />
+        ) : null}
       </SidebarInset>
     </SidebarProvider>
   )
@@ -249,6 +346,7 @@ export const userNavGroups: NavGroup[] = [
       { label: '文本对话', href: '/playground', icon: MessageSquareIcon },
       { label: '图片生成', href: '/image-gen', icon: ImageIcon },
       { label: '视频生成', href: '/video-gen', icon: VideoIcon },
+      { label: '音乐生成', href: '/music-gen', icon: HeadphonesIcon },
     ],
   },
   {

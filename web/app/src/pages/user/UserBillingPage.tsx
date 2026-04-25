@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import QRCode from 'qrcode'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TablePagination } from '@/components/shared/TablePagination'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,16 @@ export function UserBillingPage() {
   const [payUrl, setPayUrl] = useState<string>('')
   const [currentOutTradeNo, setCurrentOutTradeNo] = useState<string>('')
   const [showPayFrame, setShowPayFrame] = useState(false)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
+  const [qrError, setQrError] = useState('')
+
+  useEffect(() => {
+    if (!showPayFrame || !payUrl || !qrCanvasRef.current) return
+    setQrError('')
+    QRCode.toCanvas(qrCanvasRef.current, payUrl, { width: 240, margin: 1 }, (err) => {
+      if (err) setQrError('二维码生成失败，请使用下方按钮打开支付页')
+    })
+  }, [showPayFrame, payUrl])
 
   // Transaction State
   const [txPage, setTxPage] = useState(1)
@@ -416,12 +427,17 @@ export function UserBillingPage() {
           <DialogHeader>
             <DialogTitle>扫描二维码支付</DialogTitle>
             <DialogDescription>
-              请使用扫码完成支付，支付成功后系统将自动到账。
+              请使用 {payMethod === 'wechat' ? '微信' : '支付宝'} 扫码完成支付，支付成功后系统将自动到账。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center p-4">
-            {settings.payApplyEnabled && payUrl ? (
-               <iframe src={payUrl} title="pay url" className="w-[280px] h-[280px] border-0" />
+            {payUrl ? (
+              <>
+                <canvas ref={qrCanvasRef} className="rounded-lg border bg-white p-2" />
+                {qrError ? (
+                  <div className="mt-3 text-xs text-destructive">{qrError}</div>
+                ) : null}
+              </>
             ) : (
               <div className="py-8 text-center text-muted-foreground">
                 <Wallet className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -433,7 +449,18 @@ export function UserBillingPage() {
               <br />
               <span className="text-muted-foreground text-xs mt-2 inline-block">单号: {currentOutTradeNo}</span>
             </div>
-            
+
+            {payUrl ? (
+              <Button
+                variant="link"
+                size="sm"
+                className="mt-2"
+                onClick={() => window.open(payUrl, '_blank', 'noopener,noreferrer')}
+              >
+                在新窗口中打开支付页 →
+              </Button>
+            ) : null}
+
             <div className="mt-6 flex w-full gap-2">
               <Button variant="outline" className="w-full" onClick={() => setShowPayFrame(false)}>取消支付</Button>
               <Button className="w-full" onClick={() => {

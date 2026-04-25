@@ -61,6 +61,7 @@ export function AdminDashboardPage() {
           hint="活跃 / 全部"
           icon={<ZapIcon className="size-4" />}
           loading={loading}
+          variant="info"
         />
         <StatCard
           title="用户数量"
@@ -68,6 +69,7 @@ export function AdminDashboardPage() {
           hint="普通用户数"
           icon={<UsersIcon className="size-4" />}
           loading={loading}
+          variant="primary"
         />
         <StatCard
           title="今日收入"
@@ -75,6 +77,7 @@ export function AdminDashboardPage() {
           hint={`今日结算 ${stats.today?.count ?? 0} 笔`}
           icon={<BadgeDollarSignIcon className="size-4" />}
           loading={loading}
+          variant="success"
         />
         <StatCard
           title="今日利润"
@@ -82,6 +85,7 @@ export function AdminDashboardPage() {
           hint="收入 - 上游成本"
           icon={<ActivityIcon className="size-4" />}
           loading={loading}
+          variant="warning"
         />
       </div>
 

@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 
+	"fanapi/internal/billing"
 	"fanapi/internal/db"
 	"fanapi/internal/model"
 )
@@ -65,6 +66,15 @@ func WriteTx(ctx context.Context, userID, channelID, apiKeyID, poolKeyID int64, 
 
 	if _, err := db.Engine.Insert(tx); err != nil {
 		return err
+	}
+
+	// 充值类交易（recharge）的 Redis 余额未被调用方提前同步，
+	// 必须在此重读 DB 后回写 Redis，避免 GetBalance 命中旧缓存。
+	// 其他类型（hold/charge/settle/refund）由调用方在前置 billing.Charge/Refund 时已操作 Redis。
+	if txType == "recharge" {
+		if _, err := billing.SyncBalanceToRedis(ctx, userID); err != nil {
+			log.Printf("recharge: sync balance to redis failed for user=%d: %v", userID, err)
+		}
 	}
 
 	// 消费类交易触发邀请返佣和号商收益：

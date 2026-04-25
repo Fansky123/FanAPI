@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SaveIcon } from 'lucide-react'
+import { SaveIcon, UsersIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TableSkeleton } from '@/components/shared/TableSkeleton'
@@ -154,8 +154,12 @@ export function AdminUsersPage() {
             <TableBody>
               {data.users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
-                    暂无用户数据
+                  <TableCell colSpan={10} className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <UsersIcon className="size-10 text-muted-foreground/40" />
+                      <p className="text-sm font-medium">还没有用户</p>
+                      <p className="max-w-sm text-xs text-muted-foreground">用户完成注册后会显示在这里。</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (

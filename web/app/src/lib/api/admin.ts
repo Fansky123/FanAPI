@@ -127,6 +127,7 @@ export type AdminLog = {
   updated_at?: string
   corr_id?: string
   credits_charged?: number
+  cost_charged?: number
   status?: string
   is_stream?: boolean
   error_msg?: string
