@@ -127,7 +127,7 @@ export function UserProfilePage() {
             ) : (
               <>
                 <p className="text-xl font-semibold">{profile?.username ?? '-'}</p>
-                <p className="text-xl font-semibold">用户ID {profile?.id ?? '-'}</p>
+                <p className="text-xl font-semibold">#{profile?.id ?? '-'}</p>
                 <p className="text-sm text-muted-foreground">{profile?.email ?? '未绑定邮箱'}</p>
                 <div className="flex items-center gap-2">
                   {profile?.group ? <Badge variant="secondary">{profile.group}</Badge> : null}

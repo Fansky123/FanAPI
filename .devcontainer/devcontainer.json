@@ -7,7 +7,15 @@
 	"context": "..",
 	"runArgs": ["--network", "host"],
 	"updateRemoteUserUID": true,
-	"remoteUser": "root"
+	"remoteUser": "root",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"msjsdiag.vscode-react-native"
+			]
+		}
+	}
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},

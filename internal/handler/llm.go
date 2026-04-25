@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -581,7 +582,22 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 	upstreamCostHold, _ := billing.CalcUpstreamCost(ch, origReqData)
 
 	if totalHold > 0 {
+		balanceBefore, balanceErr := billing.GetBalance(c.Request.Context(), userID)
+		if balanceErr != nil {
+			log.Printf("[llm-hold] get balance failed user_id=%d channel_id=%d channel=%q model=%q input_hold=%d output_hold=%d total_hold=%d err=%v",
+				userID, channelID, ch.Name, resolvedModel, inputHold, outputHold, totalHold, balanceErr)
+		} else {
+			log.Printf("[llm-hold] try charge user_id=%d channel_id=%d channel=%q model=%q input_hold=%d output_hold=%d total_hold=%d balance_before=%d",
+				userID, channelID, ch.Name, resolvedModel, inputHold, outputHold, totalHold, balanceBefore)
+		}
 		if chargeErr := billing.Charge(c.Request.Context(), userID, totalHold); chargeErr != nil {
+			if balanceErr != nil {
+				log.Printf("[llm-hold] charge failed user_id=%d channel_id=%d channel=%q model=%q input_hold=%d output_hold=%d total_hold=%d err=%v",
+					userID, channelID, ch.Name, resolvedModel, inputHold, outputHold, totalHold, chargeErr)
+			} else {
+				log.Printf("[llm-hold] charge failed user_id=%d channel_id=%d channel=%q model=%q input_hold=%d output_hold=%d total_hold=%d balance_before=%d err=%v",
+					userID, channelID, ch.Name, resolvedModel, inputHold, outputHold, totalHold, balanceBefore, chargeErr)
+			}
 			c.JSON(http.StatusPaymentRequired, gin.H{"error": chargeErr.Error()})
 			return
 		}
