@@ -13,6 +13,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const creditsPerCNY = 1_000_000.0
+
+func creditsToCNY(credits int64) float64 {
+	return float64(credits) / creditsPerCNY
+}
+
 func parseDateTime(value string, endOfDay bool) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
@@ -270,13 +276,55 @@ func ListAllTransactions(c *gin.Context) {
 		return
 	}
 
+	type transactionView struct {
+		ID           int64      `json:"id"`
+		UserID       int64      `json:"user_id"`
+		ChannelID    int64      `json:"channel_id"`
+		APIKeyID     int64      `json:"api_key_id"`
+		PoolKeyID    int64      `json:"pool_key_id"`
+		CorrID       string     `json:"corr_id"`
+		Type         string     `json:"type"`
+		Amount       float64    `json:"amount"`
+		Cost         float64    `json:"cost"`
+		Profit       float64    `json:"profit"`
+		BalanceAfter int64      `json:"balance_after"`
+		Metrics      model.JSON `json:"metrics"`
+		CreatedAt    time.Time  `json:"created_at"`
+	}
+
+	views := make([]transactionView, len(txs))
+	for i, tx := range txs {
+		profitCredits := int64(0)
+		if tx.Type == "refund" {
+			profitCredits = -(tx.Credits - tx.Cost)
+		} else if tx.Type == "charge" || tx.Type == "settle" || tx.Type == "hold" {
+			profitCredits = tx.Credits - tx.Cost
+		}
+
+		views[i] = transactionView{
+			ID:           tx.ID,
+			UserID:       tx.UserID,
+			ChannelID:    tx.ChannelID,
+			APIKeyID:     tx.APIKeyID,
+			PoolKeyID:    tx.PoolKeyID,
+			CorrID:       tx.CorrID,
+			Type:         tx.Type,
+			Amount:       creditsToCNY(tx.Credits),
+			Cost:         creditsToCNY(tx.Cost),
+			Profit:       creditsToCNY(profitCredits),
+			BalanceAfter: tx.BalanceAfter,
+			Metrics:      tx.Metrics,
+			CreatedAt:    tx.CreatedAt,
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"transactions": txs,
+		"transactions": views,
 		"total":        total,
 		"summary": gin.H{
-			"revenue":           summary.Revenue,
-			"cost":              summary.Cost,
-			"profit":            summary.Profit,
+			"revenue":           creditsToCNY(summary.Revenue),
+			"cost":              creditsToCNY(summary.Cost),
+			"profit":            creditsToCNY(summary.Profit),
 			"transaction_count": summary.Count,
 		},
 	})

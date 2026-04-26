@@ -87,6 +87,7 @@ export type AdminTransaction = {
   amount?: number
   credits?: number
   cost?: number
+  profit?: number
   channel_id?: number
   corr_id?: string
   remark?: string
@@ -121,8 +122,10 @@ export type AdminTask = {
 export type AdminLog = {
   id?: number
   user_id?: number
+  username?: string
   channel_id?: number
   api_key_id?: number
+  upstream_api_key?: string
   model?: string
   created_at?: string
   updated_at?: string

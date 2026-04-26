@@ -20,8 +20,8 @@ import {
 import { adminApi, type AdminTransaction, type AdminTransactionSummary } from '@/lib/api/admin'
 import { useAsync } from '@/hooks/use-async'
 
-function toYuan(credits: number | undefined) {
-  return ((credits ?? 0) / 1e6).toFixed(4)
+function toMoney(cny: number | undefined) {
+  return (cny ?? 0).toFixed(4)
 }
 
 function txTypeLabel(t: string | undefined) {
@@ -35,10 +35,11 @@ function txTypeVariant(t: string | undefined): 'destructive' | 'secondary' | 'ou
 }
 
 function profitOf(row: AdminTransaction) {
-  const credits = row.credits ?? row.amount ?? 0
+  if (row.profit != null) return row.profit
+  const amount = row.amount ?? 0
   const cost = row.cost ?? 0
-  if (row.type === 'refund') return -(credits - cost)
-  if (row.type === 'charge' || row.type === 'settle' || row.type === 'hold') return credits - cost
+  if (row.type === 'refund') return -(amount - cost)
+  if (row.type === 'charge' || row.type === 'settle' || row.type === 'hold') return amount - cost
   return 0
 }
 
@@ -112,15 +113,15 @@ export function AdminBillingPage() {
         <div className="grid gap-4 sm:grid-cols-3">
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">收入</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">¥{toYuan(data.summary.revenue)}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold">¥{toMoney(data.summary.revenue)}</p></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">成本</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">¥{toYuan(data.summary.cost)}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold">¥{toMoney(data.summary.cost)}</p></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">利润</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-blue-600">¥{toYuan(data.summary.profit)}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-blue-600">¥{toMoney(data.summary.profit)}</p></CardContent>
           </Card>
         </div>
       ) : null}
@@ -133,9 +134,9 @@ export function AdminBillingPage() {
               <TableHead className="w-14">ID</TableHead>
               <TableHead className="w-16">用户 ID</TableHead>
               <TableHead className="w-20">类型</TableHead>
-              <TableHead className="w-36 text-right">金额（cr）</TableHead>
-              <TableHead className="w-32 text-right">成本（cr）</TableHead>
-              <TableHead className="w-32 text-right">利润（cr）</TableHead>
+              <TableHead className="w-36 text-right">金额（CNY）</TableHead>
+              <TableHead className="w-32 text-right">成本（CNY）</TableHead>
+              <TableHead className="w-32 text-right">利润（CNY）</TableHead>
               <TableHead className="w-16">渠道</TableHead>
               <TableHead>关联 ID</TableHead>
               <TableHead className="w-40">时间</TableHead>
@@ -154,7 +155,7 @@ export function AdminBillingPage() {
                 />
               ) : (
                 data.transactions.map((row, index) => {
-                  const credits = row.credits ?? row.amount ?? 0
+                  const amount = row.amount ?? 0
                   const isDebit = ['charge', 'hold', 'settle'].includes(row.type ?? '')
                   const profit = profitOf(row)
                   return (
@@ -167,13 +168,13 @@ export function AdminBillingPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className={`text-right font-mono text-sm ${isDebit ? 'text-red-500' : 'text-emerald-600'}`}>
-                        {isDebit ? '-' : '+'}{Math.abs(credits).toLocaleString()}
+                        {isDebit ? '-' : '+'}{Math.abs(amount).toLocaleString('zh-CN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {(row.cost ?? 0).toLocaleString()}
+                        {(row.cost ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                       </TableCell>
                       <TableCell className={`text-right font-mono text-sm ${profit >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                        {profit.toLocaleString()}
+                        {profit.toLocaleString('zh-CN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{row.channel_id ?? '-'}</TableCell>
                       <TableCell className="max-w-32 truncate text-xs text-muted-foreground" title={row.corr_id}>

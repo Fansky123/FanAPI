@@ -201,7 +201,9 @@ export function AdminLogsPage() {
               <TableHead className="w-[60px]">ID</TableHead>
               <TableHead>模型</TableHead>
               <TableHead>用户 ID</TableHead>
+              <TableHead>用户名</TableHead>
               <TableHead>渠道 ID</TableHead>
+              <TableHead>上游 API Key</TableHead>
               <TableHead>相关 ID</TableHead>
               <TableHead>Token 用量</TableHead>
               <TableHead className="text-right">消耗积分</TableHead>
@@ -212,16 +214,20 @@ export function AdminLogsPage() {
               <TableHead className="text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
-          {loading ? <TableSkeleton cols={11} rows={10} /> : (
+          {loading ? <TableSkeleton cols={13} rows={10} /> : (
             <TableBody>
               {rows.length === 0 ? (
-                <TableEmpty cols={11} Icon={FileClockIcon} title="还没有调用日志" description="所有 LLM 调用记录会在此处汇总。" />
+                <TableEmpty cols={13} Icon={FileClockIcon} title="还没有调用日志" description="所有 LLM 调用记录会在此处汇总。" />
               ) : rows.map((row, idx) => (
                 <TableRow key={row.id ?? idx}>
                   <TableCell className="text-muted-foreground">{row.id ?? '-'}</TableCell>
                   <TableCell className="font-medium max-w-[180px] truncate" title={row.model}>{row.model ?? '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{row.user_id ?? '-'}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.username ?? '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{row.channel_id ?? '-'}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground max-w-[180px] truncate" title={row.upstream_api_key}>
+                    {row.upstream_api_key ?? '-'}
+                  </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground max-w-[220px] truncate" title={row.corr_id}>{row.corr_id ?? '-'}</TableCell>
                   <TableCell>
                     {renderUsageSummary(row)}

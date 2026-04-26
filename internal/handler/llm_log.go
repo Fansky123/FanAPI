@@ -96,11 +96,13 @@ func AdminListLLMLogs(c *gin.Context) {
 	// 聚合每条日志对应的净扣费积分与上游成本
 	creditsMap := map[string]int64{}
 	costMap := map[string]int64{}
+	poolKeyMap := map[string]int64{}
 	if len(logs) > 0 {
 		type txRow struct {
 			CorrID  string `xorm:"corr_id"`
 			Credits int64  `xorm:"credits"`
 			Cost    int64  `xorm:"cost"`
+			PoolKey int64  `xorm:"pool_key_id"`
 		}
 		inList := "'" + logs[0].CorrID + "'"
 		for _, l := range logs[1:] {
@@ -108,27 +110,74 @@ func AdminListLLMLogs(c *gin.Context) {
 		}
 		sqlStr := `SELECT corr_id,
 			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN credits WHEN type='refund' THEN -credits ELSE 0 END),0) AS credits,
-			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN cost    WHEN type='refund' THEN -cost    ELSE 0 END),0) AS cost
+			COALESCE(SUM(CASE WHEN type IN ('hold','charge','settle') THEN cost    WHEN type='refund' THEN -cost    ELSE 0 END),0) AS cost,
+			COALESCE(MAX(pool_key_id), 0) AS pool_key_id
 			FROM billing_transactions WHERE corr_id IN (` + inList + `) GROUP BY corr_id`
 		var rows []txRow
 		_ = db.Engine.SQL(sqlStr).Find(&rows)
 		for _, r := range rows {
 			creditsMap[r.CorrID] = r.Credits
 			costMap[r.CorrID] = r.Cost
+			poolKeyMap[r.CorrID] = r.PoolKey
+		}
+	}
+
+	usernameMap := map[int64]string{}
+	userIDs := make([]int64, 0, len(logs))
+	seenUserID := map[int64]bool{}
+	for _, l := range logs {
+		if !seenUserID[l.UserID] {
+			seenUserID[l.UserID] = true
+			userIDs = append(userIDs, l.UserID)
+		}
+	}
+	if len(userIDs) > 0 {
+		var users []model.User
+		if err := db.Engine.In("id", userIDs).Cols("id", "username").Find(&users); err == nil {
+			for _, u := range users {
+				usernameMap[u.ID] = u.Username
+			}
+		}
+	}
+
+	upstreamKeyMap := map[int64]string{}
+	poolKeyIDs := make([]int64, 0, len(poolKeyMap))
+	seenPoolKeyID := map[int64]bool{}
+	for _, keyID := range poolKeyMap {
+		if keyID <= 0 || seenPoolKeyID[keyID] {
+			continue
+		}
+		seenPoolKeyID[keyID] = true
+		poolKeyIDs = append(poolKeyIDs, keyID)
+	}
+	if len(poolKeyIDs) > 0 {
+		var keys []model.PoolKey
+		if err := db.Engine.In("id", poolKeyIDs).Cols("id", "value").Find(&keys); err == nil {
+			for _, k := range keys {
+				upstreamKeyMap[k.ID] = maskKeyValue(k.Value)
+			}
 		}
 	}
 
 	type logWithCredits struct {
 		model.LLMLog
-		CreditsCharged int64 `json:"credits_charged"`
-		CostCharged    int64 `json:"cost_charged"`
+		CreditsCharged int64  `json:"credits_charged"`
+		CostCharged    int64  `json:"cost_charged"`
+		Username       string `json:"username,omitempty"`
+		UpstreamAPIKey string `json:"upstream_api_key,omitempty"`
 	}
 	result := make([]logWithCredits, len(logs))
 	for i, l := range logs {
+		upstreamAPIKey := ""
+		if poolKeyID := poolKeyMap[l.CorrID]; poolKeyID > 0 {
+			upstreamAPIKey = upstreamKeyMap[poolKeyID]
+		}
 		result[i] = logWithCredits{
 			LLMLog:         l,
 			CreditsCharged: creditsMap[l.CorrID],
 			CostCharged:    costMap[l.CorrID],
+			Username:       usernameMap[l.UserID],
+			UpstreamAPIKey: upstreamAPIKey,
 		}
 	}
 
