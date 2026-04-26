@@ -96,9 +96,16 @@ func GetChannelByName(ctx context.Context, name string) (*model.Channel, error) 
 
 // PatchChannelActive 仅更新渠道的 is_active 字段，避免覆盖其他字段。
 func PatchChannelActive(ctx context.Context, id int64, isActive bool) error {
+	// 先读取 model，用于删除模型路由列表缓存，避免启停后 30s 内仍命中旧列表。
+	var old model.Channel
+	_, _ = db.Engine.ID(id).Cols("model").Get(&old)
+
 	_, err := db.Engine.ID(id).Cols("is_active").Update(&model.Channel{IsActive: isActive})
 	if err == nil {
 		InvalidateChannelCache(ctx, id)
+		if old.Model != "" {
+			cache.Client.Del(ctx, fmt.Sprintf("channel:model:%s", old.Model))
+		}
 	}
 	return err
 }
@@ -184,9 +191,17 @@ func SelectChannelStable(ctx context.Context, modelName string, excludeIDs ...in
 		return nil, fmt.Errorf("所有渠道均已尝试或不可用")
 	}
 
-	// 按售价升序排列（最便宜的优先）
+	// 按售价升序排列（最便宜的优先）；同价时优先级高者优先，再按 ID 升序稳定排序。
 	sort.Slice(candidates, func(i, j int) bool {
-		return channelBasePrice(candidates[i]) < channelBasePrice(candidates[j])
+		pi := channelBasePrice(candidates[i])
+		pj := channelBasePrice(candidates[j])
+		if pi != pj {
+			return pi < pj
+		}
+		if candidates[i].Priority != candidates[j].Priority {
+			return candidates[i].Priority > candidates[j].Priority
+		}
+		return candidates[i].ID < candidates[j].ID
 	})
 	return candidates, nil
 }
@@ -380,7 +395,8 @@ func listChannelsByModel(ctx context.Context, modelName string) ([]model.Channel
 	}
 
 	var channels []model.Channel
-	err = db.Engine.Where("model = ? AND is_active = true", modelName).Find(&channels)
+	err = db.Engine.Where("model = ? AND is_active = true", modelName).
+		OrderBy("priority DESC, id ASC").Find(&channels)
 	if err != nil {
 		return nil, err
 	}
