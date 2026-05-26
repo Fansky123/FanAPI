@@ -1249,17 +1249,10 @@ func openAIToResponsesRequest(req map[string]interface{}) (map[string]interface{
 					if !ok {
 						continue
 					}
-					pType, _ := pm["type"].(string)
-					if pType == "text" {
-						if text, _ := pm["text"].(string); text != "" {
-							parts = append(parts, map[string]interface{}{
-								"type": "input_text",
-								"text": text,
-							})
-						}
-						continue
+					converted := convertOpenAIContentPartToResponses(pm)
+					if converted != nil {
+						parts = append(parts, converted)
 					}
-					parts = append(parts, pm)
 				}
 				item["content"] = parts
 			default:
@@ -1281,6 +1274,41 @@ func openAIToResponsesRequest(req map[string]interface{}) (map[string]interface{
 	}
 
 	return out, nil
+}
+
+func convertOpenAIContentPartToResponses(part map[string]interface{}) map[string]interface{} {
+	partType, _ := part["type"].(string)
+	switch partType {
+	case "text":
+		if text, _ := part["text"].(string); text != "" {
+			return map[string]interface{}{
+				"type": "input_text",
+				"text": text,
+			}
+		}
+		return nil
+	case "input_text":
+		return part
+	case "image_url":
+		var url string
+		switch v := part["image_url"].(type) {
+		case map[string]interface{}:
+			url, _ = v["url"].(string)
+		case string:
+			url = v
+		}
+		if url != "" {
+			return map[string]interface{}{
+				"type":      "input_image",
+				"image_url": url,
+			}
+		}
+	case "input_image":
+		if _, ok := part["image_url"].(string); ok {
+			return part
+		}
+	}
+	return part
 }
 
 func convertOpenAIToolsToResponses(tools []interface{}) []map[string]interface{} {

@@ -593,11 +593,15 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		origReqData[k] = v
 	}
 
+	needsResponsesCompatConvert := clientProto == protocolResponses &&
+		proto == protocolResponses &&
+		hasTopLevelNonEmptyMessages(reqData)
+
 	// 客户端格式 ≠ 渠道格式时，需要请求格式转换链：
 	//   客户端格式 → OpenAI（若客户端本身就是 OpenAI 则跳过） → 渠道格式（若渠道本身是 OpenAI 则跳过）
-	// 客户端格式 == 渠道格式时直接透传，不做任何转换。
+	// 客户端格式 == 渠道格式时直接透传，不做任何转换（Responses 兼容分支除外）。
 	// passthrough_body=true 时跳过所有转换，直接使用原始请求体字节。
-	if !ch.PassthroughBody && clientProto != proto && ch.RequestScript == "" {
+	if !ch.PassthroughBody && ch.RequestScript == "" && (clientProto != proto || needsResponsesCompatConvert) {
 		working := reqData
 		// Step 1: 客户端格式 → OpenAI
 		if clientProto != protocolOpenAI {
@@ -1101,6 +1105,11 @@ func llmProxyWithChannel(c *gin.Context, ch *model.Channel, reqData map[string]i
 		})
 
 	llmSettle(c, ch, origReqData, usage.normalized(origReqData), totalHold, userID, channelID, apiKeyIDVal, poolKeyIDVal, corrID, userGroup)
+}
+
+func hasTopLevelNonEmptyMessages(req map[string]interface{}) bool {
+	msgs, ok := req["messages"].([]interface{})
+	return ok && len(msgs) > 0
 }
 
 // selectNextChannel 为重试选择下一个渠道，排除已尝试过的渠道 ID。

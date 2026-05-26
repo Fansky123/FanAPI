@@ -190,3 +190,85 @@ func TestClaudeRequestToOpenAIPreservesImageURLParts(t *testing.T) {
 		t.Fatalf("expected first part image_url to be preserved, got %#v", parts[0])
 	}
 }
+
+func TestOpenAIToResponsesRequestConvertsRemoteImageURLPart(t *testing.T) {
+	req := map[string]interface{}{
+		"model": "gpt-4o",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{"type": "text", "text": "look"},
+					map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": "https://example.com/a.png"}},
+				},
+			},
+		},
+	}
+
+	out, err := openAIToResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("openAIToResponsesRequest returned error: %v", err)
+	}
+
+	input, _ := out["input"].([]interface{})
+	user, _ := input[0].(map[string]interface{})
+	content, _ := user["content"].([]interface{})
+	image, _ := content[1].(map[string]interface{})
+	if image["type"] != "input_image" || image["image_url"] != "https://example.com/a.png" {
+		t.Fatalf("expected image_url part converted to input_image string url, got %#v", image)
+	}
+}
+
+func TestOpenAIToResponsesRequestConvertsDataURIImageURLPart(t *testing.T) {
+	req := map[string]interface{}{
+		"model": "gpt-4o",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": "data:image/png;base64,QUJD"}},
+				},
+			},
+		},
+	}
+
+	out, err := openAIToResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("openAIToResponsesRequest returned error: %v", err)
+	}
+
+	input, _ := out["input"].([]interface{})
+	user, _ := input[0].(map[string]interface{})
+	content, _ := user["content"].([]interface{})
+	image, _ := content[0].(map[string]interface{})
+	if image["type"] != "input_image" || image["image_url"] != "data:image/png;base64,QUJD" {
+		t.Fatalf("expected data URI image_url converted to input_image string url, got %#v", image)
+	}
+}
+
+func TestOpenAIToResponsesRequestPreservesInputImagePart(t *testing.T) {
+	req := map[string]interface{}{
+		"model": "gpt-4o",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{"type": "input_image", "image_url": "https://example.com/already-native.png"},
+				},
+			},
+		},
+	}
+
+	out, err := openAIToResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("openAIToResponsesRequest returned error: %v", err)
+	}
+
+	input, _ := out["input"].([]interface{})
+	user, _ := input[0].(map[string]interface{})
+	content, _ := user["content"].([]interface{})
+	image, _ := content[0].(map[string]interface{})
+	if image["type"] != "input_image" || image["image_url"] != "https://example.com/already-native.png" {
+		t.Fatalf("expected input_image part preserved, got %#v", image)
+	}
+}
