@@ -1,0 +1,14 @@
+services:
+  aipic:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AIPIC_PORT:-8790}:8788"
+    environment:
+      MIDCODE_ORIGIN: ${MIDCODE_ORIGIN:?Set the public MidCode origin}
+      AIPIC_HANDOFF_SECRET: ${AIPIC_HANDOFF_SECRET:?Set a shared random secret of at least 32 characters}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

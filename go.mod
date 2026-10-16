@@ -3,6 +3,7 @@ module fanapi
 go 1.26
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-playground/validator/v10 v10.20.0

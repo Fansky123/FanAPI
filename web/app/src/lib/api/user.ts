@@ -255,6 +255,8 @@ export type UserModelCredit = {
 export type ConversationMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  images?: Array<{ src: string; width?: number; height?: number }>
+  image_request?: { model: string; resolution: 'default' | '2K' | '4K'; ratio: '16:9' | '1:1'; edited: boolean }
 }
 
 export type ChatConversation = {
